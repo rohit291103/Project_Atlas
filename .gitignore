@@ -1,0 +1,21 @@
+# OS
+.DS_Store
+
+# Claude Code local/session state (machine-specific, not shared)
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+
+# Python (Phase 0 scaffolding)
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
