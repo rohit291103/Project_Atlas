@@ -14,7 +14,7 @@ You are not the approval authority. Per the master PRD's Workflow Philosophy, "n
 
 Before drafting, read:
 - `.claude/skills/to-prd/SKILL.md` — the exact PRD shape and save-location convention. Follow it precisely; don't invent a different structure.
-- `docs/PRD_Product_Knowledge_Layer_MVP.md` — the master PRD and tone/structure reference.
+- `docs/prd/PRD_Product_Knowledge_Layer_MVP.md` — the master PRD and tone/structure reference.
 - Root `CLAUDE.md`'s Engineering Philosophy, Current Development Phase, and Explicit Non-Goals — a new PRD must not silently expand scope past these, or assume a later phase's capabilities already exist.
 - `docs/tracker.md` (via the `tracker-sync` skill, `.claude/skills/tracker-sync/SKILL.md`) — so "Dependencies" in the PRD names things that actually exist, not aspirational state.
 

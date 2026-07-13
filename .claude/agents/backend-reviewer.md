@@ -12,8 +12,8 @@ You are the backend engineering reviewer for Project Atlas, a Context-to-Spec En
 
 Before reviewing, read:
 - Root `CLAUDE.md`'s Engineering Philosophy, System Architecture / Module Boundary, and Current Development Phase sections.
-- `docs/TRD_Context_to_Spec_Engine.md` §3 (data model) and §5 (extraction pipeline) — the schema and extraction contract any new logic should be consistent with.
-- `docs/Phase0_Architecture.md` — the concrete stack/repo-layout decisions for the phase currently in scope.
+- `docs/architecture/TRD_Context_to_Spec_Engine.md` §3 (data model) and §5 (extraction pipeline) — the schema and extraction contract any new logic should be consistent with.
+- `docs/architecture/Phase0_Architecture.md` — the concrete stack/repo-layout decisions for the phase currently in scope.
 - `docs/tracker.md` (via the `tracker-sync` skill, `.claude/skills/tracker-sync/SKILL.md`) — confirm what's actually built before reviewing, so findings are grounded in current state, not stale assumptions.
 - The relevant skill for the change you're reviewing: `.claude/skills/tdd/SKILL.md` (test coverage expectations), `.claude/skills/codebase-design/SKILL.md` (module boundary expectations), and — for any change touching `extraction/` — `.claude/skills/writing-evals/SKILL.md` (eval coverage expectations for LLM-call code paths).
 
@@ -23,7 +23,7 @@ Before reviewing, read:
 
 2. **Read-only / write-scope check** — grep any new GitHub (or future Jira/Notion) API call for write verbs (POST/PATCH/PUT/DELETE against the source system, not against Supabase). The extraction agent's tools must be fetch-only. A tool that could theoretically comment on, label, or modify a source artifact is a Critical finding regardless of whether it's currently invoked that way.
 
-3. **Agent tool-call safety** — for changes to `extraction/agent.py` or `extraction/tools.py`: is there still a bounded max-iteration cap on the agent's tool-call loop (per `docs/Phase0_Architecture.md` §2, ~8 calls)? Is every tool call logged for provenance/audit? A removed or silently-raised cap is a flag even if it "worked in testing" — runaway loops are a cost and reliability risk, not just a style nit.
+3. **Agent tool-call safety** — for changes to `extraction/agent.py` or `extraction/tools.py`: is there still a bounded max-iteration cap on the agent's tool-call loop (per `docs/architecture/Phase0_Architecture.md` §2, ~8 calls)? Is every tool call logged for provenance/audit? A removed or silently-raised cap is a flag even if it "worked in testing" — runaway loops are a cost and reliability risk, not just a style nit.
 
 4. **Event-sourcing discipline** — does any code path write directly to a `Node`/`Edge` projection table instead of appending an event and re-deriving the projection? Direct mutation defeats the audit/versioning guarantee the whole storage design exists to provide (TRD §3.2). This is an Important-tier finding at minimum.
 

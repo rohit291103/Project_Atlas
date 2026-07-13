@@ -5,13 +5,13 @@ description: Runs the extraction pipeline's eval suite (deterministic checks in 
 
 # extraction-quality-review
 
-The Roadmap's Phase 0 exit criterion isn't "the code runs" — it's "extraction produces usable, mostly-correct structured output for at least 3 real past features, validated manually" (`docs/MVP_Roadmap.md`). Nothing else in Phase 0 matters if this loop doesn't hold up, so this skill exists as the repeatable check, instead of re-deriving a manual eyeball process every time the extraction agent changes.
+The Roadmap's Phase 0 exit criterion isn't "the code runs" — it's "extraction produces usable, mostly-correct structured output for at least 3 real past features, validated manually" (`docs/prd/MVP_Roadmap.md`). Nothing else in Phase 0 matters if this loop doesn't hold up, so this skill exists as the repeatable check, instead of re-deriving a manual eyeball process every time the extraction agent changes.
 
 This is a quality/output-correctness check, distinct from `backend-reviewer` (which reviews the *code* for architectural/safety violations) and `tdd` (which covers schema/storage unit tests in isolation from real agent output). Run this one whenever the *agent's behavior* changes, not just its code shape. Read `.claude/skills/writing-evals/SKILL.md` first — it's the methodology this skill applies; this file is the Atlas-specific execution of it.
 
 ## Before running
 
-Read `docs/tracker.md` (via `tracker-sync`) to confirm the validation repo has actually been picked (`docs/Phase0_Architecture.md` §9 — this is an open question until someone chooses one) and which PRs are the standing golden set (`tests/evals/golden_set/`, once scaffolded). If neither exists yet, this skill isn't runnable — say so and point back to that open question instead of inventing a repo choice.
+Read `docs/tracker.md` (via `tracker-sync`) to confirm the validation repo has actually been picked (`docs/architecture/Phase0_Architecture.md` §9 — this is an open question until someone chooses one) and which PRs are the standing golden set (`tests/evals/golden_set/`, once scaffolded). If neither exists yet, this skill isn't runnable — say so and point back to that open question instead of inventing a repo choice.
 
 ## Two-tier workflow (per `writing-evals`)
 

@@ -22,10 +22,10 @@ Check `docs/tracker.md` (via the `tracker-sync` skill) before starting — confi
 
 ## Test design notes specific to this domain
 
-- **Golden-case tests** for extraction: record a real (or realistic, fixture-based) GitHub PR body and assert the extraction agent emits the expected Node types with excerpts traceable back to the fixture text — not invented expected output. Store fixtures under `tests/fixtures/` per `docs/Phase0_Architecture.md`, so extraction tests replay recorded API/agent responses rather than hitting live APIs (and burning tokens) on every run.
+- **Golden-case tests** for extraction: record a real (or realistic, fixture-based) GitHub PR body and assert the extraction agent emits the expected Node types with excerpts traceable back to the fixture text — not invented expected output. Store fixtures under `tests/fixtures/` per `docs/architecture/Phase0_Architecture.md`, so extraction tests replay recorded API/agent responses rather than hitting live APIs (and burning tokens) on every run.
 - **Boundary tests** for schema validation — a Node with an empty excerpt, a confidence score outside 0.0–1.0, a `status` transition that shouldn't be reachable (e.g. `rejected` → `confirmed` without going through review) are where these bugs live.
 - **No mocking the validation gate itself** — a test can mock the LLM/agent call to control what "extraction" returns, but never mock or bypass Pydantic validation to make a test pass; that defeats the entire point of this skill existing.
 
 ## Scope discipline
 
-Per CLAUDE.md's Explicit Non-Goals ("avoid infrastructure ahead of the phase that needs it"), don't introduce a testing framework, fixture system, or CI pipeline beyond what's needed to run the tests that exist today. `pytest` + recorded fixtures (already decided in `docs/Phase0_Architecture.md`) is the whole toolset until something concrete demands more.
+Per CLAUDE.md's Explicit Non-Goals ("avoid infrastructure ahead of the phase that needs it"), don't introduce a testing framework, fixture system, or CI pipeline beyond what's needed to run the tests that exist today. `pytest` + recorded fixtures (already decided in `docs/architecture/Phase0_Architecture.md`) is the whole toolset until something concrete demands more.

@@ -17,7 +17,7 @@ Also check `docs/tracker.md` (via the `tracker-sync` skill) — if the module th
 
 ## The core distinctions to keep straight in Atlas
 
-These are the terms most likely to get blurred — check new content against this list first (all defined in `docs/TRD_Context_to_Spec_Engine.md` §3):
+These are the terms most likely to get blurred — check new content against this list first (all defined in `docs/architecture/TRD_Context_to_Spec_Engine.md` §3):
 
 | Term | Is | Is NOT |
 |---|---|---|
@@ -34,8 +34,8 @@ These are the terms most likely to get blurred — check new content against thi
 ## Workflow
 
 1. **Inventory** — grep the term (and close synonyms) across `docs/` and any code in `src/atlas/`. List every place it's defined or used.
-2. **Reconcile** — if usages conflict, the canonical definition wins from (in order): `docs/TRD_Context_to_Spec_Engine.md` §3 (if the term is already a schema field) → `docs/PRD_Product_Knowledge_Layer_MVP.md` → root `CLAUDE.md`. If none of these define it yet, propose one definition and say so explicitly — don't silently pick one.
-3. **Record** — new or clarified terms belong in `docs/TRD_Context_to_Spec_Engine.md` (if amending the core schema — flag this as a notable change, don't edit it silently) or a `docs/architecture/` note for a term scoped to one feature. Don't invent a new `/docs` subfolder for a glossary; route per the `docs-sync` skill's Mode C.
+2. **Reconcile** — if usages conflict, the canonical definition wins from (in order): `docs/architecture/TRD_Context_to_Spec_Engine.md` §3 (if the term is already a schema field) → `docs/prd/PRD_Product_Knowledge_Layer_MVP.md` → root `CLAUDE.md`. If none of these define it yet, propose one definition and say so explicitly — don't silently pick one.
+3. **Record** — new or clarified terms belong in `docs/architecture/TRD_Context_to_Spec_Engine.md` (if amending the core schema — flag this as a notable change, don't edit it silently) or a `docs/architecture/` note for a term scoped to one feature. Don't invent a new `/docs` subfolder for a glossary; route per the `docs-sync` skill's Mode C.
 4. **Flag, don't silently rewrite** — if you find an existing doc using a term incorrectly per this reconciliation, tell the user before changing historical research/decision docs (same rule `docs-sync` follows).
 
 ## Output shape when reporting findings

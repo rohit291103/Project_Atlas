@@ -15,11 +15,11 @@ The system ingests content from external sources (GitHub, Jira, Notion/Google Do
 High-level flow:
 
 ```
-[External Sources] 
-      → [Ingestion Layer] 
-      → [Extraction Pipeline (LLM-based)] 
-      → [Event Log / Graph Store] 
-      → [Confirmation UI] 
+[External Sources]
+      → [Ingestion Layer]
+      → [Extraction Pipeline (LLM-based)]
+      → [Event Log / Graph Store]
+      → [Confirmation UI]
       → [Spec Assembly & Export]
       → [Q&A Retrieval Layer] (queries the same store)
 ```
@@ -58,7 +58,7 @@ SourceRef {
 ```
 Node {
   id: UUID
-  type: enum [goal, problem, evidence, decision, requirement, constraint, 
+  type: enum [goal, problem, evidence, decision, requirement, constraint,
               architecture_note, open_question, rejected_alternative]
   content: text
   confidence_score: float (0.0–1.0)
@@ -79,7 +79,7 @@ Edge {
   id: UUID
   from_node_id: UUID
   to_node_id: UUID
-  relation_type: enum [supports, derives_from, conflicts_with, 
+  relation_type: enum [supports, derives_from, conflicts_with,
                         implements, rejects, depends_on]
   confidence_score: float
   created_at: timestamp
@@ -90,7 +90,7 @@ Edge {
 ```
 Event {
   id: UUID
-  event_type: enum [node_created, node_confirmed, node_edited, node_rejected, 
+  event_type: enum [node_created, node_confirmed, node_edited, node_rejected,
                      edge_created, spec_exported, ingestion_run]
   payload: JSON
   actor: user_id | "system"

@@ -16,10 +16,10 @@ Current state in detail: [`docs/tracker.md`](docs/tracker.md).
 
 | Doc | Contents |
 |---|---|
-| [`docs/PRD_Product_Knowledge_Layer_MVP.md`](docs/PRD_Product_Knowledge_Layer_MVP.md) | Product requirements, target users, success metrics, non-goals |
-| [`docs/TRD_Context_to_Spec_Engine.md`](docs/TRD_Context_to_Spec_Engine.md) | Full technical architecture, data model, all phases |
-| [`docs/MVP_Roadmap.md`](docs/MVP_Roadmap.md) | Phased roadmap (Phase 0–4) with exit criteria per phase |
-| [`docs/Phase0_Architecture.md`](docs/Phase0_Architecture.md) | Current phase's concrete implementation plan (stack, repo layout, data flow) |
+| [`docs/prd/PRD_Product_Knowledge_Layer_MVP.md`](docs/prd/PRD_Product_Knowledge_Layer_MVP.md) | Product requirements, target users, success metrics, non-goals |
+| [`docs/architecture/TRD_Context_to_Spec_Engine.md`](docs/architecture/TRD_Context_to_Spec_Engine.md) | Full technical architecture, data model, all phases |
+| [`docs/prd/MVP_Roadmap.md`](docs/prd/MVP_Roadmap.md) | Phased roadmap (Phase 0–4) with exit criteria per phase |
+| [`docs/architecture/Phase0_Architecture.md`](docs/architecture/Phase0_Architecture.md) | Current phase's concrete implementation plan (stack, repo layout, data flow) |
 | [`docs/tracker.md`](docs/tracker.md) | Living snapshot of what's done / in progress / next |
 | [`CLAUDE.md`](CLAUDE.md) | Engineering philosophy, module boundaries, and the workflow AI agents follow in this repo |
 

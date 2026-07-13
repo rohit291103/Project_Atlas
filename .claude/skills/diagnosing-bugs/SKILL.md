@@ -19,7 +19,7 @@ Before debugging mechanics, classify the bug:
 
 ## The loop
 
-1. **Reproduce** — get a minimal, deterministic repro before touching code. For extraction bugs: the exact source input (which PR/issue/commit, which repo) and the exact expected vs. actual Node/Edge output. If it's not reproducible, that itself is the finding — don't fix what you can't observe. Recorded API fixtures (per `docs/Phase0_Architecture.md`'s test strategy) make this a replay, not a live re-fetch.
+1. **Reproduce** — get a minimal, deterministic repro before touching code. For extraction bugs: the exact source input (which PR/issue/commit, which repo) and the exact expected vs. actual Node/Edge output. If it's not reproducible, that itself is the finding — don't fix what you can't observe. Recorded API fixtures (per `docs/architecture/Phase0_Architecture.md`'s test strategy) make this a replay, not a live re-fetch.
 2. **Minimize** — strip the repro to the smallest input that still triggers it. For extraction, this usually means isolating one PR/comment/linked-issue rather than a full multi-source ingestion run.
 3. **Hypothesize** — state a specific, falsifiable cause before reading further code ("the agent is quoting a paraphrase instead of the literal PR text into the excerpt field"), not "extraction is off."
 4. **Instrument** — add the minimum logging/assertions to confirm or kill the hypothesis. Prefer reading values at module boundaries (raw content in, `Node`/`Edge` out of `extraction/`; event in, projection out of `storage/`) over scattering prints everywhere. The agent's per-tool-call log (required by the Engineering Philosophy's audit trail) is often the fastest way to see what happened.

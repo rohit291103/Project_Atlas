@@ -4,19 +4,33 @@ This file is the entry point for any AI session working in this repo. Read it fi
 
 ## What this project is
 
-AI coding agents can implement software faster than teams can supply them with correct context. Project Atlas ingests existing artifacts for a feature (GitHub PRs/issues now, Jira/Notion later), extracts structured, provenance-linked claims (goals, requirements, decisions, constraints, open questions), and assembles them into a spec a coding agent or human can execute against with confidence. Full problem statement: `docs/PRD_Product_Knowledge_Layer_MVP.md` §1.
+AI coding agents can implement software faster than teams can supply them with correct context. Project Atlas ingests existing artifacts for a feature (GitHub PRs/issues now, Jira/Notion later), extracts structured, provenance-linked claims (goals, requirements, decisions, constraints, open questions), and assembles them into a spec a coding agent or human can execute against with confidence. Full problem statement: `docs/prd/PRD_Product_Knowledge_Layer_MVP.md` §1.
 
 ## Companion documents
 
 | Doc | Contains |
 |---|---|
-| `docs/PRD_Product_Knowledge_Layer_MVP.md` | Product requirements, target users, success metrics, non-goals |
-| `docs/TRD_Context_to_Spec_Engine.md` | Full technical architecture, data model, all phases |
-| `docs/MVP_Roadmap.md` | Phased roadmap (Phase 0–4), exit criteria per phase |
-| `docs/Phase0_Architecture.md` | Current phase's concrete implementation plan (stack, repo layout, data flow) |
+| `docs/prd/PRD_Product_Knowledge_Layer_MVP.md` | Product requirements, target users, success metrics, non-goals |
+| `docs/architecture/TRD_Context_to_Spec_Engine.md` | Full technical architecture, data model, all phases |
+| `docs/prd/MVP_Roadmap.md` | Phased roadmap (Phase 0–4), exit criteria per phase |
+| `docs/architecture/Phase0_Architecture.md` | Current phase's concrete implementation plan (stack, repo layout, data flow) |
 | `docs/tracker.md` | Living current-state snapshot — read first, every session |
 
 These are the source of truth. Don't re-derive scope, schema, or architecture from memory when it's already written down — read the doc.
+
+## Roadmap — the whole story
+
+This file describes the **entire project across all five phases** — philosophy, module boundary, non-goals — not just whichever phase is currently in progress. It doesn't get rewritten as phases advance; only the "Current Development Phase" section below does. Full detail: `docs/prd/MVP_Roadmap.md`.
+
+| Phase | Weeks | Core Deliverable | Primary Risk Being Retired |
+|---|---|---|---|
+| **0** ← current | 1–4 | Internal extraction proof (GitHub only) | Does extraction even work? |
+| 1 | 5–9 | Confirmation UI + 2nd source | Can a non-engineer use this? |
+| 2 | 10–13 | Spec generation & export | Does this improve coding agent output? |
+| 3 | 14–18 | Contextual Q&A + feedback loop | Does extraction quality improve with usage? |
+| 4 | 19–24 | Security/RBAC hardening | Will enterprises actually pilot this? |
+
+Each phase's *concrete* implementation plan gets its own doc in `docs/architecture/` (`Phase0_Architecture.md` now; `Phase1_Architecture.md` etc. as each phase starts) — read this file for the permanent picture, read the current phase's architecture doc for what's actually being built right now.
 
 ## Current Development Phase
 
@@ -44,7 +58,7 @@ This is the module decomposition — don't invent a different one without runnin
 
 Not yet built, arriving in later phases per the Roadmap: confirmation UI (Phase 1), spec assembly/export (Phase 2), Q&A retrieval layer (Phase 3).
 
-## Tech Stack (Phase 0 — see `docs/Phase0_Architecture.md` for full rationale)
+## Tech Stack (Phase 0 — see `docs/architecture/Phase0_Architecture.md` for full rationale)
 
 Python 3.12 + `uv` · Claude Agent SDK (agentic extraction) · `httpx` (GitHub) · Pydantic v2 (schema) · Supabase (hosted Postgres, event log; pgvector available for Phase 3) · SQLAlchemy 2.0 + Alembic · Typer (CLI) · Rich (console review output) · pytest + recorded API fixtures · `tests/evals/` golden-set harness for grading LLM output itself (see `writing-evals` skill).
 
@@ -54,15 +68,18 @@ No dedicated graph database (Postgres + projections is sufficient). No fine-tune
 
 ## Documentation Rules
 
-**Chats are temporary. Documentation is permanent.** The four core docs above stay at the top level of `docs/` and get a new version (`Phase1_Architecture.md`, or a `-v2` suffix) on major revision — never silently overwritten. New content going forward is routed to subfolders:
+**Chats are temporary. Documentation is permanent.** `docs/` has six subfolders, plus `docs/tracker.md` as the one file that lives outside all of them (disposable, overwritten in place — everything else here is permanent and never silently rewritten):
 
-- `docs/decisions/` — decision log, one file per decision (`docs-sync` skill)
-- `docs/prompts/` — saved handoff prompts (`handoff` skill)
-- `docs/research/` — external research findings
-- `docs/ux/` — design-system baseline, once Phase 1's confirmation UI exists
-- `docs/prd/` — feature-level PRDs beyond the master PRD (`to-prd` skill / `prd-writer` agent)
-- `docs/architecture/` — feature/phase-level architecture docs beyond `Phase0_Architecture.md`
-- `docs/tracker.md` — living snapshot, lives outside the subfolders, disposable (`tracker-sync` skill)
+| Folder | Contains | Naming |
+|---|---|---|
+| `docs/prd/` | The master PRD + Roadmap, plus any feature-level PRDs beyond them (`to-prd` skill / `prd-writer` agent) | Master docs keep their existing names; new PRDs are `kebab-case-topic-v1.md` (bump `v2`, `v3`, … on major revision) |
+| `docs/architecture/` | The master TRD + the current phase's architecture doc, plus any feature-level architecture docs | Same convention — `PhaseN_Architecture.md` for phase docs, `kebab-case-topic-v1.md` for feature-level ones |
+| `docs/decisions/` | Decision log, one file per decision or cleanup pass (`docs-sync` skill) | `YYYY-MM-DD-short-slug.md`, never overwritten |
+| `docs/handoff/` | Structured handoff notes for another collaborator (`handoff` skill) | `YYYY-MM-DD-short-slug.md` |
+| `docs/research/` | External research findings (validation-repo notes, extraction-quality run logs, competitive landscape) | `kebab-case-topic-v1.md` |
+| `docs/ux/` | Design-system baseline, page/flow specs — doesn't exist until Phase 1's confirmation UI | `kebab-case-topic-v1.md` |
+
+A version bump (`v2`, a new `PhaseN_Architecture.md`) always creates a new file — a major revision is never a silent overwrite of the previous one; that history is part of the record.
 
 ## Workflow: the path for each kind of task
 
@@ -95,7 +112,7 @@ No dedicated graph database (Postgres + projections is sufficient). No fine-tune
 `resolving-merge-conflicts` skill — unchanged, fully generic.
 
 ### Handing off to another tool or collaborator
-`handoff` skill → saved to `docs/prompts/`.
+`handoff` skill → saved to `docs/handoff/`.
 
 ## Agents available
 

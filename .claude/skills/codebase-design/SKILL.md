@@ -38,4 +38,4 @@ A deep module (simple interface, does meaningful work behind it) beats a shallow
 
 ## When this skill is satisfied
 
-The result should be boring: a small number of clearly-bounded modules matching the four-module boundary, plain functions/classes within them, and zero new infrastructure (queues, services, frameworks) that wasn't already in `docs/Phase0_Architecture.md`'s tech stack.
+The result should be boring: a small number of clearly-bounded modules matching the four-module boundary, plain functions/classes within them, and zero new infrastructure (queues, services, frameworks) that wasn't already in `docs/architecture/Phase0_Architecture.md`'s tech stack.

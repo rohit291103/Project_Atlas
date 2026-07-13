@@ -9,20 +9,17 @@ Root `CLAUDE.md` is explicit: **"Chats are temporary. Documentation is permanent
 
 ## Required structure
 
-Per root `CLAUDE.md`'s "Documentation Rules" section, `/docs` contains four core top-level docs plus six subfolders:
+Per root `CLAUDE.md`'s "Documentation Rules" section, `/docs` contains six subfolders plus `tracker.md`:
 
 ```
 /docs
-  PRD_Product_Knowledge_Layer_MVP.md   — master product requirements (top-level, versioned on major revision)
-  TRD_Context_to_Spec_Engine.md        — master technical architecture (top-level, versioned on major revision)
-  MVP_Roadmap.md                       — phased roadmap (top-level)
-  Phase0_Architecture.md               — current phase's implementation architecture (top-level; Phase1_Architecture.md etc. join it as later phases start)
-  /prd          — feature-level PRDs beyond the master PRD
-  /architecture — feature/phase-level architecture docs beyond the top-level ones
+  tracker.md    — the one exception, see below
+  /prd          — the master PRD + Roadmap, plus any feature-level PRDs beyond them
+  /architecture — the master TRD + current-phase architecture doc, plus any feature-level ones
   /research     — external research (repo selection notes, extraction-quality findings, competitive landscape)
   /ux           — design-system baseline, page/flow specs (doesn't exist until Phase 1's confirmation UI)
   /decisions    — decision log (one file per decision or cleanup pass)
-  /prompts      — saved AI task prompts using the template below
+  /handoff      — structured handoff notes for another collaborator, using the template below
 ```
 
 ## Exception: `docs/tracker.md`
@@ -31,18 +28,18 @@ Per root `CLAUDE.md`'s "Documentation Rules" section, `/docs` contains four core
 
 ## Before doing any task in this repo
 
-Read the relevant `/docs` content before writing code or making a recommendation — this project's CLAUDE.md explicitly calls out documentation discipline. Don't re-derive scope, the data model, or architecture decisions from memory when they're already written down in `docs/PRD_Product_Knowledge_Layer_MVP.md` or `docs/TRD_Context_to_Spec_Engine.md`.
+Read the relevant `/docs` content before writing code or making a recommendation — this project's CLAUDE.md explicitly calls out documentation discipline. Don't re-derive scope, the data model, or architecture decisions from memory when they're already written down in `docs/prd/PRD_Product_Knowledge_Layer_MVP.md` or `docs/architecture/TRD_Context_to_Spec_Engine.md`.
 
 ## Mode A — Audit
 
 Run this when asked to "check the docs" or before a large new feature push:
 
-1. Confirm the four core top-level docs exist and the six subfolders exist (or are at least expected — empty folders with no placeholder file are fine, since Git won't track them; add a one-line `README.md` if a folder needs to exist before its first real doc).
+1. Confirm all six subfolders exist and `tracker.md` sits directly under `/docs` (empty folders with no placeholder file are fine since Git won't track them — add a one-line `README.md` if a folder needs to exist before its first real doc; `/prd` and `/architecture` will never be empty since the master docs live there).
 2. Grep each file for exact-duplicate content (a doc pasted into itself twice is a recurring failure mode — check for it). A quick check: split the file in half and diff the halves; large duplicate blocks will show as near-zero diff.
 3. Check naming consistency. Going-forward convention:
-   - Decisions: `YYYY-MM-DD-short-slug.md`
-   - Everything else in the subfolders: `kebab-case-topic-v1.md` (bump `v2`, `v3`, … on major revisions; don't overwrite history)
-   - The four core top-level docs keep their existing names; a major revision gets a new file (e.g. `Phase1_Architecture.md`) rather than overwriting `Phase0_Architecture.md`.
+   - Decisions and handoff notes: `YYYY-MM-DD-short-slug.md`
+   - Everything else: `kebab-case-topic-v1.md` (bump `v2`, `v3`, … on major revisions; don't overwrite history)
+   - The master docs (`PRD_Product_Knowledge_Layer_MVP.md`, `TRD_Context_to_Spec_Engine.md`, `MVP_Roadmap.md`, `Phase0_Architecture.md`) are grandfathered under their existing names rather than renamed to the kebab-case convention — moving them into subfolders was already enough churn for one pass. A major revision still gets a new file (e.g. `Phase1_Architecture.md`) rather than overwriting `Phase0_Architecture.md`.
 4. Report findings; don't silently rewrite historical docs without flagging it to the user first (decisions and research docs are a record of what was true at the time — fix structure/naming, not content, unless asked).
 
 ## Mode B — File a decision
@@ -73,6 +70,6 @@ If unsure which subfolder something belongs in:
 - External findings (validation-repo candidates, extraction-quality observations, competitive landscape) → `/research`
 - Page/flow/design-system specs (Phase 1+, once there's a UI) → `/ux`
 - A choice that was made and why → `/decisions`
-- A reusable AI task prompt → `/prompts`, using `docs/prompts/template.md` (create it from the `handoff` skill's shape if it doesn't exist yet)
+- A handoff note for another collaborator (a teammate, another AI tool, a future session) → `/handoff`, via the `handoff` skill
 
 When a piece of content spans two categories (e.g. a decision that also changes scope), file the full writeup in `/decisions` and add a one-line cross-reference in the other folder's relevant doc rather than duplicating content.

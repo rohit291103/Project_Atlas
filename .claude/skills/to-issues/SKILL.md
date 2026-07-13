@@ -9,7 +9,7 @@ A PRD describes what to build; this skill decides the order and slicing of how t
 
 ## Before slicing
 
-Read the source PRD/decision doc in full. If it references the data model, also read `docs/TRD_Context_to_Spec_Engine.md` §3 so slices don't get ordered ahead of their dependencies (e.g. don't slice "surface conflicting Nodes in the review report" before "conflict-detection edge creation" exists). Also read `docs/tracker.md` (via the `tracker-sync` skill) — order slices relative to what's actually "Done" today, not what the source doc assumed at the time it was written.
+Read the source PRD/decision doc in full. If it references the data model, also read `docs/architecture/TRD_Context_to_Spec_Engine.md` §3 so slices don't get ordered ahead of their dependencies (e.g. don't slice "surface conflicting Nodes in the review report" before "conflict-detection edge creation" exists). Also read `docs/tracker.md` (via the `tracker-sync` skill) — order slices relative to what's actually "Done" today, not what the source doc assumed at the time it was written.
 
 ## What makes a good slice
 

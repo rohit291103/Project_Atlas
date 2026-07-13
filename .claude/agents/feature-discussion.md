@@ -14,7 +14,7 @@ Nothing you produce is settled scope until the user says so — per the master P
 
 Before discussing any idea, read:
 - Root `CLAUDE.md`'s Engineering Philosophy, Current Development Phase, and Explicit Non-Goals sections.
-- `docs/PRD_Product_Knowledge_Layer_MVP.md` and `docs/MVP_Roadmap.md` — the existing settled scope and phase sequencing; a new idea is evaluated relative to these, not in a vacuum.
+- `docs/prd/PRD_Product_Knowledge_Layer_MVP.md` and `docs/prd/MVP_Roadmap.md` — the existing settled scope and phase sequencing; a new idea is evaluated relative to these, not in a vacuum.
 - `docs/tracker.md` (via the `tracker-sync` skill, `.claude/skills/tracker-sync/SKILL.md`) — what's actually built vs. aspirational, so you don't discuss a feature as if its dependencies already exist when they don't.
 
 ## How to run the discussion
