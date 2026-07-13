@@ -1,0 +1,51 @@
+[project]
+name = "atlas"
+version = "0.1.0"
+description = "Project Atlas — Context-to-Spec Engine (Phase 0: GitHub-only extraction proof)"
+requires-python = ">=3.12"
+dependencies = [
+    "claude-agent-sdk",
+    "httpx",
+    "pydantic>=2",
+    "sqlalchemy>=2",
+    "alembic",
+    "typer",
+    "rich",
+]
+
+[project.scripts]
+atlas = "atlas.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-recording",
+    "ruff",
+    "mypy",
+    "pre-commit",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/atlas"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "src"
+strict = true
+# Typer/Click's @app.command() isn't typed in a way strict mode recognizes.
+disallow_untyped_decorators = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

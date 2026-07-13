@@ -61,6 +61,26 @@ Non-negotiable, per [`CLAUDE.md`](CLAUDE.md):
 
 Python 3.12 + `uv` · Claude Agent SDK · `httpx` · Pydantic v2 · Supabase (Postgres) · SQLAlchemy 2.0 + Alembic · Typer · Rich · pytest.
 
+## Development
+
+Requires [uv](https://docs.astral.sh/uv/) — it manages the Python version (pinned via `.python-version`), the virtualenv, and dependencies.
+
+```bash
+uv sync                    # install deps (+ dev group: pytest, ruff, mypy, pre-commit)
+cp .env.example .env       # fill in ANTHROPIC_API_KEY, GITHUB_TOKEN, SUPABASE_DB_URL
+pre-commit install         # run lint/format/type-check automatically on commit
+
+uv run atlas --help        # CLI entrypoint (ingest/review are stubs — not implemented yet)
+uv run pytest              # tests (tests/) + evals (tests/evals/)
+uv run ruff check .        # lint
+uv run ruff format .       # format
+uv run mypy src            # type check
+```
+
+CI (`.github/workflows/ci.yml`) runs all four checks — lint, format, type check, tests — on every push/PR to `main`.
+
+Deliberately not set up yet, since they'd be premature at this stage: a license file (commercial product, not open-sourced — add one if that changes), a Makefile (the commands above are the whole workflow), and dependency-update automation (nothing to automate until the dependency surface stabilizes past Phase 0).
+
 ## Working in this repo
 
 If you're an AI agent (or a human) picking this up, read [`CLAUDE.md`](CLAUDE.md) first, then [`docs/tracker.md`](docs/tracker.md) for current state. `.claude/` contains project-specific agents and skills covering the standard workflows here (new feature, bug fix, security review, extraction-quality evals, etc.).
