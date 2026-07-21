@@ -8,6 +8,7 @@ dependencies = [
     "httpx",
     "pydantic>=2",
     "sqlalchemy>=2",
+    "psycopg[binary]>=3",
     "alembic",
     "typer",
     "rich",

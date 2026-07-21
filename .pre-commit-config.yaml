@@ -15,9 +15,15 @@ repos:
         args: [--fix]
       - id: ruff-format
 
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.14.1
+  # Run mypy in the project's uv environment (not pre-commit's isolated venv) so
+  # it sees real third-party types (sqlalchemy, pydantic, ...) and stays in lock-
+  # step with CI's `uv run mypy src`. Avoids maintaining a parallel
+  # additional_dependencies list that silently drifts as src/ gains imports.
+  - repo: local
     hooks:
       - id: mypy
-        files: ^src/
-        additional_dependencies: ["pydantic>=2"]
+        name: mypy (uv run, matches CI)
+        entry: uv run mypy src
+        language: system
+        types: [python]
+        pass_filenames: false
