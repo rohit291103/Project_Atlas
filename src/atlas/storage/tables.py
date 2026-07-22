@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Enum, Text
+from sqlalchemy import JSON, DateTime, Enum, Text, Uuid
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, Session, mapped_column
@@ -25,6 +25,13 @@ from atlas.storage.db import Base
 
 __all__ = ["EventLog", "EventType", "append_event"]
 
+# On Postgres, native `uuid`; on SQLite (tests only), CHAR(32). The variant is
+# not cosmetic: SQLite gives an unrecognized `UUID` type name NUMERIC affinity,
+# which coerces an all-digit hex string -- notably the nil DEFAULT_WORKSPACE_ID
+# ("000...0") -- to the integer 0 and then crashes on read. CHAR(32) has TEXT
+# affinity, so the value round-trips intact. Postgres DDL is unchanged.
+_UUID = PG_UUID(as_uuid=True).with_variant(Uuid(as_uuid=True), "sqlite")
+
 
 class EventLog(Base):
     """One row per event (TRD Sec3.1).
@@ -35,9 +42,7 @@ class EventLog(Base):
 
     __tablename__ = "event_log"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(_UUID, primary_key=True, default=uuid.uuid4)
     event_type: Mapped[EventType] = mapped_column(
         Enum(
             EventType,
@@ -53,7 +58,7 @@ class EventLog(Base):
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-    workspace_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(_UUID, nullable=False)
 
 
 def append_event(
