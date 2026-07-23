@@ -1,0 +1,10 @@
+{
+  "sha": "abc123def4567890abc123def4567890abc123de",
+  "html_url": "https://github.com/acme/gateway/commit/abc123def4567890abc123def4567890abc123de",
+  "commit": {
+    "message": "Implement token-bucket rate limiter\n\nPer-IP buckets with lazy refill. Refs #17.",
+    "author": {"name": "Alice Dev", "email": "alice@example.com", "date": "2026-06-02T08:15:00Z"}
+  },
+  "author": {"login": "alice", "id": 1},
+  "stats": {"total": 210, "additions": 200, "deletions": 10}
+}
