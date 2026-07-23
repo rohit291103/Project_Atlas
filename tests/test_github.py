@@ -52,6 +52,8 @@ def route_fixtures(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=_load("issue"))
     if path.startswith("/repos/acme/gateway/commits/"):
         return httpx.Response(200, json=_load("commit"))
+    if path == "/search/issues":
+        return httpx.Response(200, json=_load("search_results"))
     return httpx.Response(404, json={"message": f"no fixture for {path}"})
 
 
@@ -94,6 +96,23 @@ def test_fetch_commit_parses_nested_message_and_author() -> None:
     assert commit.author == "Alice Dev"
     assert commit.authored_at is not None
     assert commit.url.endswith("/commit/abc123def4567890abc123def4567890abc123de")
+
+
+def test_search_issues_parses_results_and_passes_query() -> None:
+    seen: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/search/issues":
+            seen["q"] = request.url.params["q"]
+            return httpx.Response(200, json=_load("search_results"))
+        return httpx.Response(404, json={"message": "unexpected"})
+
+    with make_client(handler) as client:
+        results = client.search_issues("repo:acme/gateway rate limiting")
+
+    assert seen["q"] == "repo:acme/gateway rate limiting"
+    assert [i.number for i in results] == [17]
+    assert results[0].title == "API gateway falls over under burst traffic"
 
 
 def test_parsing_ignores_unmodeled_fields() -> None:

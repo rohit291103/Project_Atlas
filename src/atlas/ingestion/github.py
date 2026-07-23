@@ -237,6 +237,18 @@ class GitHubClient:
     def fetch_commit(self, owner: str, repo: str, sha: str) -> Commit:
         return _parse_commit(self._get(f"/repos/{owner}/{repo}/commits/{sha}"))
 
+    def search_issues(self, query: str, *, limit: int = 20) -> tuple[Issue, ...]:
+        """Read-only issue/PR search (GitHub `GET /search/issues`).
+
+        Backs the extraction agent's `search_repo` tool: it lets the agent chase
+        a reference it reads in a PR ("see the auth epic") without the connector
+        eagerly crawling. `query` is GitHub's search syntax, e.g.
+        ``repo:acme/gateway rate limiting``. Results are the same shape as an
+        issue, so they reuse the issue parser.
+        """
+        data = self._get("/search/issues", params={"q": query, "per_page": limit})
+        return tuple(_parse_issue(item) for item in data.get("items", []))
+
     # -- HTTP -------------------------------------------------------------------
 
     def _get(self, path: str, *, params: dict[str, Any] | None = None) -> Any:
