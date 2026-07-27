@@ -1,0 +1,303 @@
+{
+  "nodes": [
+    {
+      "id": "1a967364-6756-4119-99ce-bddcf3fc6f54",
+      "type": "goal",
+      "content": "Add a max depth command line option to ripgrep to limit directory traversal depth.",
+      "confidence_score": 0.9,
+      "status": "unconfirmed",
+      "source_refs": [
+        {
+          "id": "34cdffc3-59e6-4544-a1b1-f894702c7c91",
+          "source_type": "github_pr",
+          "external_id": "111",
+          "url": "https://github.com/BurntSushi/ripgrep/pull/111",
+          "excerpt": "Max depth option",
+          "fetched_at": "2026-07-27T17:56:04.606351Z",
+          "workspace_id": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "created_by": "system",
+      "created_at": "2026-07-27T17:56:04.606637Z",
+      "updated_at": "2026-07-27T17:56:04.606639Z",
+      "updated_by": null,
+      "workspace_id": "00000000-0000-0000-0000-000000000000",
+      "feature_scope_id": "74e2d120-dfba-47c7-9c5f-de761b941e8c"
+    },
+    {
+      "id": "80533bcd-00bd-4187-a235-08366b637a0a",
+      "type": "problem",
+      "content": "Skipping traversal of directories currently requires an .rgignore file, which is inconvenient to copy from repository to repository.",
+      "confidence_score": 0.9,
+      "status": "unconfirmed",
+      "source_refs": [
+        {
+          "id": "3d1bfe54-95b1-434e-a97e-4e554dec336b",
+          "source_type": "github_issue",
+          "external_id": "109",
+          "url": "https://github.com/BurntSushi/ripgrep/issues/109",
+          "excerpt": "I know I can use an `.rgignore` file but it's not convenient to copy it from repository to repository.",
+          "fetched_at": "2026-07-27T17:56:04.606655Z",
+          "workspace_id": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "created_by": "system",
+      "created_at": "2026-07-27T17:56:04.606664Z",
+      "updated_at": "2026-07-27T17:56:04.606665Z",
+      "updated_by": null,
+      "workspace_id": "00000000-0000-0000-0000-000000000000",
+      "feature_scope_id": "74e2d120-dfba-47c7-9c5f-de761b941e8c"
+    },
+    {
+      "id": "bde14606-7192-4332-91bd-ca5359dec778",
+      "type": "goal",
+      "content": "Provide an option to skip traversing directories.",
+      "confidence_score": 0.9,
+      "status": "unconfirmed",
+      "source_refs": [
+        {
+          "id": "72b33a42-230e-46dc-8421-1b6e9e57c515",
+          "source_type": "github_issue",
+          "external_id": "109",
+          "url": "https://github.com/BurntSushi/ripgrep/issues/109",
+          "excerpt": "Do you think it would be valuable to add an option to skip traversing directories?",
+          "fetched_at": "2026-07-27T17:56:04.606675Z",
+          "workspace_id": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "created_by": "system",
+      "created_at": "2026-07-27T17:56:04.606683Z",
+      "updated_at": "2026-07-27T17:56:04.606683Z",
+      "updated_by": null,
+      "workspace_id": "00000000-0000-0000-0000-000000000000",
+      "feature_scope_id": "74e2d120-dfba-47c7-9c5f-de761b941e8c"
+    },
+    {
+      "id": "6de8e156-6788-43bc-8292-3771db98e6c2",
+      "type": "requirement",
+      "content": "The change must include an integration test following the maintainer's established pattern for new command line flags.",
+      "confidence_score": 0.9,
+      "status": "unconfirmed",
+      "source_refs": [
+        {
+          "id": "efe2da10-b1c4-4862-a5dc-df8a875db6b2",
+          "source_type": "github_pr",
+          "external_id": "111",
+          "url": "https://github.com/BurntSushi/ripgrep/pull/111",
+          "excerpt": "Could you write an integration test please? It would be good to follow the pattern I've been using whenever I introduce new command line flags",
+          "fetched_at": "2026-07-27T17:56:04.606692Z",
+          "workspace_id": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "created_by": "system",
+      "created_at": "2026-07-27T17:56:04.606699Z",
+      "updated_at": "2026-07-27T17:56:04.606700Z",
+      "updated_by": null,
+      "workspace_id": "00000000-0000-0000-0000-000000000000",
+      "feature_scope_id": "74e2d120-dfba-47c7-9c5f-de761b941e8c"
+    },
+    {
+      "id": "195eb7f8-0afe-484b-9910-66de96c5f8ac",
+      "type": "decision",
+      "content": "The max depth semantics should be consistent with GNU find.",
+      "confidence_score": 0.9,
+      "status": "unconfirmed",
+      "source_refs": [
+        {
+          "id": "30353e14-53ef-417a-93ce-227ef3e512cb",
+          "source_type": "github_pr",
+          "external_id": "111",
+          "url": "https://github.com/BurntSushi/ripgrep/pull/111",
+          "excerpt": "Could you just make sure we are consistent with GNU find?",
+          "fetched_at": "2026-07-27T17:56:04.606708Z",
+          "workspace_id": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "created_by": "system",
+      "created_at": "2026-07-27T17:56:04.606714Z",
+      "updated_at": "2026-07-27T17:56:04.606715Z",
+      "updated_by": null,
+      "workspace_id": "00000000-0000-0000-0000-000000000000",
+      "feature_scope_id": "74e2d120-dfba-47c7-9c5f-de761b941e8c"
+    },
+    {
+      "id": "35ad0f48-02bc-4b7b-a714-d2ee1cad09b5",
+      "type": "evidence",
+      "content": "GNU find defines maxdepth as descending at most the given non-negative number of levels, with -maxdepth 0 applying only to the starting-points themselves.",
+      "confidence_score": 0.9,
+      "status": "unconfirmed",
+      "source_refs": [
+        {
+          "id": "9348831f-0850-426e-81e2-5f0a292d9194",
+          "source_type": "github_pr",
+          "external_id": "111",
+          "url": "https://github.com/BurntSushi/ripgrep/pull/111",
+          "excerpt": "-maxdepth 0 means only apply the tests and actions to the starting-points themselves.",
+          "fetched_at": "2026-07-27T17:56:04.606723Z",
+          "workspace_id": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "created_by": "system",
+      "created_at": "2026-07-27T17:56:04.606730Z",
+      "updated_at": "2026-07-27T17:56:04.606730Z",
+      "updated_by": null,
+      "workspace_id": "00000000-0000-0000-0000-000000000000",
+      "feature_scope_id": "74e2d120-dfba-47c7-9c5f-de761b941e8c"
+    },
+    {
+      "id": "474252ba-8f6c-4493-95f5-2c4eabec3cc1",
+      "type": "decision",
+      "content": "The documentation should refer to \"starting points\" (as find does) rather than \"current directory\".",
+      "confidence_score": 0.9,
+      "status": "unconfirmed",
+      "source_refs": [
+        {
+          "id": "08d7cbc4-35f1-4034-8544-cc33494ee356",
+          "source_type": "github_pr",
+          "external_id": "111",
+          "url": "https://github.com/BurntSushi/ripgrep/pull/111",
+          "excerpt": "Probably saying \"current directory\" is wrong and we should say \"starting points\" like `find` does.",
+          "fetched_at": "2026-07-27T17:56:04.606737Z",
+          "workspace_id": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "created_by": "system",
+      "created_at": "2026-07-27T17:56:04.606744Z",
+      "updated_at": "2026-07-27T17:56:04.606744Z",
+      "updated_by": null,
+      "workspace_id": "00000000-0000-0000-0000-000000000000",
+      "feature_scope_id": "74e2d120-dfba-47c7-9c5f-de761b941e8c"
+    },
+    {
+      "id": "27cde10a-f6ce-43d7-9423-3697576e994c",
+      "type": "requirement",
+      "content": "The test should verify that a deeper directory is ignored while search results are still returned from a shallower directory.",
+      "confidence_score": 0.9,
+      "status": "unconfirmed",
+      "source_refs": [
+        {
+          "id": "5ded661b-ca35-43fc-b45b-cb162a66d1de",
+          "source_type": "github_pr",
+          "external_id": "111",
+          "url": "https://github.com/BurntSushi/ripgrep/pull/111",
+          "excerpt": "I think just updating the test to make sure it both ignores a deeper directory and gets search results from a shallower directory should be sufficient.",
+          "fetched_at": "2026-07-27T17:56:04.606751Z",
+          "workspace_id": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "created_by": "system",
+      "created_at": "2026-07-27T17:56:04.606758Z",
+      "updated_at": "2026-07-27T17:56:04.606758Z",
+      "updated_by": null,
+      "workspace_id": "00000000-0000-0000-0000-000000000000",
+      "feature_scope_id": "74e2d120-dfba-47c7-9c5f-de761b941e8c"
+    },
+    {
+      "id": "0ed73e16-3470-4a13-b6c9-f94127107229",
+      "type": "architecture_note",
+      "content": "The max depth feature relies on the walkdir crate's notion of depth for directory traversal.",
+      "confidence_score": 0.6,
+      "status": "unconfirmed",
+      "source_refs": [
+        {
+          "id": "01968ce8-8fb9-46bf-84be-da9dbeac5745",
+          "source_type": "github_pr",
+          "external_id": "111",
+          "url": "https://github.com/BurntSushi/ripgrep/pull/111",
+          "excerpt": "am I misunderstanding the depth used in `walkdir`?",
+          "fetched_at": "2026-07-27T17:56:04.606769Z",
+          "workspace_id": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "created_by": "system",
+      "created_at": "2026-07-27T17:56:04.606775Z",
+      "updated_at": "2026-07-27T17:56:04.606776Z",
+      "updated_by": null,
+      "workspace_id": "00000000-0000-0000-0000-000000000000",
+      "feature_scope_id": "74e2d120-dfba-47c7-9c5f-de761b941e8c"
+    },
+    {
+      "id": "3ff98966-4e2a-45b5-867c-0c894be1138d",
+      "type": "evidence",
+      "content": "A CI build failure occurred but was unrelated to this change, as it also happened on master.",
+      "confidence_score": 0.6,
+      "status": "unconfirmed",
+      "source_refs": [
+        {
+          "id": "3aac4a37-bb10-4fd9-84fc-b67032479f8e",
+          "source_type": "github_pr",
+          "external_id": "111",
+          "url": "https://github.com/BurntSushi/ripgrep/pull/111",
+          "excerpt": "Looks like the build failure happened on master too...strange.",
+          "fetched_at": "2026-07-27T17:56:04.606782Z",
+          "workspace_id": "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "id": "f642343a-d4c0-4867-8bd4-02fe2df91ff3",
+          "source_type": "github_pr",
+          "external_id": "111",
+          "url": "https://github.com/BurntSushi/ripgrep/pull/111",
+          "excerpt": "The failure looks unrelated.",
+          "fetched_at": "2026-07-27T17:56:04.606789Z",
+          "workspace_id": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "created_by": "system",
+      "created_at": "2026-07-27T17:56:04.606795Z",
+      "updated_at": "2026-07-27T17:56:04.606796Z",
+      "updated_by": null,
+      "workspace_id": "00000000-0000-0000-0000-000000000000",
+      "feature_scope_id": "74e2d120-dfba-47c7-9c5f-de761b941e8c"
+    }
+  ],
+  "edges": [
+    {
+      "id": "7499a915-a949-4de1-b4eb-b81628e9d08d",
+      "from_node_id": "1a967364-6756-4119-99ce-bddcf3fc6f54",
+      "to_node_id": "bde14606-7192-4332-91bd-ca5359dec778",
+      "relation_type": "implements",
+      "confidence_score": 0.9,
+      "created_at": "2026-07-27T17:56:04.606823Z"
+    },
+    {
+      "id": "48b214ae-98ab-4018-a9ff-274ecc691812",
+      "from_node_id": "bde14606-7192-4332-91bd-ca5359dec778",
+      "to_node_id": "80533bcd-00bd-4187-a235-08366b637a0a",
+      "relation_type": "derives_from",
+      "confidence_score": 0.9,
+      "created_at": "2026-07-27T17:56:04.606835Z"
+    },
+    {
+      "id": "1703d96c-4742-4b00-b407-d121305b22b9",
+      "from_node_id": "195eb7f8-0afe-484b-9910-66de96c5f8ac",
+      "to_node_id": "35ad0f48-02bc-4b7b-a714-d2ee1cad09b5",
+      "relation_type": "derives_from",
+      "confidence_score": 0.9,
+      "created_at": "2026-07-27T17:56:04.606843Z"
+    },
+    {
+      "id": "4d701d95-a923-4087-a7b1-4fec3912c318",
+      "from_node_id": "474252ba-8f6c-4493-95f5-2c4eabec3cc1",
+      "to_node_id": "195eb7f8-0afe-484b-9910-66de96c5f8ac",
+      "relation_type": "depends_on",
+      "confidence_score": 0.6,
+      "created_at": "2026-07-27T17:56:04.606849Z"
+    },
+    {
+      "id": "ef3932ea-fe06-454b-85d5-326a444c0ad2",
+      "from_node_id": "27cde10a-f6ce-43d7-9423-3697576e994c",
+      "to_node_id": "6de8e156-6788-43bc-8292-3771db98e6c2",
+      "relation_type": "derives_from",
+      "confidence_score": 0.6,
+      "created_at": "2026-07-27T17:56:04.606855Z"
+    },
+    {
+      "id": "58cb2488-99fe-40bf-b8f4-36c5401d2b67",
+      "from_node_id": "0ed73e16-3470-4a13-b6c9-f94127107229",
+      "to_node_id": "1a967364-6756-4119-99ce-bddcf3fc6f54",
+      "relation_type": "supports",
+      "confidence_score": 0.3,
+      "created_at": "2026-07-27T17:56:04.606861Z"
+    }
+  ]
+}

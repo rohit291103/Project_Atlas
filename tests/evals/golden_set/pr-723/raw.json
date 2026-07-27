@@ -1,0 +1,84 @@
+{
+  "commits": [],
+  "linked_issues": [
+    {
+      "author": "PeterSP",
+      "body": "It would be nice to be able to see the indentation level of searched text line up. One way to do this would be to have fixed width line numbers in search results. This could be accomplished through an option flag and left-padding with either spaces or zeroes when the flag is active.\r\n\r\nAs this is primarily of interest for matches within a file, only the matches within a file need be considered for how wide the line numbers should be. Alternatively, one could have a pre-determined width (i.e. 6) and overflow larger line numbers.\r\n\r\nImplemented, this could look either like this:\r\n```\r\n$ rg needle --fixed-width-line-numbers\r\nhaystack.txt:\r\n 12:    needle {\r\n144:      needle {\r\n\r\nsilo.txt:\r\n  16:  } needle {\r\n 256:    } // needle 1\r\n 512:    } // needle 2\r\n1024:  } // needles\r\n\r\nwarehouse.txt:\r\n   1234:  - needle ( 5 boxes )\r\n1234567:  - needle ( 20 boxes ) \r\n```\r\n\r\nOr like this:\r\n```\r\n$ rg needle --fixed-width-line-numbers\r\nhaystack.txt:\r\n    12:    needle {\r\n   144:      needle {\r\n\r\nsilo.txt:\r\n    16:  } needle {\r\n   256:    } // needle 1\r\n   512:    } // needle 2\r\n  1024:  } // needles\r\n\r\nwarehouse.txt:\r\n  1234:  - needle (5 boxes)\r\n1234567:  - needle (20 boxes)\r\n```",
+      "created_at": "2017-07-07T14:38:38+00:00",
+      "number": 544,
+      "state": "closed",
+      "title": "Fixed width line numbers",
+      "url": "https://github.com/BurntSushi/ripgrep/issues/544"
+    }
+  ],
+  "pr_number": 723,
+  "pull_request": {
+    "author": "balajisivaraman",
+    "body": "As per the discussion on #544, this is my initial attempt at adding support for fixed width line numbers. Please review and let me know if things can be improved upon.\r\n\r\nA few thoughts I had as I worked on this:\r\n\r\n- Rust's `format!` macro currently has no way of providing a custom padding character as a parameter. You have to provide it directly in the format string itself. (As per [this](https://doc.rust-lang.org/std/fmt/#syntax), only the width can be provided as a parameter.)\r\n- This meant that adding support for format strings as suggested in the issue discussion proved to be difficult. Right now, the argument only accepts a number. It seems that we'll have to write a custom code for left padding or rely on a library to achieve this. I'm open to suggestions on this one.\r\n- Should we handle possible combinations of CLI args? In the long help message for `line-number-width`, I've mentioned that it has no effect if `--no-line-number` is enabled, which is very obvious. Should I handle any other cases specific to this newly introduced argument to ensure nothing breaks?\r\n\r\nThanks in advance!",
+    "comments": [
+      {
+        "author": "okdana",
+        "body": "In order to handle it as i suggested, i think you would want to have it check the argument string before conversion to `usize` and set a boolean in the `Args` struct to `arg.starts_with(\"0\")`. Then you would pass that boolean to the printer and just have an `if` condition determine the format string to use\r\n\r\nBut it doesn't really matter either way obv. Would be a cute feature but certainly not important\r\n\r\nWill add further comments on the diff",
+        "created_at": "2017-12-30T19:37:42+00:00",
+        "id": 354564319,
+        "url": "https://github.com/BurntSushi/ripgrep/pull/723#issuecomment-354564319"
+      },
+      {
+        "author": "balajisivaraman",
+        "body": "@BurntSushi, I understand your concern. When I was making the change, I thought we wanted it to be very general and support any padding character, which is why I looked into the `format!` macro.\r\n\r\nHowever, if it is always going to be a choice between 0 or space, I could do what @okdana suggested. Then we can fail if the first character is anything other than a 0.\r\n\r\nLet me know if this works for you and I can update the PR accordingly.",
+        "created_at": "2017-12-31T04:59:43+00:00",
+        "id": 354585458,
+        "url": "https://github.com/BurntSushi/ripgrep/pull/723#issuecomment-354585458"
+      },
+      {
+        "author": "BurntSushi",
+        "body": "I would suggest just starting with supporting spaces. We can add more support as needed, but we will need to return an error if the padding width starts with a zero. In fact, we should return an error if the width starts with anything other than 1-9, but that is already true in this PR since it would fail to parse as an integer.",
+        "created_at": "2017-12-31T05:05:39+00:00",
+        "id": 354585627,
+        "url": "https://github.com/BurntSushi/ripgrep/pull/723#issuecomment-354585627"
+      },
+      {
+        "author": "balajisivaraman",
+        "body": "@BurntSushi, Okay, I understand. Will update the PR accordingly. Thanks for the comments.",
+        "created_at": "2017-12-31T05:06:49+00:00",
+        "id": 354585655,
+        "url": "https://github.com/BurntSushi/ripgrep/pull/723#issuecomment-354585655"
+      },
+      {
+        "author": "BurntSushi",
+        "body": "@balajisivaraman This also needs to update the man page, which is done in this file: https://github.com/BurntSushi/ripgrep/blob/162e085b98f8f2c627a92402d2e38dda04fc3e48/doc/rg.1.md --- If you have pandoc on your system, then run the [`convert-to-man`](https://github.com/BurntSushi/ripgrep/blob/162e085b98f8f2c627a92402d2e38dda04fc3e48/doc/convert-to-man) script and commit the changes to `rg.1`. Thanks!",
+        "created_at": "2017-12-31T17:11:13+00:00",
+        "id": 354614893,
+        "url": "https://github.com/BurntSushi/ripgrep/pull/723#issuecomment-354614893"
+      },
+      {
+        "author": "balajisivaraman",
+        "body": "@BurntSushi, Oops! For some reason, I thought that was something automatically provided by `clap`. I've now updated the PR for the man pages as well as you suggested.\r\n\r\nETA: Do we need to add the issue number in the commit message, or is it enough to add it to the PR only? I see that it ends up creating a lot of noise in the actual issue thread. (Apologies if I did it wrong and it created noise in this issue's thread.)",
+        "created_at": "2017-12-31T20:13:03+00:00",
+        "id": 354621786,
+        "url": "https://github.com/BurntSushi/ripgrep/pull/723#issuecomment-354621786"
+      },
+      {
+        "author": "balajisivaraman",
+        "body": "Sorry, that is something I should've known better and added when I made that change itself. It is done now.",
+        "created_at": "2018-01-01T04:25:54+00:00",
+        "id": 354636091,
+        "url": "https://github.com/BurntSushi/ripgrep/pull/723#issuecomment-354636091"
+      },
+      {
+        "author": "BurntSushi",
+        "body": "@balajisivaraman Awesome! Thanks so much. Great work!",
+        "created_at": "2018-01-01T14:00:53+00:00",
+        "id": 354654776,
+        "url": "https://github.com/BurntSushi/ripgrep/pull/723#issuecomment-354654776"
+      }
+    ],
+    "created_at": "2017-12-30T15:35:13+00:00",
+    "merged_at": "2018-01-01T14:00:32+00:00",
+    "number": 723,
+    "state": "closed",
+    "title": "Add support for fixed width line number display (fixes #544)",
+    "url": "https://github.com/BurntSushi/ripgrep/pull/723"
+  },
+  "repo": "BurntSushi/ripgrep"
+}

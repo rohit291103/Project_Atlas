@@ -1,0 +1,19 @@
+# Minimal Tier-1 expectations for BurntSushi/ripgrep#706 ("custom ignore file
+# names"). A conservative FLOOR, not full expected output. Provenance/excerpt
+# verification applies to every node separately (see test_golden_set.py).
+pr: 706
+source: BurntSushi/ripgrep#706
+
+required_node_types: # >=1 node of each type must be present
+  - goal # application-specific ignore-file names (e.g. .fdignore for fd)
+  - decision # custom ignore files form a higher-precedence layer above .ignore
+
+must_mention: # >=1 node whose content contains each (case-insensitive substring)
+  - ignore
+  - precedence
+
+notes: |
+  The precedence-hierarchy decision is stated in the body and reinforced in the
+  comment thread (BurntSushi's suggested layering, quoted by the author). The
+  sharkdp/fd#156 reference is cross-repo and out of the Phase 0 repo-scoped tools'
+  reach -- expected, not a gap.

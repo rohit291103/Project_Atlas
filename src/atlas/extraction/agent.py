@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
@@ -345,10 +345,31 @@ def _make_agent_call(
     )
 
     async def call(prompt: str) -> dict[str, Any] | None:
-        messages: list[Any] = [message async for message in query(prompt=prompt, options=options)]
+        messages: list[Any] = [
+            message async for message in query(prompt=_as_stream(prompt), options=options)
+        ]
         return emitted_payload(messages)
 
     return call
+
+
+async def _as_stream(prompt: str) -> AsyncIterator[dict[str, Any]]:
+    """Wrap a single prompt as the streaming-input message the SDK requires.
+
+    The Claude Agent SDK only invokes the `can_use_tool` permission callback in
+    streaming-input mode -- i.e. when `prompt` is an AsyncIterable of message
+    dicts, not a plain string. A string prompt bypasses the gate entirely, which
+    would silently defeat our read-only + tool-call-budget enforcement (and in
+    fact the SDK now hard-errors on a string prompt when `can_use_tool` is set).
+    We yield exactly one user message in the SDK's stream-json shape, then
+    complete -- closing the input stream so the agent runs to its result.
+    """
+    yield {
+        "type": "user",
+        "session_id": "",
+        "message": {"role": "user", "content": prompt},
+        "parent_tool_use_id": None,
+    }
 
 
 async def extract_from_pull_request(

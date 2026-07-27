@@ -1,0 +1,112 @@
+{
+  "commits": [],
+  "linked_issues": [
+    {
+      "author": "gsquire",
+      "body": "Do you think it would be valuable to add an option to skip traversing directories? I know I can use an `.rgignore` file but it's not convenient to copy it from repository to repository.\n\nIf so, I think I could try and implement it as well.\n",
+      "created_at": "2016-09-26T21:37:17+00:00",
+      "number": 109,
+      "state": "closed",
+      "title": "Directory ignore command line",
+      "url": "https://github.com/BurntSushi/ripgrep/issues/109"
+    }
+  ],
+  "pr_number": 111,
+  "pull_request": {
+    "author": "gsquire",
+    "body": "Closes #109 \n",
+    "comments": [
+      {
+        "author": "gsquire",
+        "body": "I'm not sure of how to write a unit test because I think I would just be testing `walkdir` if I did :)\n\nLet me know if you are more clever than me in this regard.\n",
+        "created_at": "2016-09-27T05:06:44+00:00",
+        "id": 249767332,
+        "url": "https://github.com/BurntSushi/ripgrep/pull/111#issuecomment-249767332"
+      },
+      {
+        "author": "BurntSushi",
+        "body": "@gsquire Could you write an integration test please? It would be good to follow the pattern I've been using whenever I introduce new command line flags: https://github.com/BurntSushi/ripgrep/blob/master/tests/tests.rs#L781-L820\n\nOther than that and a few nits, this looks good, thanks!\n",
+        "created_at": "2016-09-27T11:11:06+00:00",
+        "id": 249835387,
+        "url": "https://github.com/BurntSushi/ripgrep/pull/111#issuecomment-249835387"
+      },
+      {
+        "author": "gsquire",
+        "body": "I rebased onto master and squashed. Is that the style of integration test you expected?\n",
+        "created_at": "2016-09-27T17:14:25+00:00",
+        "id": 249932622,
+        "url": "https://github.com/BurntSushi/ripgrep/pull/111#issuecomment-249932622"
+      },
+      {
+        "author": "BurntSushi",
+        "body": "@gsquire That's perfect! I had one last suggestion and then this is ready to go. Thanks so much!\n",
+        "created_at": "2016-09-27T18:16:40+00:00",
+        "id": 249950954,
+        "url": "https://github.com/BurntSushi/ripgrep/pull/111#issuecomment-249950954"
+      },
+      {
+        "author": "gsquire",
+        "body": "@BurntSushi Doing this causes the test to fail:\n\n``` rust\nwd.create_dir(\"one\");\nwd.create(\"one/foo\", \"far\");\nwd.create_dir(\"one/too\");\nwd.create(\"one/too/many\", \"far\");\n\ncmd.arg(\"--maxdepth\").arg(\"1\");\n\nlet lines: String = wd.stdout(&mut cmd);\nlet expected = path(\"one/pass:far\\n\");\n\nassert_eq!(lines, expected);\n```\n\nBut changing the depth to 2 passes...am I misunderstanding the depth used in `walkdir`?\n",
+        "created_at": "2016-09-27T18:40:01+00:00",
+        "id": 249957714,
+        "url": "https://github.com/BurntSushi/ripgrep/pull/111#issuecomment-249957714"
+      },
+      {
+        "author": "BurntSushi",
+        "body": "I goofed. Looks like your initial implementation is correct. I was off by\none. Could you just make sure we are consistent with GNU find? The docs\nwill need to be updated too. Sorry for short response. On mobile.\n\nOn Sep 27, 2016 2:40 PM, \"Garrett Squire\" notifications@github.com wrote:\n\n> @BurntSushi https://github.com/BurntSushi Doing this causes the test to\n> fail:\n> \n> wd.create_dir(\"one\");\n> wd.create(\"one/foo\", \"far\");\n> wd.create_dir(\"one/too\");\n> wd.create(\"one/too/many\", \"far\");\n> \n> cmd.arg(\"--maxdepth\").arg(\"1\");\n> let lines: String = wd.stdout(&mut cmd);let expected = path(\"one/pass:far\\n\");\n> \n> assert_eq!(lines, expected);\n> \n> But changing the depth to 2 passes...am I misunderstanding the depth used\n> in walkdir?\n> \n> \u2014\n> You are receiving this because you were mentioned.\n> Reply to this email directly, view it on GitHub\n> https://github.com/BurntSushi/ripgrep/pull/111#issuecomment-249957714,\n> or mute the thread\n> https://github.com/notifications/unsubscribe-auth/AAb34tN10dEsKkF0JR2Cd86vipvZiHLBks5quWMCgaJpZM4KHO4u\n> .\n",
+        "created_at": "2016-09-27T19:03:00+00:00",
+        "id": 249964810,
+        "url": "https://github.com/BurntSushi/ripgrep/pull/111#issuecomment-249964810"
+      },
+      {
+        "author": "gsquire",
+        "body": "It's okay, just wanted to verify.\n\nQuoting from the [GNU find man page](http://man7.org/linux/man-pages/man1/find.1.html):\n\n> Descend at most levels (a non-negative integer) levels of directories below the starting-points. \n> -maxdepth 0 means only apply the tests and actions to the starting-points themselves.\n\nSo no need to update anything? I have to say, I thought having max depth of one and having a file in a directory below `.` would be found. This is why I asked you to confirm. No rush on this, I want to make sure I understand it correctly is all.\n",
+        "created_at": "2016-09-27T19:51:06+00:00",
+        "id": 249977973,
+        "url": "https://github.com/BurntSushi/ripgrep/pull/111#issuecomment-249977973"
+      },
+      {
+        "author": "BurntSushi",
+        "body": "@gsquire Ah OK. Looks good. I think just updating the test to make sure it both ignores a deeper directory and gets search results from a shallower directory should be sufficient. Also, I think the docs need to be updated. Probably saying \"current directory\" is wrong and we should say \"starting points\" like `find` does. Thanks for sticking with me!\n",
+        "created_at": "2016-09-27T20:38:15+00:00",
+        "id": 249990941,
+        "url": "https://github.com/BurntSushi/ripgrep/pull/111#issuecomment-249990941"
+      },
+      {
+        "author": "gsquire",
+        "body": "Sweet, I know the phrasing is important. I updated that and the test. Hope it's good to go!\n",
+        "created_at": "2016-09-27T20:53:32+00:00",
+        "id": 249995264,
+        "url": "https://github.com/BurntSushi/ripgrep/pull/111#issuecomment-249995264"
+      },
+      {
+        "author": "gsquire",
+        "body": "Looks like the build failure happened on master too...strange.\n",
+        "created_at": "2016-09-27T23:43:49+00:00",
+        "id": 250031307,
+        "url": "https://github.com/BurntSushi/ripgrep/pull/111#issuecomment-250031307"
+      },
+      {
+        "author": "BurntSushi",
+        "body": "Yup this looks great. The failure looks unrelated. Thanks so much for doing this and putting up with me! :-)\n",
+        "created_at": "2016-09-27T23:46:30+00:00",
+        "id": 250031713,
+        "url": "https://github.com/BurntSushi/ripgrep/pull/111#issuecomment-250031713"
+      },
+      {
+        "author": "gsquire",
+        "body": "I'm happy to be able to contribute, you're a Rust machine :)\n\nCongrats on this project!\n",
+        "created_at": "2016-09-27T23:47:31+00:00",
+        "id": 250031841,
+        "url": "https://github.com/BurntSushi/ripgrep/pull/111#issuecomment-250031841"
+      }
+    ],
+    "created_at": "2016-09-27T03:56:47+00:00",
+    "merged_at": "2016-09-27T23:46:29+00:00",
+    "number": 111,
+    "state": "closed",
+    "title": "Max depth option",
+    "url": "https://github.com/BurntSushi/ripgrep/pull/111"
+  },
+  "repo": "BurntSushi/ripgrep"
+}

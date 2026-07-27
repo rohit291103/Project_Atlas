@@ -1,0 +1,67 @@
+{
+  "commits": [],
+  "linked_issues": [],
+  "pr_number": 706,
+  "pull_request": {
+    "author": "ptzz",
+    "body": "This allows for application specific ignorefile names, e.g. using\r\n`.fdignore` for `fd`.\r\n\r\n- Moved the hardcoded `.rgignore` from the ignore crate to ripgrep\r\n\r\n- `.ignore` is always respected and has the highest precedence",
+    "comments": [
+      {
+        "author": "ptzz",
+        "body": "See discussion in https://github.com/sharkdp/fd/issues/156, specifically https://github.com/sharkdp/fd/issues/156#issuecomment-347371863",
+        "created_at": "2017-12-04T09:12:11+00:00",
+        "id": 348902457,
+        "url": "https://github.com/BurntSushi/ripgrep/pull/706#issuecomment-348902457"
+      },
+      {
+        "author": "ptzz",
+        "body": "Should probably add tests that uses multiple ignore files and validates precedence.",
+        "created_at": "2017-12-04T11:09:44+00:00",
+        "id": 348931297,
+        "url": "https://github.com/BurntSushi/ripgrep/pull/706#issuecomment-348931297"
+      },
+      {
+        "author": "ptzz",
+        "body": "@BurntSushi Thanks for the comments!\r\n\r\n> I think the way to solve your problem is to add an additional layer of ignore files that has higher precedence than .ignore but uses a custom (probably application specific) name.\r\n\r\nIndeed I didn't read this carefully and assumed `.ignore` would have the highest precedence. I understand that just correcting the order won't solve the hierarchy issues that you talk about though.\r\n\r\nI will try to find time to fix this properly.",
+        "created_at": "2017-12-04T13:01:13+00:00",
+        "id": 348955756,
+        "url": "https://github.com/BurntSushi/ripgrep/pull/706#issuecomment-348955756"
+      },
+      {
+        "author": "ptzz",
+        "body": "@BurntSushi I *think* it should be working as expected now. Also addressed your comments on naming and method signatures.",
+        "created_at": "2017-12-06T20:36:26+00:00",
+        "id": 349766871,
+        "url": "https://github.com/BurntSushi/ripgrep/pull/706#issuecomment-349766871"
+      },
+      {
+        "author": "ptzz",
+        "body": "@BurntSushi Tests have been added for 1+2 above. As for precedence tests, I added one that verifies that a custom ignore file have higher precedence than `.ignore`, and one that verifies that earlier custom ignore files have lower precedence than later.\r\n\r\nLet me know if you want to see more extensive tests. I wasn\u2019t sure if it would make sense to add precedence tests between e.g. custom ignore and `.gitignore`, as there already tests for `.ignore` over `.gitignore` and precedence should apply transitively.\r\n\r\nAs for 3, there are already tests that uses `.rgignore`, maybe that's sufficient? It's not hardcoded in the ignore crate anymore, but passed as a (hardcoded) parameter from ripgrep.\r\n  ",
+        "created_at": "2018-01-01T20:55:23+00:00",
+        "id": 354675803,
+        "url": "https://github.com/BurntSushi/ripgrep/pull/706#issuecomment-354675803"
+      },
+      {
+        "author": "ptzz",
+        "body": "@BurntSushi Do you have concerns about merging this and/or want more time for review? Let me know if there is anything I can address.",
+        "created_at": "2018-01-27T21:31:23+00:00",
+        "id": 361016808,
+        "url": "https://github.com/BurntSushi/ripgrep/pull/706#issuecomment-361016808"
+      },
+      {
+        "author": "ptzz",
+        "body": "Thanks, it was a great learning experience doing a bit of Rust!",
+        "created_at": "2018-01-29T22:52:26+00:00",
+        "id": 361414894,
+        "url": "https://github.com/BurntSushi/ripgrep/pull/706#issuecomment-361414894"
+      }
+    ],
+    "created_at": "2017-12-04T09:07:26+00:00",
+    "merged_at": "2018-01-29T21:06:06+00:00",
+    "number": 706,
+    "state": "closed",
+    "title": "Support ignore files with custom names",
+    "url": "https://github.com/BurntSushi/ripgrep/pull/706"
+  },
+  "repo": "BurntSushi/ripgrep"
+}

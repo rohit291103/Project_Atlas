@@ -29,6 +29,7 @@ from atlas.extraction.agent import (
     ConfidenceLevel,
     ExtractionError,
     ExtractionResult,
+    _as_stream,
     _make_permission_gate,
     build_result,
     confidence_to_score,
@@ -173,6 +174,30 @@ def test_self_referential_edge_is_rejected() -> None:
                 {"from_ref": "n1", "to_ref": "n1", "relation_type": "supports", "confidence": "low"}
             ],
         )
+
+
+# --- _as_stream: streaming-input contract -------------------------------------
+#
+# Regression guard: the SDK only invokes the `can_use_tool` permission gate (our
+# read-only + tool-budget enforcement) when the prompt is a streaming AsyncIterable
+# of message dicts, NOT a plain string -- a string silently bypasses the gate (and
+# the current SDK hard-errors on it). This locks the exact wire shape the SDK
+# consumes so the prompt is never accidentally reverted to a bare string.
+
+
+def test_as_stream_yields_single_streaming_user_message() -> None:
+    async def collect() -> list[dict[str, Any]]:
+        return [msg async for msg in _as_stream("extract this PR")]
+
+    messages = asyncio.run(collect())
+    assert messages == [
+        {
+            "type": "user",
+            "session_id": "",
+            "message": {"role": "user", "content": "extract this PR"},
+            "parent_tool_use_id": None,
+        }
+    ]
 
 
 # --- emitted_payload: transcript parsing --------------------------------------

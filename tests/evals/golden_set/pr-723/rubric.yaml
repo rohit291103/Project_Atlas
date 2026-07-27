@@ -1,0 +1,22 @@
+# Minimal Tier-1 expectations for BurntSushi/ripgrep#723 ("fixed width line
+# numbers"). A conservative FLOOR, not full expected output. Provenance/excerpt
+# verification applies to every node separately (see test_golden_set.py).
+pr: 723
+source: BurntSushi/ripgrep#723
+
+required_node_types: # >=1 node of each type must be present
+  - goal # issue #544: fixed-width line numbers to align indentation
+  - constraint # Rust's format! can't take a custom padding char as a parameter
+
+must_mention: # >=1 node whose content contains each (case-insensitive substring)
+  - line number
+  - padding
+
+notes: |
+  Richest fixture. The body itself carries the constraint (format! limitation)
+  and an open question ("Should we handle possible combinations of CLI args?");
+  a reasonable extraction also yields a deferred/rejected alternative
+  (format-string support). Those two are intentionally left out of
+  required_node_types because their type classification is genuinely ambiguous
+  (constraint vs. rejected_alternative vs. open_question) -- must_mention pins the
+  content instead of over-constraining the type.

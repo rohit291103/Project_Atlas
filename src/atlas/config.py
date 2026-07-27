@@ -24,14 +24,20 @@ DEFAULT_WORKSPACE_ID: uuid.UUID = uuid.UUID(int=0)
 
 @dataclass(frozen=True)
 class Settings:
-    anthropic_api_key: str
+    # Optional, and unused by our code directly. Extraction runs through the
+    # Claude Agent SDK, which authenticates via the Claude Code CLI login -- so a
+    # Claude Pro/Max subscription covers it with NO API key. Setting this env var
+    # instead routes the SDK through pay-as-you-go Anthropic API billing (a
+    # separate wallet from the subscription). Left as an optional escape hatch;
+    # `from_env` never requires it.
+    anthropic_api_key: str | None
     github_token: str
     supabase_db_url: str
 
     @classmethod
     def from_env(cls) -> "Settings":
         return cls(
-            anthropic_api_key=os.environ["ANTHROPIC_API_KEY"],
+            anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY"),
             github_token=os.environ["GITHUB_TOKEN"],
             supabase_db_url=os.environ["SUPABASE_DB_URL"],
         )

@@ -1,0 +1,318 @@
+{
+  "nodes": [
+    {
+      "id": "6ad2bf14-d2cb-4e72-9f1c-1df3d07ba54b",
+      "type": "goal",
+      "content": "Add support for fixed width line number display in ripgrep (addresses issue #544).",
+      "confidence_score": 0.9,
+      "status": "unconfirmed",
+      "source_refs": [
+        {
+          "id": "808d4175-b7be-4535-9fa3-550dc72dbc4f",
+          "source_type": "github_pr",
+          "external_id": "723",
+          "url": "https://github.com/BurntSushi/ripgrep/pull/723",
+          "excerpt": "Add support for fixed width line number display (fixes #544)",
+          "fetched_at": "2026-07-27T17:58:14.188768Z",
+          "workspace_id": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "created_by": "system",
+      "created_at": "2026-07-27T17:58:14.190138Z",
+      "updated_at": "2026-07-27T17:58:14.190139Z",
+      "updated_by": null,
+      "workspace_id": "00000000-0000-0000-0000-000000000000",
+      "feature_scope_id": "b37e8e56-32e4-43c2-b75c-78b7a2d2a37f"
+    },
+    {
+      "id": "794e789a-2428-43bb-a712-853f41e97d6c",
+      "type": "constraint",
+      "content": "Rust's format! macro cannot take a custom padding character as a parameter; only the width can be a parameter, so the padding character must be hard-coded in the format string.",
+      "confidence_score": 0.9,
+      "status": "unconfirmed",
+      "source_refs": [
+        {
+          "id": "5d011bb1-cb82-47f3-9e4b-9d08a801706b",
+          "source_type": "github_pr",
+          "external_id": "723",
+          "url": "https://github.com/BurntSushi/ripgrep/pull/723",
+          "excerpt": "Rust's `format!` macro currently has no way of providing a custom padding character as a parameter. You have to provide it directly in the format string itself.",
+          "fetched_at": "2026-07-27T17:58:14.190169Z",
+          "workspace_id": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "created_by": "system",
+      "created_at": "2026-07-27T17:58:14.190176Z",
+      "updated_at": "2026-07-27T17:58:14.190177Z",
+      "updated_by": null,
+      "workspace_id": "00000000-0000-0000-0000-000000000000",
+      "feature_scope_id": "b37e8e56-32e4-43c2-b75c-78b7a2d2a37f"
+    },
+    {
+      "id": "4e479850-7cd3-465e-a36e-ce94d38b446b",
+      "type": "architecture_note",
+      "content": "In the current PR implementation, the line-number-width argument only accepts a number.",
+      "confidence_score": 0.9,
+      "status": "unconfirmed",
+      "source_refs": [
+        {
+          "id": "fea3aba2-4f98-4d86-843f-63ea58d40a01",
+          "source_type": "github_pr",
+          "external_id": "723",
+          "url": "https://github.com/BurntSushi/ripgrep/pull/723",
+          "excerpt": "Right now, the argument only accepts a number.",
+          "fetched_at": "2026-07-27T17:58:14.190193Z",
+          "workspace_id": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "created_by": "system",
+      "created_at": "2026-07-27T17:58:14.190199Z",
+      "updated_at": "2026-07-27T17:58:14.190199Z",
+      "updated_by": null,
+      "workspace_id": "00000000-0000-0000-0000-000000000000",
+      "feature_scope_id": "b37e8e56-32e4-43c2-b75c-78b7a2d2a37f"
+    },
+    {
+      "id": "cf7df69c-43b3-41c0-9d4d-173d7da8efe5",
+      "type": "rejected_alternative",
+      "content": "Supporting any arbitrary padding character (via the format! macro), which was the original general approach explored.",
+      "confidence_score": 0.9,
+      "status": "unconfirmed",
+      "source_refs": [
+        {
+          "id": "ca803685-fabb-44b1-ab74-7075fc0f2818",
+          "source_type": "github_pr",
+          "external_id": "723",
+          "url": "https://github.com/BurntSushi/ripgrep/pull/723",
+          "excerpt": "I thought we wanted it to be very general and support any padding character, which is why I looked into the `format!` macro.",
+          "fetched_at": "2026-07-27T17:58:14.190205Z",
+          "workspace_id": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "created_by": "system",
+      "created_at": "2026-07-27T17:58:14.190210Z",
+      "updated_at": "2026-07-27T17:58:14.190210Z",
+      "updated_by": null,
+      "workspace_id": "00000000-0000-0000-0000-000000000000",
+      "feature_scope_id": "b37e8e56-32e4-43c2-b75c-78b7a2d2a37f"
+    },
+    {
+      "id": "c5e005dd-1322-4673-a222-2fe921d4b8e5",
+      "type": "decision",
+      "content": "Start by supporting only space padding, adding more padding support later as needed.",
+      "confidence_score": 0.9,
+      "status": "unconfirmed",
+      "source_refs": [
+        {
+          "id": "d1e5d204-57db-4054-97e5-c25514903b03",
+          "source_type": "github_pr",
+          "external_id": "723",
+          "url": "https://github.com/BurntSushi/ripgrep/pull/723",
+          "excerpt": "I would suggest just starting with supporting spaces. We can add more support as needed",
+          "fetched_at": "2026-07-27T17:58:14.190215Z",
+          "workspace_id": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "created_by": "system",
+      "created_at": "2026-07-27T17:58:14.190220Z",
+      "updated_at": "2026-07-27T17:58:14.190220Z",
+      "updated_by": null,
+      "workspace_id": "00000000-0000-0000-0000-000000000000",
+      "feature_scope_id": "b37e8e56-32e4-43c2-b75c-78b7a2d2a37f"
+    },
+    {
+      "id": "58fbabcb-f179-4c8e-9146-147f61ab7b94",
+      "type": "requirement",
+      "content": "The tool must return an error if the padding width starts with a zero.",
+      "confidence_score": 0.9,
+      "status": "unconfirmed",
+      "source_refs": [
+        {
+          "id": "976692d6-e4e3-4ff0-997e-9ecf58fabb4a",
+          "source_type": "github_pr",
+          "external_id": "723",
+          "url": "https://github.com/BurntSushi/ripgrep/pull/723",
+          "excerpt": "we will need to return an error if the padding width starts with a zero",
+          "fetched_at": "2026-07-27T17:58:14.190226Z",
+          "workspace_id": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "created_by": "system",
+      "created_at": "2026-07-27T17:58:14.190230Z",
+      "updated_at": "2026-07-27T17:58:14.190231Z",
+      "updated_by": null,
+      "workspace_id": "00000000-0000-0000-0000-000000000000",
+      "feature_scope_id": "b37e8e56-32e4-43c2-b75c-78b7a2d2a37f"
+    },
+    {
+      "id": "74d8948f-a804-4c54-a531-56296f5e5b0e",
+      "type": "requirement",
+      "content": "The width should error if it starts with anything other than 1-9; this already holds in the PR because such input fails to parse as an integer.",
+      "confidence_score": 0.6,
+      "status": "unconfirmed",
+      "source_refs": [
+        {
+          "id": "26ee4c9c-31ea-4c53-8f14-221f9be6df4e",
+          "source_type": "github_pr",
+          "external_id": "723",
+          "url": "https://github.com/BurntSushi/ripgrep/pull/723",
+          "excerpt": "we should return an error if the width starts with anything other than 1-9, but that is already true in this PR since it would fail to parse as an integer.",
+          "fetched_at": "2026-07-27T17:58:14.190236Z",
+          "workspace_id": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "created_by": "system",
+      "created_at": "2026-07-27T17:58:14.190240Z",
+      "updated_at": "2026-07-27T17:58:14.190240Z",
+      "updated_by": null,
+      "workspace_id": "00000000-0000-0000-0000-000000000000",
+      "feature_scope_id": "b37e8e56-32e4-43c2-b75c-78b7a2d2a37f"
+    },
+    {
+      "id": "332d32bc-c1ad-4f2b-b28f-c1e64660179e",
+      "type": "open_question",
+      "content": "Should possible combinations of CLI args be handled beyond noting line-number-width has no effect when --no-line-number is enabled?",
+      "confidence_score": 0.6,
+      "status": "unconfirmed",
+      "source_refs": [
+        {
+          "id": "515f1bd4-3893-4491-a20e-12413b67c3bc",
+          "source_type": "github_pr",
+          "external_id": "723",
+          "url": "https://github.com/BurntSushi/ripgrep/pull/723",
+          "excerpt": "Should we handle possible combinations of CLI args?",
+          "fetched_at": "2026-07-27T17:58:14.190245Z",
+          "workspace_id": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "created_by": "system",
+      "created_at": "2026-07-27T17:58:14.190249Z",
+      "updated_at": "2026-07-27T17:58:14.190249Z",
+      "updated_by": null,
+      "workspace_id": "00000000-0000-0000-0000-000000000000",
+      "feature_scope_id": "b37e8e56-32e4-43c2-b75c-78b7a2d2a37f"
+    },
+    {
+      "id": "cd9b5bbf-c398-41b9-b6fd-f9627443c130",
+      "type": "architecture_note",
+      "content": "The line-number-width option has no effect if --no-line-number is enabled.",
+      "confidence_score": 0.9,
+      "status": "unconfirmed",
+      "source_refs": [
+        {
+          "id": "71029749-f185-4025-b1cc-f9728140ac90",
+          "source_type": "github_pr",
+          "external_id": "723",
+          "url": "https://github.com/BurntSushi/ripgrep/pull/723",
+          "excerpt": "it has no effect if `--no-line-number` is enabled",
+          "fetched_at": "2026-07-27T17:58:14.190254Z",
+          "workspace_id": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "created_by": "system",
+      "created_at": "2026-07-27T17:58:14.190259Z",
+      "updated_at": "2026-07-27T17:58:14.190259Z",
+      "updated_by": null,
+      "workspace_id": "00000000-0000-0000-0000-000000000000",
+      "feature_scope_id": "b37e8e56-32e4-43c2-b75c-78b7a2d2a37f"
+    },
+    {
+      "id": "5a76a65b-95f3-4461-8c58-c12750642ef4",
+      "type": "requirement",
+      "content": "The change must also update the man page (doc/rg.1.md), regenerating rg.1 via the convert-to-man script.",
+      "confidence_score": 0.9,
+      "status": "unconfirmed",
+      "source_refs": [
+        {
+          "id": "63bf70c7-3d1b-4d95-a30f-f175c11d3e36",
+          "source_type": "github_pr",
+          "external_id": "723",
+          "url": "https://github.com/BurntSushi/ripgrep/pull/723",
+          "excerpt": "This also needs to update the man page, which is done in this file",
+          "fetched_at": "2026-07-27T17:58:14.190266Z",
+          "workspace_id": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "created_by": "system",
+      "created_at": "2026-07-27T17:58:14.190270Z",
+      "updated_at": "2026-07-27T17:58:14.190271Z",
+      "updated_by": null,
+      "workspace_id": "00000000-0000-0000-0000-000000000000",
+      "feature_scope_id": "b37e8e56-32e4-43c2-b75c-78b7a2d2a37f"
+    },
+    {
+      "id": "5797988e-2bde-4d71-88fd-1fff07ab7af7",
+      "type": "architecture_note",
+      "content": "Suggested implementation: check the argument string before conversion to usize, set a boolean (arg.starts_with(\"0\")) in the Args struct, pass it to the printer, and use an if condition to determine the format string.",
+      "confidence_score": 0.6,
+      "status": "unconfirmed",
+      "source_refs": [
+        {
+          "id": "9e0a1223-9eff-4ffe-9de2-706d4f67e06b",
+          "source_type": "github_pr",
+          "external_id": "723",
+          "url": "https://github.com/BurntSushi/ripgrep/pull/723",
+          "excerpt": "i think you would want to have it check the argument string before conversion to `usize` and set a boolean in the `Args` struct to `arg.starts_with(\"0\")`. Then you would pass that boolean to the printer and just have an `if` condition determine the format string to use",
+          "fetched_at": "2026-07-27T17:58:14.190276Z",
+          "workspace_id": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "created_by": "system",
+      "created_at": "2026-07-27T17:58:14.190280Z",
+      "updated_at": "2026-07-27T17:58:14.190280Z",
+      "updated_by": null,
+      "workspace_id": "00000000-0000-0000-0000-000000000000",
+      "feature_scope_id": "b37e8e56-32e4-43c2-b75c-78b7a2d2a37f"
+    }
+  ],
+  "edges": [
+    {
+      "id": "574bea37-5e9a-4bd2-8fc4-64e1d952a51f",
+      "from_node_id": "c5e005dd-1322-4673-a222-2fe921d4b8e5",
+      "to_node_id": "cf7df69c-43b3-41c0-9d4d-173d7da8efe5",
+      "relation_type": "rejects",
+      "confidence_score": 0.9,
+      "created_at": "2026-07-27T17:58:14.190316Z"
+    },
+    {
+      "id": "dd5c4e88-84d6-460a-872e-c63ff7a22702",
+      "from_node_id": "c5e005dd-1322-4673-a222-2fe921d4b8e5",
+      "to_node_id": "794e789a-2428-43bb-a712-853f41e97d6c",
+      "relation_type": "derives_from",
+      "confidence_score": 0.6,
+      "created_at": "2026-07-27T17:58:14.190327Z"
+    },
+    {
+      "id": "1e654799-518e-4dff-bc27-9311c73aaf47",
+      "from_node_id": "58fbabcb-f179-4c8e-9146-147f61ab7b94",
+      "to_node_id": "c5e005dd-1322-4673-a222-2fe921d4b8e5",
+      "relation_type": "implements",
+      "confidence_score": 0.6,
+      "created_at": "2026-07-27T17:58:14.190332Z"
+    },
+    {
+      "id": "29bd14d5-b299-4e96-b6ba-3d89497f09a5",
+      "from_node_id": "4e479850-7cd3-465e-a36e-ce94d38b446b",
+      "to_node_id": "c5e005dd-1322-4673-a222-2fe921d4b8e5",
+      "relation_type": "supports",
+      "confidence_score": 0.6,
+      "created_at": "2026-07-27T17:58:14.190337Z"
+    },
+    {
+      "id": "140c3031-84ad-45d7-813e-d1801579ae8b",
+      "from_node_id": "5797988e-2bde-4d71-88fd-1fff07ab7af7",
+      "to_node_id": "c5e005dd-1322-4673-a222-2fe921d4b8e5",
+      "relation_type": "supports",
+      "confidence_score": 0.3,
+      "created_at": "2026-07-27T17:58:14.190341Z"
+    },
+    {
+      "id": "6af3ea96-5048-4da5-80d1-b94185f55d05",
+      "from_node_id": "6ad2bf14-d2cb-4e72-9f1c-1df3d07ba54b",
+      "to_node_id": "c5e005dd-1322-4673-a222-2fe921d4b8e5",
+      "relation_type": "depends_on",
+      "confidence_score": 0.3,
+      "created_at": "2026-07-27T17:58:14.190345Z"
+    }
+  ]
+}

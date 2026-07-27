@@ -1,0 +1,270 @@
+{
+  "nodes": [
+    {
+      "id": "8742a637-a4cc-45bc-be75-cb77970ebbc7",
+      "type": "goal",
+      "content": "Allow ignore files to use application-specific custom names (e.g. `.fdignore` for the `fd` tool) rather than a single hardcoded name.",
+      "confidence_score": 0.9,
+      "status": "unconfirmed",
+      "source_refs": [
+        {
+          "id": "de4130df-1535-4195-88f9-17e92fbab0e2",
+          "source_type": "github_pr",
+          "external_id": "706",
+          "url": "https://github.com/BurntSushi/ripgrep/pull/706",
+          "excerpt": "This allows for application specific ignorefile names, e.g. using\n`.fdignore` for `fd`.",
+          "fetched_at": "2026-07-27T18:00:27.596483Z",
+          "workspace_id": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "created_by": "system",
+      "created_at": "2026-07-27T18:00:27.596875Z",
+      "updated_at": "2026-07-27T18:00:27.596877Z",
+      "updated_by": null,
+      "workspace_id": "00000000-0000-0000-0000-000000000000",
+      "feature_scope_id": "dcbc2df7-6c64-4c84-9068-28a89ad8bc6b"
+    },
+    {
+      "id": "db97f74e-8595-4abe-b0f6-d8f7fad17c08",
+      "type": "decision",
+      "content": "Move the hardcoded `.rgignore` name out of the ignore crate and into ripgrep.",
+      "confidence_score": 0.9,
+      "status": "unconfirmed",
+      "source_refs": [
+        {
+          "id": "735bf24c-01f4-4291-9508-58dd77cbd71e",
+          "source_type": "github_pr",
+          "external_id": "706",
+          "url": "https://github.com/BurntSushi/ripgrep/pull/706",
+          "excerpt": "Moved the hardcoded `.rgignore` from the ignore crate to ripgrep",
+          "fetched_at": "2026-07-27T18:00:27.596900Z",
+          "workspace_id": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "created_by": "system",
+      "created_at": "2026-07-27T18:00:27.596910Z",
+      "updated_at": "2026-07-27T18:00:27.596911Z",
+      "updated_by": null,
+      "workspace_id": "00000000-0000-0000-0000-000000000000",
+      "feature_scope_id": "dcbc2df7-6c64-4c84-9068-28a89ad8bc6b"
+    },
+    {
+      "id": "c12df0dc-0a26-4acd-99a4-d65d96e917ff",
+      "type": "requirement",
+      "content": "`.ignore` is always respected and (per the PR description) has the highest precedence.",
+      "confidence_score": 0.6,
+      "status": "unconfirmed",
+      "source_refs": [
+        {
+          "id": "6894f70a-f789-4cc9-99aa-c2983379c8da",
+          "source_type": "github_pr",
+          "external_id": "706",
+          "url": "https://github.com/BurntSushi/ripgrep/pull/706",
+          "excerpt": "`.ignore` is always respected and has the highest precedence",
+          "fetched_at": "2026-07-27T18:00:27.596920Z",
+          "workspace_id": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "created_by": "system",
+      "created_at": "2026-07-27T18:00:27.596928Z",
+      "updated_at": "2026-07-27T18:00:27.596929Z",
+      "updated_by": null,
+      "workspace_id": "00000000-0000-0000-0000-000000000000",
+      "feature_scope_id": "dcbc2df7-6c64-4c84-9068-28a89ad8bc6b"
+    },
+    {
+      "id": "21694684-baa3-4592-b62e-f4b027a4b535",
+      "type": "decision",
+      "content": "Solve the problem by adding an additional layer of ignore files that has higher precedence than `.ignore` but uses a custom, application-specific name (BurntSushi's suggested approach).",
+      "confidence_score": 0.9,
+      "status": "unconfirmed",
+      "source_refs": [
+        {
+          "id": "153e101b-55c4-40ff-bd08-6ef82f8eea7b",
+          "source_type": "github_pr",
+          "external_id": "706",
+          "url": "https://github.com/BurntSushi/ripgrep/pull/706",
+          "excerpt": "I think the way to solve your problem is to add an additional layer of ignore files that has higher precedence than .ignore but uses a custom (probably application specific) name.",
+          "fetched_at": "2026-07-27T18:00:27.596937Z",
+          "workspace_id": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "created_by": "system",
+      "created_at": "2026-07-27T18:00:27.596944Z",
+      "updated_at": "2026-07-27T18:00:27.596944Z",
+      "updated_by": null,
+      "workspace_id": "00000000-0000-0000-0000-000000000000",
+      "feature_scope_id": "dcbc2df7-6c64-4c84-9068-28a89ad8bc6b"
+    },
+    {
+      "id": "1350b528-ca25-4aae-934e-39e291273720",
+      "type": "architecture_note",
+      "content": "In the implemented behavior a custom ignore file has higher precedence than `.ignore`, and earlier custom ignore files have lower precedence than later ones.",
+      "confidence_score": 0.9,
+      "status": "unconfirmed",
+      "source_refs": [
+        {
+          "id": "c7f2d9e8-b245-4512-9bdf-c679968d851a",
+          "source_type": "github_pr",
+          "external_id": "706",
+          "url": "https://github.com/BurntSushi/ripgrep/pull/706",
+          "excerpt": "I added one that verifies that a custom ignore file have higher precedence than `.ignore`, and one that verifies that earlier custom ignore files have lower precedence than later.",
+          "fetched_at": "2026-07-27T18:00:27.596951Z",
+          "workspace_id": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "created_by": "system",
+      "created_at": "2026-07-27T18:00:27.596958Z",
+      "updated_at": "2026-07-27T18:00:27.596958Z",
+      "updated_by": null,
+      "workspace_id": "00000000-0000-0000-0000-000000000000",
+      "feature_scope_id": "dcbc2df7-6c64-4c84-9068-28a89ad8bc6b"
+    },
+    {
+      "id": "26a1126d-30cb-4541-bfdb-ef020458507b",
+      "type": "evidence",
+      "content": "Tests were added covering multiple ignore files and precedence ordering.",
+      "confidence_score": 0.9,
+      "status": "unconfirmed",
+      "source_refs": [
+        {
+          "id": "fdbc1bd4-2ec9-4f2a-9d48-4946d231025d",
+          "source_type": "github_pr",
+          "external_id": "706",
+          "url": "https://github.com/BurntSushi/ripgrep/pull/706",
+          "excerpt": "Tests have been added for 1+2 above.",
+          "fetched_at": "2026-07-27T18:00:27.596966Z",
+          "workspace_id": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "created_by": "system",
+      "created_at": "2026-07-27T18:00:27.596973Z",
+      "updated_at": "2026-07-27T18:00:27.596973Z",
+      "updated_by": null,
+      "workspace_id": "00000000-0000-0000-0000-000000000000",
+      "feature_scope_id": "dcbc2df7-6c64-4c84-9068-28a89ad8bc6b"
+    },
+    {
+      "id": "661d91ec-148f-4669-bff0-085ec57d3635",
+      "type": "architecture_note",
+      "content": "`.rgignore` is no longer hardcoded in the ignore crate; it is passed as a (hardcoded) parameter from ripgrep.",
+      "confidence_score": 0.9,
+      "status": "unconfirmed",
+      "source_refs": [
+        {
+          "id": "4ce4e0ed-a11f-4c40-86c9-efc7484794cb",
+          "source_type": "github_pr",
+          "external_id": "706",
+          "url": "https://github.com/BurntSushi/ripgrep/pull/706",
+          "excerpt": "It's not hardcoded in the ignore crate anymore, but passed as a (hardcoded) parameter from ripgrep.",
+          "fetched_at": "2026-07-27T18:00:27.596980Z",
+          "workspace_id": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "created_by": "system",
+      "created_at": "2026-07-27T18:00:27.596986Z",
+      "updated_at": "2026-07-27T18:00:27.596987Z",
+      "updated_by": null,
+      "workspace_id": "00000000-0000-0000-0000-000000000000",
+      "feature_scope_id": "dcbc2df7-6c64-4c84-9068-28a89ad8bc6b"
+    },
+    {
+      "id": "c2287863-713b-4893-89fa-659b3a6cc1aa",
+      "type": "open_question",
+      "content": "Whether precedence tests between custom ignore files and `.gitignore` are needed, given existing tests for `.ignore` over `.gitignore` and the expectation that precedence applies transitively.",
+      "confidence_score": 0.6,
+      "status": "unconfirmed",
+      "source_refs": [
+        {
+          "id": "62f49da9-3989-4f78-a9b0-bdf3ed13703b",
+          "source_type": "github_pr",
+          "external_id": "706",
+          "url": "https://github.com/BurntSushi/ripgrep/pull/706",
+          "excerpt": "I wasn\u2019t sure if it would make sense to add precedence tests between e.g. custom ignore and `.gitignore`, as there already tests for `.ignore` over `.gitignore` and precedence should apply transitively.",
+          "fetched_at": "2026-07-27T18:00:27.596993Z",
+          "workspace_id": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "created_by": "system",
+      "created_at": "2026-07-27T18:00:27.596999Z",
+      "updated_at": "2026-07-27T18:00:27.597000Z",
+      "updated_by": null,
+      "workspace_id": "00000000-0000-0000-0000-000000000000",
+      "feature_scope_id": "dcbc2df7-6c64-4c84-9068-28a89ad8bc6b"
+    },
+    {
+      "id": "c6e122cb-146c-482d-ad5d-2a1a8db7d827",
+      "type": "problem",
+      "content": "The author initially assumed `.ignore` would have the highest precedence, and recognized that merely correcting the order would not solve the hierarchy issues.",
+      "confidence_score": 0.9,
+      "status": "unconfirmed",
+      "source_refs": [
+        {
+          "id": "ba40ccdd-122d-4004-8198-1ee6dddba73e",
+          "source_type": "github_pr",
+          "external_id": "706",
+          "url": "https://github.com/BurntSushi/ripgrep/pull/706",
+          "excerpt": "Indeed I didn't read this carefully and assumed `.ignore` would have the highest precedence. I understand that just correcting the order won't solve the hierarchy issues that you talk about though.",
+          "fetched_at": "2026-07-27T18:00:27.597006Z",
+          "workspace_id": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "created_by": "system",
+      "created_at": "2026-07-27T18:00:27.597012Z",
+      "updated_at": "2026-07-27T18:00:27.597013Z",
+      "updated_by": null,
+      "workspace_id": "00000000-0000-0000-0000-000000000000",
+      "feature_scope_id": "dcbc2df7-6c64-4c84-9068-28a89ad8bc6b"
+    }
+  ],
+  "edges": [
+    {
+      "id": "9e75e133-519f-4c83-b83a-d70b849aa550",
+      "from_node_id": "db97f74e-8595-4abe-b0f6-d8f7fad17c08",
+      "to_node_id": "8742a637-a4cc-45bc-be75-cb77970ebbc7",
+      "relation_type": "implements",
+      "confidence_score": 0.6,
+      "created_at": "2026-07-27T18:00:27.597060Z"
+    },
+    {
+      "id": "20a68da7-17aa-4d2c-bb21-ed991c9d7479",
+      "from_node_id": "661d91ec-148f-4669-bff0-085ec57d3635",
+      "to_node_id": "db97f74e-8595-4abe-b0f6-d8f7fad17c08",
+      "relation_type": "implements",
+      "confidence_score": 0.9,
+      "created_at": "2026-07-27T18:00:27.597073Z"
+    },
+    {
+      "id": "e236f79b-211f-4450-873a-068d738b184a",
+      "from_node_id": "1350b528-ca25-4aae-934e-39e291273720",
+      "to_node_id": "21694684-baa3-4592-b62e-f4b027a4b535",
+      "relation_type": "implements",
+      "confidence_score": 0.9,
+      "created_at": "2026-07-27T18:00:27.597080Z"
+    },
+    {
+      "id": "acbed48a-ee41-4055-aa85-c8f22d7dd153",
+      "from_node_id": "21694684-baa3-4592-b62e-f4b027a4b535",
+      "to_node_id": "c6e122cb-146c-482d-ad5d-2a1a8db7d827",
+      "relation_type": "derives_from",
+      "confidence_score": 0.6,
+      "created_at": "2026-07-27T18:00:27.597086Z"
+    },
+    {
+      "id": "059962ac-ee6d-47a7-ab8d-471fc5da3b1d",
+      "from_node_id": "1350b528-ca25-4aae-934e-39e291273720",
+      "to_node_id": "c12df0dc-0a26-4acd-99a4-d65d96e917ff",
+      "relation_type": "conflicts_with",
+      "confidence_score": 0.9,
+      "created_at": "2026-07-27T18:00:27.597092Z"
+    },
+    {
+      "id": "64f85325-cc5c-4bae-bee1-64fcf32a3b76",
+      "from_node_id": "26a1126d-30cb-4541-bfdb-ef020458507b",
+      "to_node_id": "1350b528-ca25-4aae-934e-39e291273720",
+      "relation_type": "supports",
+      "confidence_score": 0.9,
+      "created_at": "2026-07-27T18:00:27.597098Z"
+    }
+  ]
+}
