@@ -34,9 +34,11 @@ Each phase's *concrete* implementation plan gets its own doc in `docs/architectu
 
 ## Current Development Phase
 
-**Phase 0** (Roadmap Weeks 1–4): prove the extraction loop end-to-end on GitHub only, for one team, internal tool only. Exit criteria: usable, mostly-correct structured output on 3–5 real historical PRs, validated manually.
+**Phase 1** (Roadmap Weeks 5–9): make the loop usable by a non-engineer (a PM) and extend to a second source. Concrete plan: `docs/architecture/Phase1_Architecture.md`. Exit criterion: a PM outside the build team can, *unassisted*, connect two sources, review extracted elements, and confirm/reject them in under 20 minutes. **Primary risk being retired: can a non-engineer actually use this?** — not "does more get built."
 
-Explicitly **not** current priority (these are Phase 1–4, don't build ahead of them): confirmation UI, a second ingestion source, spec generation/export, RBAC, incremental sync, contextual Q&A, security hardening. If a task implies one of these, flag it rather than quietly building it.
+In scope now (Phase 0's extraction exit criterion was met 2026-07-28 — `docs/decisions/2026-07-28-phase0-exit-phase1-entry.md`): the **confirmation UI** (React SPA + FastAPI `api/`), a **second source (Jira)**, **scoped ingestion** by epic/label, **workspace-level RBAC + audit logging**, and cross-source **conflict detection**. Sequencing is **UI-first on existing GitHub data** (retire the primary risk before adding Jira) — see the four vertical slices in `Phase1_Architecture.md` §3.
+
+Explicitly **not** current priority (these are Phase 2–4, don't build ahead of them): spec generation/export, contextual Q&A / retrieval, feature-level RBAC, incremental delta-sync, a third (doc) source, SSO/SAML. If a task implies one of these, flag it rather than quietly building it. The new `api/` + frontend module boundary must pass a `codebase-design` pass before it is scaffolded.
 
 ## Engineering Philosophy (non-negotiable — TRD §2)
 
@@ -56,7 +58,7 @@ This is the module decomposition — don't invent a different one without runnin
 3. **`storage/`** — `event_log` (Supabase/Postgres, append-only JSONB) plus projections (materialized Node/Edge views replayed from events).
 4. **`cli/`** — Typer entrypoint. Phase 0's stand-in for the confirmation UI (`atlas ingest`, `atlas review`).
 
-Not yet built, arriving in later phases per the Roadmap: confirmation UI (Phase 1), spec assembly/export (Phase 2), Q&A retrieval layer (Phase 3).
+Arriving in Phase 1 (in progress, proposed in `Phase1_Architecture.md` §5, **pending a `codebase-design` pass before scaffolding**): **`api/`** — a thin FastAPI read/write layer over `storage/` projections + the event log, serving the confirmation UI and obeying the same "no direct Node/Edge mutation, append an event" rule the CLI does; and a **React frontend** (the confirmation UI itself, talking only to `api/`). The CLI stays as the engineer-facing/debug read path, not replaced. Still later per the Roadmap: spec assembly/export (Phase 2), Q&A retrieval layer (Phase 3).
 
 ## Tech Stack (Phase 0 — see `docs/architecture/Phase0_Architecture.md` for full rationale)
 
@@ -121,7 +123,7 @@ A version bump (`v2`, a new `PhaseN_Architecture.md`) always creates a new file 
 | `feature-discussion` | Shaping a raw idea before it's a PRD |
 | `prd-writer` | Drafting and saving a PRD to `docs/prd/` |
 | `backend-reviewer` | Reviewing ingestion/extraction/storage code for Engineering Philosophy adherence (read-only, provenance, event-sourcing, agent tool-call safety) |
-| `frontend-reviewer` | Not yet applicable — no frontend exists until Phase 1's confirmation UI. Will review that UI once built. |
+| `frontend-reviewer` | Active as of Phase 1 — reviews the confirmation UI (React SPA) for design-system adherence and real-browser defects once it exists. Pair with the `brandkit` + `design-taste-frontend-v1` skills when building it. |
 
 ## What NOT to do
 
