@@ -236,6 +236,11 @@ async def run_extraction(
         return build_result(payload, workspace_id=workspace_id, feature_scope_id=feature_scope_id)
     except (ValidationError, ExtractionError) as first_error:
         retry_prompt = seed_prompt + _RETRY_NOTE.format(error=first_error)
+        # Deliberate: the retry reuses the same `agent_call` (hence the same
+        # `can_use_tool` gate + its budget counter), so the ~8-call cap is
+        # per-run, not per-attempt (Phase0_Architecture.md Sec2). The retry is a
+        # format-correction pass, not a fresh exploration budget -- do not split
+        # this into a per-attempt gate, which would silently double the cost cap.
         retry_payload = await agent_call(retry_prompt)
         if retry_payload is None:
             raise ExtractionError("agent did not emit an extraction on retry") from first_error

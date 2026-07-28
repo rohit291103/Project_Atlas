@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,7 @@ from atlas.extraction.agent import (
     ExtractionError,
     ExtractionResult,
     _as_stream,
+    _make_agent_call,
     _make_permission_gate,
     build_result,
     confidence_to_score,
@@ -360,3 +362,50 @@ def test_permission_gate_caps_reads_allows_emit_denies_builtins() -> None:
     assert reads == ["allow", "allow", "deny"]  # third fetch over the budget of 2
     assert emit == "allow"  # emit_extraction is never capped
     assert builtin == "deny"  # non-atlas tools are always denied (least-privilege)
+
+
+# --- _make_agent_call: the streaming-fix seam ---------------------------------
+#
+# The string-prompt bug lived exactly here and was caught only by a live run, not
+# by tests -- because the fix's two halves (`_as_stream`'s shape, the gate's
+# counting) are tested in isolation but nothing asserted the *seam*: that `query`
+# is actually invoked with the stream (not a string, which silently bypasses the
+# `can_use_tool` gate), and that one gate/options instance is reused across the
+# initial + retry attempts (so the ~8-call budget is per-run, not per-attempt).
+
+
+def test_make_agent_call_streams_prompt_and_shares_gate_across_calls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_prompts: list[Any] = []
+    captured_options: list[Any] = []
+
+    async def fake_query(*, prompt: Any, options: Any) -> Any:
+        captured_prompts.append(prompt)
+        captured_options.append(options)
+        yield _assistant(
+            ToolUseBlock(
+                id="t1",
+                name="mcp__atlas__emit_extraction",
+                input={"nodes": [], "edges": []},
+            )
+        )
+
+    monkeypatch.setattr("atlas.extraction.agent.query", fake_query)
+
+    client = GitHubClient("token-unused-no-network")
+    try:
+        agent_call = _make_agent_call(client, "acme", "gateway", model="m", max_tool_calls=8)
+        # Invoke the closure twice, exactly as run_extraction's initial + retry paths do.
+        asyncio.run(agent_call("first prompt"))
+        asyncio.run(agent_call("second prompt"))
+    finally:
+        client.close()
+
+    assert len(captured_prompts) == 2
+    for prompt in captured_prompts:
+        # A str prompt bypasses the can_use_tool gate; it MUST be a streaming iterable.
+        assert not isinstance(prompt, str)
+        assert isinstance(prompt, AsyncIterator)
+    # Same options object both times => same can_use_tool gate => shared per-run budget.
+    assert captured_options[0] is captured_options[1]
