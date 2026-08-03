@@ -44,11 +44,15 @@ Slices 1A+1B together are the Phase 1 exit demo on GitHub data; 1C+1D complete t
 The event log is already the source of truth; Phase 1 makes the *write* side of the confirmation layer real. These are the two forward notes the codebase already flagged, now coming due:
 
 ### 4.1 Confirmation events + replay handlers
-`storage/projections.py` currently **raises `NotImplementedError`** on `node_confirmed` / `node_edited` / `node_rejected` (deliberately fail-loud, per `docs/decisions/2026-07-22-projections-event-replay.md`). Phase 1 implements those handlers plus `node_added` (manual creation) and folds them into `replay()`:
+`storage/projections.py` currently **raises `NotImplementedError`** on `node_confirmed` / `node_edited` / `node_rejected` (deliberately fail-loud, per `docs/decisions/2026-07-22-projections-event-replay.md`). Phase 1 implements those handlers and folds them into `replay()`:
 - **confirm** → set `status = confirmed`.
-- **edit** → apply the edited content, set `status = edited`, and **retain a link to the original system-extracted version** (TRD §6) — the edit event payload carries both, so audit/comparison is reconstructable from the log.
+- **edit** → apply the edited content, set `status = edited`, and **retain a link to the version it replaced** (TRD §6) — the edit event payload carries both, so audit/comparison is reconstructable from the log.
 - **reject** → set `status = rejected` (kept in the log, filtered out of any future spec assembly).
 - **add** → a new `created_by = user` node, `status = confirmed`, **no confidence score** (TRD §6).
+
+> **Amended 2026-08-03** (built — `docs/decisions/2026-08-03-confirmation-loop-backend.md`). Two things this section originally got wrong:
+> - There is **no `node_added` event type.** TRD §3.1's `event_type` enum has no such member, and `node_created` with `created_by = user` describes a manual node completely, so adding one would have cost a Postgres enum migration and a divergence from the data model of record in exchange for nothing.
+> - The edit payload carries **`previous_content`** — the value the edit replaced — not the system-extracted original. Storing the original on every edit means an edit-of-an-edit records a before-image that was never current at that point; the chain back through `node_created` recovers the original and every link in it is true.
 
 ### 4.2 Monotonic sequence column
 Once confirm/edit/reject exist, **replay order becomes load-bearing** (an edit after a confirm must win). Add a monotonic sequence to `event_log` (append-time, gap-tolerant) and order replay by it, not by `timestamp` (wall-clock ties/skew are unsafe). This is a migration on the existing table.
@@ -93,7 +97,9 @@ Phase 0's four modules (`ingestion/`, `extraction/`, `storage/`, `cli/`) stay. P
 - **Read-only by default (Philosophy §1):** the Jira connector is GET-only like GitHub's; the API writes only to the event log via `append_event`, never to source systems.
 - **Extraction is a draft, never a fact (§2):** the confirmation UI is the literal embodiment of this — `unconfirmed` is the default, and only a human confirm/edit/reject changes status. Nothing reaches an export (Phase 2) unconfirmed.
 - **Event-sourced (§3):** every confirm/edit/reject/add is an Event; Node/Edge state stays a projection. No direct mutation — the API obeys the same rule the CLI does.
-- **Provenance non-negotiable (§4):** system nodes keep their `SourceRef`; the UI surfaces the literal excerpt + deep-link. Manual `created_by=user` nodes are the one node type without extraction provenance — their provenance is the human actor + Event, which the log records.
+- **Provenance non-negotiable (§4):** system nodes keep their `SourceRef`; the UI surfaces the literal excerpt + deep-link. Manual `created_by=user` nodes are the one node type without *extraction* provenance — their evidence is the person, recorded as a `human_assertion` `SourceRef` naming the actor and quoting the claim as typed (`docs/decisions/2026-08-03-manual-node-provenance.md`). So the rule holds with **no exception clause**: every Node still carries a `SourceRef`, and the UI can still show where every claim came from — for these, a named human rather than a URL.
+
+  > **Amended 2026-08-03.** This section originally read "the one node type without provenance — their provenance is the human actor + Event, which the log records." That was a relaxation of CLAUDE.md's zero-exception rule, and it would have made "a Node with no `SourceRef`" expressible, forcing every downstream consumer to handle the empty case forever. The `human_assertion` source type keeps the invariant literally true instead.
 - **Idempotent/incremental (§5):** binding from Phase 1's scoped ingestion onward; re-running ingestion must not duplicate. (Full incremental delta-sync still Phase 4.)
 
 ---

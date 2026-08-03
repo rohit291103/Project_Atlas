@@ -195,12 +195,15 @@ def test_edit_node_rejects_blank_content(
 # --- manual add ----------------------------------------------------------------
 
 
-def _manual_node(content: str = "Must ship before the Q4 freeze.") -> Node:
-    return Node(
-        type=NodeType.CONSTRAINT,
+FREEZE = "Must ship before the Q4 freeze."
+
+
+def _add(session: Session, *, content: str = FREEZE, actor: str = PM) -> EventLog:
+    return add_node(
+        session,
+        node_type=NodeType.CONSTRAINT,
         content=content,
-        created_by=CreatedBy.USER,
-        source_refs=[_source_ref()],
+        actor=actor,
         workspace_id=WORKSPACE_ID,
         feature_scope_id=FEATURE_SCOPE_ID,
     )
@@ -211,36 +214,93 @@ def test_add_node_projects_a_confirmed_unscored_user_node(
 ) -> None:
     """TRD Sec6: manually-added nodes skip confidence scoring and default to
     confirmed -- a human typing a claim has already affirmed it."""
-    manual = _manual_node()
-
     with session_scope(session_factory) as session:
-        add_node(session, node=manual, actor=PM)
+        node_id = Node.model_validate(_add(session).payload).id
 
-    projected = _replay(session_factory)[manual.id]
+    projected = _replay(session_factory)[node_id]
+    assert projected.content == FREEZE
     assert projected.created_by is CreatedBy.USER
     assert projected.status is NodeStatus.CONFIRMED
     assert projected.confidence_score is None
     assert projected.updated_by == PM
 
 
-def test_add_node_refuses_a_system_created_node(
+def test_add_node_attributes_the_claim_to_the_human_who_asserted_it(
     session_factory: sessionmaker[Session],
 ) -> None:
-    """`add_node` is the manual-entry path; routing extraction output through it
-    would launder a draft into a confirmed fact without a human ever seeing it."""
-    with pytest.raises(ValueError, match="created_by"), session_scope(session_factory) as session:
-        add_node(session, node=_extracted_node(), actor=PM)
+    """PRD R10 covers knowledge with no artifact behind it ("a constraint
+    mentioned verbally in a meeting"), so there is no external URL to cite. The
+    honest provenance is the person: `source_type = human_assertion`, the actor
+    as `external_id`, and the claim as they typed it as the excerpt.
+
+    This is what lets the Node schema keep requiring a SourceRef with no
+    exception clause (CLAUDE.md) -- and what keeps a hand-typed claim
+    machine-distinguishable from an extracted one downstream."""
+    with session_scope(session_factory) as session:
+        node_id = Node.model_validate(_add(session).payload).id
+
+    (ref,) = _replay(session_factory)[node_id].source_refs
+    assert ref.source_type is SourceType.HUMAN_ASSERTION
+    assert ref.external_id == PM
+    assert ref.excerpt == FREEZE
+    assert ref.url == f"atlas:node/{node_id}"
+    assert ref.workspace_id == WORKSPACE_ID
 
 
-def test_add_node_keeps_provenance_required(
+def test_add_node_excerpt_survives_a_later_edit_of_the_content(
     session_factory: sessionmaker[Session],
 ) -> None:
-    """A manual node still needs a SourceRef -- CLAUDE.md admits no exception,
-    and the Node model is what enforces it, before `add_node` is ever reached."""
+    """Provenance is what was *asserted*, not what the claim currently says --
+    exactly as an extracted node's excerpt stays fixed while its content is
+    edited. Without this an edit would rewrite its own evidence."""
+    with session_scope(session_factory) as session:
+        node_id = Node.model_validate(_add(session).payload).id
+
+    added = _replay(session_factory)[node_id]
+    with session_scope(session_factory) as session:
+        edit_node(session, node=added, content="Must ship before the Q3 freeze.", actor=PM)
+
+    edited = _replay(session_factory)[node_id]
+    assert edited.content == "Must ship before the Q3 freeze."
+    assert edited.source_refs[0].excerpt == FREEZE
+
+
+def test_add_node_cannot_be_handed_a_system_node_or_a_foreign_workspace(
+    session_factory: sessionmaker[Session],
+) -> None:
+    """`add_node` builds the Node rather than accepting one, so extraction output
+    can't be laundered through the manual path into a confirmed fact, and an API
+    caller can't smuggle another workspace's id in a request body -- both are
+    structurally unreachable, not guarded against."""
+    import inspect
+
+    parameters = inspect.signature(add_node).parameters
+    assert "node" not in parameters
+    assert {"node_type", "content", "actor", "workspace_id", "feature_scope_id"} <= set(parameters)
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_add_node_rejects_blank_content(session_factory: sessionmaker[Session], blank: str) -> None:
+    with pytest.raises(ValidationError), session_scope(session_factory) as session:
+        _add(session, content=blank)
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_add_node_rejects_a_blank_actor(session_factory: sessionmaker[Session], blank: str) -> None:
+    """The actor isn't just the audit record here -- it *is* the node's
+    provenance, so an anonymous manual node would have none."""
+    with pytest.raises(ValueError, match="actor"), session_scope(session_factory) as session:
+        _add(session, actor=blank)
+
+
+def test_node_still_cannot_be_constructed_without_provenance() -> None:
+    """The invariant `add_node` is written to satisfy, restated: CLAUDE.md admits
+    no exception, and `human_assertion` is what makes that survivable for manual
+    entry rather than forcing a fabricated citation."""
     with pytest.raises(ValidationError):
         Node(
             type=NodeType.CONSTRAINT,
-            content="Must ship before the Q4 freeze.",
+            content=FREEZE,
             created_by=CreatedBy.USER,
             source_refs=[],
             workspace_id=WORKSPACE_ID,

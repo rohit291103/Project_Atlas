@@ -21,6 +21,8 @@ alongside where the two could disagree.
 
 from __future__ import annotations
 
+import uuid
+
 from sqlalchemy.orm import Session
 
 from atlas.models.schema import (
@@ -30,6 +32,9 @@ from atlas.models.schema import (
     NodeEditPayload,
     NodeStatus,
     NodeStatusChangePayload,
+    NodeType,
+    SourceRef,
+    SourceType,
 )
 from atlas.storage.tables import EventLog, append_event
 
@@ -94,30 +99,72 @@ def edit_node(session: Session, *, node: Node, content: str, actor: str) -> Even
     )
 
 
-def add_node(session: Session, *, node: Node, actor: str) -> EventLog:
-    """Record a node a human wrote by hand.
+def add_node(
+    session: Session,
+    *,
+    node_type: NodeType,
+    content: str,
+    actor: str,
+    workspace_id: uuid.UUID,
+    feature_scope_id: uuid.UUID,
+) -> EventLog:
+    """Record a claim a human typed directly into Atlas (PRD R10).
 
-    There is no `node_added` event type -- TRD Sec3.1's enum has none -- so a
-    manual node is a plain `node_created` distinguished by `created_by = user`.
-    It is stored `confirmed` and `updated_by = actor`: a human typing a claim has
-    already affirmed it, and `created_by` is only an enum, so `updated_by` is the
-    one field that records *which* human. It carries no confidence score (the
-    Node schema forbids one here) because there was no extraction to score.
+    Builds the Node rather than accepting one. That is the whole design: a
+    caller cannot hand this an extraction draft to launder into a confirmed
+    fact, and an API cannot let a request body choose its own `workspace_id`.
+    Both are unreachable rather than guarded against. `workspace_id` and
+    `actor` must come from the authenticated session.
 
-    Refuses a system-created node: routing extraction output through this path
-    would launder a draft into a confirmed fact without a human ever seeing it,
-    which is precisely what "extraction is a draft, never a fact" forbids.
+    There is no `node_added` event type -- TRD Sec3.1's enum has none -- so this
+    is a plain `node_created` distinguished by `created_by = user`. The node is
+    stored `confirmed` (a human typing a claim has already affirmed it) with no
+    confidence score, because there was no extraction to score.
+
+    Its provenance is the person: a `human_assertion` SourceRef naming the actor
+    and quoting the claim as typed. PRD R10's example -- "a constraint mentioned
+    verbally in a meeting" -- has no artifact to cite, so demanding an external
+    URL here would only produce fabricated ones. The excerpt is deliberately a
+    snapshot: a later `edit_node` changes `content` and leaves it alone, so the
+    record of what was originally asserted survives being revised, exactly as an
+    extracted node's excerpt does.
+
+    Returns the appended event; its `payload` is the created Node.
     """
-    if node.created_by is not CreatedBy.USER:
-        raise ValueError(
-            "add_node is the manual-entry path: created_by must be 'user', "
-            f"got {node.created_by.value!r}"
-        )
-    affirmed = node.model_copy(update={"status": NodeStatus.CONFIRMED, "updated_by": actor})
+    if not actor.strip():
+        # Checked before the SourceRef is built so the error names the actor
+        # rather than surfacing as a confusing `external_id` validation failure.
+        # Here the actor is not merely the audit record -- it *is* the node's
+        # provenance, so an anonymous manual node would have none at all.
+        raise ValueError("actor must not be blank or whitespace-only")
+
+    node_id = uuid.uuid4()
+    node = Node(
+        id=node_id,
+        type=node_type,
+        content=content,
+        status=NodeStatus.CONFIRMED,
+        created_by=CreatedBy.USER,
+        updated_by=actor,
+        source_refs=[
+            SourceRef(
+                source_type=SourceType.HUMAN_ASSERTION,
+                external_id=actor,
+                # A URN, not an http URL: the claim's source is this node itself,
+                # as asserted. There is no external page to link, and inventing a
+                # host would be a lie the UI would then have to render.
+                url=f"atlas:node/{node_id}",
+                excerpt=content,
+                workspace_id=workspace_id,
+            )
+        ],
+        workspace_id=workspace_id,
+        feature_scope_id=feature_scope_id,
+    )
     return append_event(
         session,
         event_type=EventType.NODE_CREATED,
-        payload=affirmed.model_dump(mode="json"),
+        payload=node.model_dump(mode="json"),
         actor=actor,
-        workspace_id=affirmed.workspace_id,
+        workspace_id=workspace_id,
     )

@@ -45,7 +45,8 @@ High-level flow:
 ```
 SourceRef {
   id: UUID
-  source_type: enum [github_pr, github_issue, github_commit, jira_ticket, notion_page, gdoc]
+  source_type: enum [github_pr, github_issue, github_commit, jira_ticket, notion_page, gdoc,
+                     human_assertion]
   external_id: string
   url: string
   excerpt: text          // the specific text span that supports the extraction
@@ -53,6 +54,8 @@ SourceRef {
   workspace_id: UUID
 }
 ```
+
+> **Amended 2026-08-03** (`docs/decisions/2026-08-03-manual-node-provenance.md`): `human_assertion` added. Every other `source_type` points outward at an artifact in a connected tool; this one points at a person, and is the provenance of a node a human typed directly into Atlas. Without it, R10 (manually add elements not captured by extraction — "a constraint mentioned verbally in a meeting") and the rule that every Node carries a `SourceRef` are jointly unsatisfiable, and that resolves in practice as users pasting an unrelated URL past a required field: fabricated provenance, which is worse than none because it is indistinguishable from the real thing.
 
 **Node (typed knowledge element)**
 ```

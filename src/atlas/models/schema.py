@@ -37,12 +37,29 @@ class AtlasModel(BaseModel):
 
 
 class SourceType(StrEnum):
+    """Where a Node's evidence lives.
+
+    Every member but the last points *outward*, at an artifact in a connected
+    tool. `HUMAN_ASSERTION` is the one that points at a person: it is the
+    provenance of a node a human typed directly into Atlas (PRD R10 -- "a
+    constraint mentioned verbally in a meeting"), where no artifact exists to
+    cite. It is an addition to TRD Sec3.1's list, made deliberately -- see
+    `docs/decisions/2026-08-03-manual-node-provenance.md`.
+
+    Without it, PRD R10 and CLAUDE.md's zero-exception "every Node carries a
+    SourceRef" rule are jointly unsatisfiable, and the way that resolves in
+    practice is a user pasting an unrelated URL to get past a required field --
+    fabricated provenance, which is worse than none because it is
+    indistinguishable from the real thing.
+    """
+
     GITHUB_PR = "github_pr"
     GITHUB_ISSUE = "github_issue"
     GITHUB_COMMIT = "github_commit"
     JIRA_TICKET = "jira_ticket"
     NOTION_PAGE = "notion_page"
     GDOC = "gdoc"
+    HUMAN_ASSERTION = "human_assertion"
 
 
 class NodeType(StrEnum):
