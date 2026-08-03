@@ -32,8 +32,18 @@ def session_factory(engine: Engine) -> sessionmaker[Session]:
 
 
 def test_event_log_table_matches_trd_event_shape(engine: Engine) -> None:
+    """TRD Sec3.1's Event fields, plus the storage-only `sequence` (the append
+    order replay depends on; not part of the domain Event model)."""
     columns = {col["name"] for col in inspect(engine).get_columns("event_log")}
-    assert columns == {"id", "event_type", "payload", "actor", "timestamp", "workspace_id"}
+    assert columns == {
+        "id",
+        "event_type",
+        "payload",
+        "actor",
+        "timestamp",
+        "workspace_id",
+        "sequence",
+    }
 
 
 def test_append_event_writes_a_readable_row(session_factory: sessionmaker[Session]) -> None:
@@ -59,6 +69,57 @@ def test_append_event_writes_a_readable_row(session_factory: sessionmaker[Sessio
         assert row.timestamp is not None
 
 
+def test_append_event_assigns_a_monotonically_increasing_sequence(
+    session_factory: sessionmaker[Session],
+) -> None:
+    """Replay order is load-bearing once confirm/edit/reject events exist (an
+    edit after a confirm must win), and wall-clock `timestamp` is unsafe as the
+    ordering key -- two events written in the same transaction can share a
+    timestamp. `sequence` is the total order of appends."""
+    workspace_id = uuid.uuid4()
+
+    with session_scope(session_factory) as session:
+        first = append_event(
+            session,
+            event_type=EventType.NODE_CREATED,
+            payload={"n": 1},
+            actor="system",
+            workspace_id=workspace_id,
+        )
+        second = append_event(
+            session,
+            event_type=EventType.NODE_CONFIRMED,
+            payload={"n": 2},
+            actor="pm@acme.test",
+            workspace_id=workspace_id,
+        )
+        assert first.sequence is not None
+        assert second.sequence > first.sequence
+
+
+def test_sequence_orders_across_workspaces_and_transactions(
+    session_factory: sessionmaker[Session],
+) -> None:
+    """The sequence is global to the log, not per-workspace: replay filters by
+    workspace in SQL and only needs the relative order within it to hold."""
+    mine, theirs = uuid.uuid4(), uuid.uuid4()
+    sequences: list[int] = []
+
+    for workspace_id in (mine, theirs, mine):
+        with session_scope(session_factory) as session:
+            row = append_event(
+                session,
+                event_type=EventType.INGESTION_RUN,
+                payload={},
+                actor="system",
+                workspace_id=workspace_id,
+            )
+            sequences.append(row.sequence)
+
+    assert sequences == sorted(sequences)
+    assert len(set(sequences)) == len(sequences)
+
+
 def test_event_type_is_stored_as_its_string_value_not_member_name(
     engine: Engine, session_factory: sessionmaker[Session]
 ) -> None:
@@ -82,6 +143,22 @@ def test_event_type_is_stored_as_its_string_value_not_member_name(
     with engine.connect() as conn:
         raw_value = conn.execute(text("select event_type from event_log")).scalar_one()
         assert raw_value == "ingestion_run"
+
+
+@pytest.mark.parametrize("actor", ["", "   ", "\t\n"])
+def test_append_event_rejects_a_blank_actor(
+    session_factory: sessionmaker[Session], actor: str
+) -> None:
+    """Every event is the audit record of who did what (TRD Sec9). NOT NULL
+    doesn't catch an empty string, so the write path has to."""
+    with pytest.raises(ValueError, match="actor"), session_scope(session_factory) as session:
+        append_event(
+            session,
+            event_type=EventType.NODE_CONFIRMED,
+            payload={},
+            actor=actor,
+            workspace_id=uuid.uuid4(),
+        )
 
 
 def test_session_scope_rolls_back_on_error(session_factory: sessionmaker[Session]) -> None:

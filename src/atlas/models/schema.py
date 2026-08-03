@@ -127,7 +127,9 @@ class Node(AtlasModel):
     id: uuid.UUID = Field(default_factory=uuid.uuid4)
     type: NodeType
     content: str = Field(min_length=1)
-    confidence_score: float = Field(ge=0.0, le=1.0)
+    #: The *machine's* confidence in an extraction, so it exists only for
+    #: system-extracted nodes -- see `_confidence_score_belongs_to_extraction`.
+    confidence_score: float | None = Field(default=None, ge=0.0, le=1.0)
     status: NodeStatus = NodeStatus.UNCONFIRMED
     source_refs: list[SourceRef] = Field(min_length=1)
     created_by: CreatedBy = CreatedBy.SYSTEM
@@ -143,6 +145,24 @@ class Node(AtlasModel):
         if not value.strip():
             raise ValueError("content must not be blank or whitespace-only")
         return value
+
+    @model_validator(mode="after")
+    def _confidence_score_belongs_to_extraction(self) -> Node:
+        """`confidence_score` is present exactly when the system extracted the
+        node (TRD Sec6: manually-added nodes skip confidence scoring).
+
+        Both directions are enforced. Requiring it on `system` nodes keeps an
+        agent that omits the field from being stored as unscored; forbidding it
+        on `user` nodes keeps the field meaning one thing -- how confident the
+        extractor was -- rather than silently becoming "how sure the human felt"
+        on some rows. Editing a system node does not change `created_by`, so an
+        edited node keeps the score its extraction earned.
+        """
+        if self.created_by is CreatedBy.SYSTEM and self.confidence_score is None:
+            raise ValueError("confidence_score is required for system-extracted nodes")
+        if self.created_by is CreatedBy.USER and self.confidence_score is not None:
+            raise ValueError("confidence_score must be omitted for manually-added nodes")
+        return self
 
 
 class Edge(AtlasModel):
@@ -162,11 +182,55 @@ class Edge(AtlasModel):
         return self
 
 
+class NodeStatusChangePayload(AtlasModel):
+    """Payload of a `node_confirmed` or `node_rejected` Event (TRD Sec6).
+
+    Both actions say the same thing structurally -- "a human ruled on this node"
+    -- and carry no new content, so they share a payload. *Who* ruled and *when*
+    are not repeated here: they're the Event's own `actor`/`timestamp`, and
+    duplicating them into the payload would let the two disagree.
+    """
+
+    node_id: uuid.UUID
+
+
+class NodeEditPayload(AtlasModel):
+    """Payload of a `node_edited` Event (TRD Sec6).
+
+    Carries `previous_content` -- the content this edit replaced -- alongside the
+    new `content`. A projection holds only current state, so the before-image has
+    to live in the event itself; that is what makes an edit auditable rather than
+    a silent overwrite. `previous_content` is the value that was actually current
+    when the edit happened, not the system-extracted original: walking the chain
+    of `node_edited` events back to the `node_created` that started it recovers
+    the original (TRD Sec6), and no single event claims a before-image that was
+    never true.
+
+    Only `content` is editable. Re-typing a node (goal -> constraint) or altering
+    its provenance are separate questions the confirmation UX (slice 1B) hasn't
+    answered yet; adding an optional field to this payload later replays cleanly
+    over events written today, whereas guessing now does not.
+    """
+
+    node_id: uuid.UUID
+    content: str = Field(min_length=1)
+    previous_content: str = Field(min_length=1)
+
+    @field_validator("content", "previous_content")
+    @classmethod
+    def _not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("must not be blank or whitespace-only")
+        return value
+
+
 class Event(AtlasModel):
     """An append-only log entry -- the source of truth (TRD Sec3.1, Sec3.2).
 
     `payload` is an opaque JSON object here; for node/edge events it carries the
-    `model_dump()` of an already-validated Node/Edge (see storage.append_event).
+    `model_dump()` of an already-validated Node/Edge (see storage.append_event),
+    and for confirmation events the dump of a `NodeStatusChangePayload` /
+    `NodeEditPayload`.
     """
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4)

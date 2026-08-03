@@ -106,11 +106,14 @@ def render_projection(projection: Projection) -> RenderableType:
         nodes.add_row("", "—", "No nodes for this feature scope.", "", "", "")
     for node in sorted(projection.nodes.values(), key=lambda n: n.type.value):
         provenance = "\n".join(f"{ref.url}\n“{ref.excerpt}”" for ref in node.source_refs)
+        # Manually-added nodes carry no confidence score (TRD Sec6) -- an em dash
+        # says "not scored," where "0.00" would read as "scored, and worthless."
+        score = "—" if node.confidence_score is None else f"{node.confidence_score:.2f}"
         nodes.add_row(
             _short_id(node.id),
             node.type.value,
             node.content,
-            f"{node.confidence_score:.2f}",
+            score,
             node.status.value,
             provenance,
         )

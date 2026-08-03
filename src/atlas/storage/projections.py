@@ -13,19 +13,22 @@ The write-side validation gate is re-applied on read: a `node_created` /
 materialize out of the log any more than it could be written into it
 (CLAUDE.md: a Node without a SourceRef is structurally impossible).
 
-Phase 0 emits only `node_created` and `edge_created` (see
-Phase0_Architecture.md Sec4). The status-transition events
-(`node_confirmed/edited/rejected`) belong to Phase 1's confirmation UI; replay
-raises `NotImplementedError` on them rather than silently ignoring them, so the
-unbuilt behavior can't be depended on by accident. `ingestion_run` and
-`spec_exported` are audit-only events with no Node/Edge effect by definition and
-are skipped.
+The status-transition events (`node_confirmed`/`node_edited`/`node_rejected`,
+TRD Sec6) supersede a node in place: the reducer rebuilds it through
+`Node.model_validate` with the new status/content, so the same gate that guards
+a create also guards an edit. A transition naming a node the log never created
+raises rather than being skipped -- that combination means a corrupt log or an
+upstream bug, and swallowing it would make a confirm silently vanish.
 
-Forward note (Phase 1): once status-transition events exist, replay order
-becomes semantically load-bearing (a confirm must apply after its create).
-`load_projection` orders by `(timestamp, id)`, which is deterministic but not a
-true insertion sequence; a monotonic sequence column is the robust fix and
-should be added with the schema change that introduces those events, not now.
+There is no separate "manual add" event: TRD Sec3.1's `event_type` enum has no
+such member, so a hand-written node is a plain `node_created` with
+`created_by = user` and no confidence score. `ingestion_run` and `spec_exported`
+are audit-only events with no Node/Edge effect by definition and are skipped.
+
+Replay order is load-bearing (an edit after a confirm must win), so
+`load_projection` orders by `event_log.sequence` -- the database-assigned append
+order -- not by wall-clock `timestamp`, which two events in one transaction can
+share and a clock adjustment can invert.
 """
 
 from __future__ import annotations
@@ -33,12 +36,20 @@ from __future__ import annotations
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Protocol
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from atlas.models.schema import Edge, EventType, Node
+from atlas.models.schema import (
+    Edge,
+    EventType,
+    Node,
+    NodeEditPayload,
+    NodeStatus,
+    NodeStatusChangePayload,
+)
 from atlas.storage.tables import EventLog
 
 __all__ = ["Projection", "load_projection", "replay"]
@@ -47,22 +58,29 @@ __all__ = ["Projection", "load_projection", "replay"]
 # so replaying them is a no-op for a Node/Edge projection.
 _NO_OP_EVENTS = frozenset({EventType.INGESTION_RUN, EventType.SPEC_EXPORTED})
 
-# Emitted by Phase 1's confirmation UI; deliberately unbuilt in Phase 0.
-_PHASE_1_EVENTS = frozenset(
-    {EventType.NODE_CONFIRMED, EventType.NODE_EDITED, EventType.NODE_REJECTED}
-)
+# The confirm/reject pair: a human ruling that changes status and nothing else.
+_STATUS_ONLY_TRANSITIONS = {
+    EventType.NODE_CONFIRMED: NodeStatus.CONFIRMED,
+    EventType.NODE_REJECTED: NodeStatus.REJECTED,
+}
 
 
 class _ReplayableEvent(Protocol):
     """Structural type shared by the ORM row (`EventLog`) and the domain model
-    (`Event`): both carry the event type and its JSON payload, which is all the
-    reducer needs."""
+    (`Event`): both carry the event type, its JSON payload, and the actor and
+    timestamp a status transition stamps onto the node it supersedes."""
 
     @property
     def event_type(self) -> EventType: ...
 
     @property
     def payload(self) -> dict[str, Any]: ...
+
+    @property
+    def actor(self) -> str: ...
+
+    @property
+    def timestamp(self) -> datetime: ...
 
 
 @dataclass(frozen=True)
@@ -94,13 +112,41 @@ class Projection:
         return Projection(nodes=nodes, edges=edges)
 
 
+def _supersede(
+    nodes: dict[uuid.UUID, Node],
+    node_id: uuid.UUID,
+    event: _ReplayableEvent,
+    **changes: Any,
+) -> Node:
+    """Rebuild the node `node_id` with `changes` applied, stamped with who acted.
+
+    Deliberately re-validates through `Node.model_validate` rather than mutating
+    or `model_copy`-ing: an edit passes the same gate a create does, so no
+    transition can produce a node the schema would have refused.
+    """
+    current = nodes.get(node_id)
+    if current is None:
+        raise ValueError(
+            f"{event.event_type.value!r} names unknown node {node_id}: "
+            "the log has no node_created for it"
+        )
+    return Node.model_validate(
+        {
+            **current.model_dump(),
+            **changes,
+            "updated_by": event.actor,
+            "updated_at": event.timestamp,
+        }
+    )
+
+
 def replay(events: Iterable[_ReplayableEvent]) -> Projection:
     """Fold an ordered event stream into a `Projection`.
 
-    Caller passes events in chronological order. In Phase 0 the final state is
-    order-independent (every event creates a distinct entity, no updates), but
-    that stops being true once status-transition events land -- see the module
-    docstring's forward note.
+    Caller passes events in append order (`load_projection` orders by
+    `event_log.sequence`). Order is load-bearing: transitions supersede a node in
+    place, so the last event to touch a node wins -- which is also what makes
+    undo free, a reject followed by a confirm leaving the node confirmed.
     """
     nodes: dict[uuid.UUID, Node] = {}
     edges: dict[uuid.UUID, Edge] = {}
@@ -113,13 +159,18 @@ def replay(events: Iterable[_ReplayableEvent]) -> Projection:
         elif event_type == EventType.EDGE_CREATED:
             edge = Edge.model_validate(event.payload)
             edges[edge.id] = edge
+        elif event_type in _STATUS_ONLY_TRANSITIONS:
+            ruling = NodeStatusChangePayload.model_validate(event.payload)
+            nodes[ruling.node_id] = _supersede(
+                nodes, ruling.node_id, event, status=_STATUS_ONLY_TRANSITIONS[event_type]
+            )
+        elif event_type == EventType.NODE_EDITED:
+            edit = NodeEditPayload.model_validate(event.payload)
+            nodes[edit.node_id] = _supersede(
+                nodes, edit.node_id, event, content=edit.content, status=NodeStatus.EDITED
+            )
         elif event_type in _NO_OP_EVENTS:
             continue
-        elif event_type in _PHASE_1_EVENTS:
-            raise NotImplementedError(
-                f"{event_type.value!r} is a Phase 1 confirmation event; "
-                "projection replay does not handle it yet"
-            )
         else:  # pragma: no cover - guards against a new EventType with no handler
             raise ValueError(f"no projection handler for event type {event_type!r}")
 
@@ -138,11 +189,7 @@ def load_projection(
     happens on the replayed result (feature scope lives inside the Node payload,
     not on the event row).
     """
-    stmt = (
-        select(EventLog)
-        .where(EventLog.workspace_id == workspace_id)
-        .order_by(EventLog.timestamp, EventLog.id)
-    )
+    stmt = select(EventLog).where(EventLog.workspace_id == workspace_id).order_by(EventLog.sequence)
     projection = replay(session.execute(stmt).scalars())
     if feature_scope_id is not None:
         projection = projection.for_feature_scope(feature_scope_id)

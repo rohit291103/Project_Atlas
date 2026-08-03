@@ -151,6 +151,30 @@ def test_node_accepts_confidence_score_at_and_within_bounds(score: float) -> Non
     assert make_node(confidence_score=score).confidence_score == score
 
 
+# --- confidence_score is the *machine's* confidence (TRD Sec6) -----------------
+
+
+def test_system_node_without_a_confidence_score_is_rejected() -> None:
+    """An extraction agent that omits the score must fail the gate, not be
+    silently stored as unscored."""
+    with pytest.raises(ValidationError, match="confidence_score"):
+        make_node(created_by=CreatedBy.SYSTEM, confidence_score=None)
+
+
+def test_manually_added_node_omits_the_confidence_score() -> None:
+    """TRD Sec6: manually-added nodes (`created_by: user`) skip confidence
+    scoring -- a human assertion isn't a probabilistic guess."""
+    node = make_node(created_by=CreatedBy.USER, confidence_score=None)
+    assert node.confidence_score is None
+
+
+def test_manually_added_node_may_not_carry_a_confidence_score() -> None:
+    """The inverse of the rule above: allowing a score on a user node would make
+    `confidence_score` mean two different things depending on who created it."""
+    with pytest.raises(ValidationError, match="confidence_score"):
+        make_node(created_by=CreatedBy.USER, confidence_score=0.9)
+
+
 def test_node_rejects_empty_content() -> None:
     with pytest.raises(ValidationError):
         make_node(content="")

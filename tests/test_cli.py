@@ -22,8 +22,9 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from atlas.cli import _parse_repo, record_extraction, render_projection
 from atlas.extraction.agent import build_result
+from atlas.models.schema import CreatedBy, Node, NodeStatus, NodeType, SourceRef, SourceType
 from atlas.storage.db import Base, get_engine, get_sessionmaker, session_scope
-from atlas.storage.projections import load_projection
+from atlas.storage.projections import Projection, load_projection
 
 WORKSPACE_ID = uuid.UUID(int=0)
 FEATURE_SCOPE_ID = uuid.uuid4()
@@ -153,6 +154,33 @@ def test_render_projection_shows_content_confidence_status_and_provenance(
     for endpoint in (edge.from_node_id, edge.to_node_id):
         assert str(endpoint)[:8] in text
         assert endpoint in projection.nodes  # type: ignore[attr-defined]
+
+
+def test_render_projection_handles_a_manually_added_node_with_no_confidence() -> None:
+    """Manually-added nodes skip confidence scoring (TRD Sec6), so the report
+    must render an absent score rather than crash formatting `None`."""
+    node = Node(
+        type=NodeType.CONSTRAINT,
+        content="Must ship before the Q4 freeze.",
+        created_by=CreatedBy.USER,
+        status=NodeStatus.CONFIRMED,
+        source_refs=[
+            SourceRef(
+                source_type=SourceType.GITHUB_PR,
+                external_id="42",
+                url="https://github.com/acme/gateway/pull/42",
+                excerpt="Q4 freeze is 1 Dec.",
+                workspace_id=WORKSPACE_ID,
+            )
+        ],
+        workspace_id=WORKSPACE_ID,
+        feature_scope_id=FEATURE_SCOPE_ID,
+    )
+
+    text = _render(Projection(nodes={node.id: node}))
+
+    assert "Must ship before the Q4 freeze." in text
+    assert "confirmed" in text
 
 
 def test_render_projection_empty_scope_is_handled(
