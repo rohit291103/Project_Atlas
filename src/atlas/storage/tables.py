@@ -16,8 +16,10 @@ from sqlalchemy import (
     BigInteger,
     DateTime,
     Enum,
+    ForeignKey,
     Identity,
     Index,
+    PrimaryKeyConstraint,
     Text,
     UniqueConstraint,
     Uuid,
@@ -30,10 +32,10 @@ from sqlalchemy.sql import func
 # EventType lives in models/schema.py (the single source of truth for the domain
 # model); importing it here keeps the Postgres enum from ever drifting from the
 # schema definition. storage -> models is the correct dependency direction.
-from atlas.models.schema import EventType
+from atlas.models.schema import EventType, Role
 from atlas.storage.db import Base
 
-__all__ = ["EventLog", "EventType", "append_event"]
+__all__ = ["EventLog", "EventType", "Workspace", "WorkspaceMember", "append_event"]
 
 # On Postgres, native `uuid`; on SQLite (tests only), CHAR(32). The variant is
 # not cosmetic: SQLite gives an unrecognized `UUID` type name NUMERIC affinity,
@@ -86,6 +88,65 @@ class EventLog(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     workspace_id: Mapped[uuid.UUID] = mapped_column(_UUID, nullable=False)
+
+
+class Workspace(Base):
+    """A provisioned workspace -- the tenant boundary (TRD Sec9, slice 1D).
+
+    The nil-UUID sentinel `DEFAULT_WORKSPACE_ID` that Phase 0 stamped on every
+    event becomes a **real row here**, keeping its id
+    (`docs/decisions/2026-07-21-phase0-default-workspace-id.md` planned to
+    "reassign every nil-workspace event to the real workspace"; seeding the row
+    with the sentinel's own id reaches the same place without rewriting a single
+    append-only event, which is the better outcome for a log that is the source
+    of truth).
+
+    Unlike `event_log`, this is ordinary mutable state: a workspace is
+    configuration, not a claim about the world, so it has no reason to be
+    event-sourced.
+    """
+
+    __tablename__ = "workspace"
+
+    id: Mapped[uuid.UUID] = mapped_column(_UUID, primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class WorkspaceMember(Base):
+    """Who may act in a workspace, and in what capacity.
+
+    `actor` is the same string that lands on every Event's `actor` column -- the
+    person's name as they signed in. That is deliberate: membership and the audit
+    trail must key on the same identity, or "who confirmed this" and "who is
+    allowed to confirm" become two different questions about two different
+    people. Phase 4 replaces the string with a real user id when SSO arrives; the
+    column is the seam that makes that a migration rather than a redesign.
+    """
+
+    __tablename__ = "workspace_member"
+    __table_args__ = (
+        PrimaryKeyConstraint("workspace_id", "actor", name="pk_workspace_member"),
+        Index("ix_workspace_member_actor", "actor"),
+    )
+
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        _UUID, ForeignKey("workspace.id", ondelete="CASCADE"), nullable=False
+    )
+    actor: Mapped[str] = mapped_column(Text, nullable=False)
+    role: Mapped[Role] = mapped_column(
+        Enum(
+            Role,
+            name="workspace_role",
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
 
 
 def append_event(

@@ -154,7 +154,7 @@ def test_duplicate_node_ref_is_rejected() -> None:
 
 
 def test_edge_referencing_unknown_node_is_rejected() -> None:
-    with pytest.raises(ExtractionError, match="unknown node ref"):
+    with pytest.raises(ExtractionError, match="unknown node"):
         build(
             nodes=[raw_node("n1")],
             edges=[

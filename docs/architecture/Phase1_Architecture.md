@@ -73,6 +73,8 @@ Fixed before 1B is scaffolded, entirely inside the existing module boundary and 
 
 Test-first (`tdd` skill — projection replay and schema validation are both in its mandatory set). Leave room in the payload for slice 1D's deferred tool-call manifest (`docs/decisions/2026-07-28-extraction-tool-call-audit-logging.md`); an optional field added later replays cleanly over events written today.
 
+> **Built 2026-08-11** — `docs/decisions/2026-08-11-feature-scope-identity.md`. Shipped as described, with three things this section did not say: `Projection.feature_scopes` holds a `FeatureScope` whose `runs` **accumulate** (a feature is assembled from many sources — §6's Jira connector appends rather than replaces), its **title is last-write-wins** like the rest of the projection (with a flagged 1C question: a second *source* should probably not rename a scope), and `external_id` **fully qualifies** the artifact (`owner/repo#111`, not `111`) because a feature scope is workspace-global. `extract_from_pull_request` now returns `(IngestionRunPayload, ExtractionResult)`, and `atlas review` prints the scope title + its sources.
+
 ---
 
 ## 5. New Module Boundary (Slices 1A/1B) — *settled 2026-08-11*
@@ -93,6 +95,8 @@ Phase 0's four modules (`ingestion/`, `extraction/`, `storage/`, `cli/`) stay. P
 >
 > Frontend: `frontend/` at the **repo root** (not under `src/atlas/` — it is not a Python package and would break hatchling packaging), Vite + React + TypeScript, TS types generated from FastAPI's OpenAPI schema, no component library, no state-management library until undo/optimistic updates actually demand one.
 
+> **Built 2026-08-11** — `docs/decisions/2026-08-11-confirmation-ui-slice-1b.md`. Shipped to the shape above. Additions this section did not specify: **`ApiSettings`** is not a superset of `Settings` (the API holds no GitHub token — least privilege for our own processes); **`NonBlankStr`** in `models/schema.py` replaced four copies of the same blank-check and is reused by the API's request bodies, so a whitespace claim is a 422 at the wire rather than a 500 from the gate behind it; the one read envelope (`FeatureScopeDetail`) lives in `routes.py` and embeds the domain models rather than mirroring them. **A spec gap was found:** `confirmation-flow-spec-v1.md` §5's `u` = undo cannot fully hold — there is no `node_unconfirmed` event by design, so a node can never return to `unconfirmed`; the UI does what the log can express and says so. **Not yet done:** a real-browser pass (`frontend-reviewer`) and the actual 20-minute exit-criterion measurement with a PM.
+
 ---
 
 ## 6. Second Source — Jira (Slice 1C)
@@ -102,12 +106,16 @@ Phase 0's four modules (`ingestion/`, `extraction/`, `storage/`, `cli/`) stay. P
 - **Cross-source conflict detection (TRD §5.2):** when GitHub and Jira produce same-type nodes for the same feature scope with materially different content, emit a `conflicts_with` edge and surface both — never auto-resolve. (Phase 0 already proved the agent *can* model a self-contradicting single source via `conflicts_with` on PR #706; Phase 1 extends that across sources.)
 - **Scoped ingestion (TRD §4.2):** pull by epic/label, not a full-workspace crawl. `last_synced_at` / incremental sync stays deferred to Phase 4 — Phase 1 scopes but still re-pulls.
 
+> **Built 2026-08-11** — `docs/decisions/2026-08-11-jira-second-source-slice-1c.md`. **§10 Q4 resolved: email + API token, not OAuth 3LO** (the token carries exactly its owner's permissions — least privilege with no scope negotiation). Four things this section did not say: **ADF flattening** is a provenance problem (Jira returns rich text as a JSON tree; the excerpt must stay literal, so unknown node types are descended into rather than skipped); the **GitHub system prompt is frozen by a golden test**, so adding a source cannot silently re-word the prompt the Phase 0 eval evidence was gathered against; **cross-source `conflicts_with` required extending the gate** — a run is handed the claims other sources already produced and may point an edge at one of their ids, but *only* at an id it was actually offered, so a fabricated relationship fails the gate; and a feature scope now **keeps the title of the run that opened it** (the deliberate exception to last-write-wins, resolving the question slice 1A′ deferred here). **Not done: the Jira extraction path has no eval evidence and has never run against a real Jira site.**
+
 ---
 
 ## 7. Access Control, RBAC & Audit (Slice 1D)
 
 - **Workspace-level RBAC (TRD §9).** Phase 0's `DEFAULT_WORKSPACE_ID` nil sentinel was designed to "disappear cleanly" when real workspaces arrive (`docs/decisions/2026-07-21-phase0-default-workspace-id.md`) — that time is now. RLS enters here: the `supabase-postgres-best-practices` skill's `security-*` rules become binding, and the `security-review` workflow's RLS cross-check goes live.
 - **Audit logging.** Every Event is already an audit record (actor, timestamp, action) — TRD §9 says no separate audit system is needed. The one gap is the deferred **tool-call audit logging** (`docs/decisions/2026-07-28-extraction-tool-call-audit-logging.md`): record the per-run tool-call manifest in the `ingestion_run` event. This folds into slice 1D rather than being a standalone task, and should be done before the extraction module is extended for Jira if practical.
+
+> **Built 2026-08-11** — `docs/decisions/2026-08-11-scope-rbac-audit-slice-1d.md`. The `DEFAULT_WORKSPACE_ID` sentinel **became a real workspace row keeping its own id**, so no append-only event had to be rewritten (better than the "reassign every nil-workspace event" the 2026-07-21 decision anticipated). Membership is read from the database per request, never from the cookie; `workspace_member.actor` is the same string every Event's `actor` carries, so authorization and audit key on one identity. Roles are `admin`/`editor`/`viewer`, and the split that matters is viewer vs. the rest. Tool-call audit logging is **closed**: the permission gate records every decision including **denials**, and the manifest lands on the `ingestion_run` event as an optional field, replaying cleanly over older events. **RLS is written but not verified** — the policies are DDL in migration `b7c2f1a45d90`, the test suite runs on SQLite (which has neither `set_config` nor RLS), and **the migration has not been applied to Supabase**. Until it is, workspace isolation rests on the application-level filter alone.
 - **Least privilege / permissions mirror source (TRD §9):** a user must not see ingested content they couldn't already access at the source.
 
 ---

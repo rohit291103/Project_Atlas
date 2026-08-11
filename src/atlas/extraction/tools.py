@@ -22,13 +22,14 @@ import httpx
 from claude_agent_sdk import SdkMcpTool, tool
 
 from atlas.ingestion.github import Commit, GitHubClient, GitHubError, Issue
+from atlas.ingestion.jira import JiraClient, JiraError, JiraIssue
 
 EMIT_TOOL = "emit_extraction"
 
 # Failures the fetch tools surface to the agent (as is_error) instead of raising:
-# GitHub's own errors *and* httpx transport errors (connect/read timeouts, resets),
-# so a network blip mid-run doesn't crash the whole extraction.
-_FETCH_ERRORS = (GitHubError, httpx.HTTPError)
+# a connector's own errors *and* httpx transport errors (connect/read timeouts,
+# resets), so a network blip mid-run doesn't crash the whole extraction.
+_FETCH_ERRORS = (GitHubError, JiraError, httpx.HTTPError)
 
 # Hint schema for emit_extraction. The authoritative contract is
 # `agent.RawExtraction`; this mirrors its shape for the agent's benefit, and any
@@ -119,6 +120,75 @@ def format_search(results: tuple[Issue, ...]) -> str:
     return "\n".join(lines)
 
 
+def format_jira_issue(issue: JiraIssue) -> str:
+    lines = [
+        f"Issue {issue.key} [{issue.status}] ({issue.issue_type}) by {issue.reporter or 'unknown'}",
+        f"URL: {issue.url}",
+        f"Summary: {issue.summary}",
+        "",
+        issue.description or "(no description)",
+    ]
+    if issue.comments:
+        lines.append("")
+        lines += [f"- [{comment.author or 'unknown'}] {comment.body}" for comment in issue.comments]
+    return "\n".join(lines)
+
+
+def format_jira_search(results: tuple[JiraIssue, ...]) -> str:
+    if not results:
+        return "No matching issues."
+    return "\n".join(
+        f"- {issue.key} [{issue.status}] {issue.summary} ({issue.url})" for issue in results
+    )
+
+
+def _emit_tool() -> SdkMcpTool[Any]:
+    """The forced final tool, shared by every source's tool set -- the emit
+    contract is a property of the extraction gate, not of the connector."""
+
+    @tool(EMIT_TOOL, "Emit the final extracted nodes and edges. Call exactly once.", _EMIT_SCHEMA)
+    async def emit_extraction(args: dict[str, Any]) -> dict[str, Any]:
+        # The payload is captured from the transcript and validated in
+        # agent.build_result; this handler only acknowledges the call.
+        node_count = len(args.get("nodes", []))
+        edge_count = len(args.get("edges", []))
+        return _ok(f"Received {node_count} nodes and {edge_count} edges.")
+
+    return emit_extraction
+
+
+def build_jira_extraction_tools(client: JiraClient, project_key: str) -> list[SdkMcpTool[Any]]:
+    """Read-only Jira fetch tools plus `emit_extraction`, bound to one project.
+
+    Same two tools GitHub gets, minus a commit fetch (Jira has no commits): read
+    a linked issue the ticket actually names, and search *within this project*.
+    The project scoping is applied here rather than trusted to the agent's JQL --
+    a tool that can be talked into querying another project is not scoped.
+    """
+
+    @tool("fetch_linked_issue", "Fetch a linked Jira issue by key, e.g. GATE-43.", {"key": str})
+    async def fetch_linked_issue(args: dict[str, Any]) -> dict[str, Any]:
+        try:
+            issue = await asyncio.to_thread(client.fetch_issue, str(args["key"]))
+            return _ok(format_jira_issue(issue))
+        except _FETCH_ERRORS as exc:
+            return _error(str(exc))
+
+    @tool("search_project", "Search this Jira project's issues by text.", {"query": str})
+    async def search_project(args: dict[str, Any]) -> dict[str, Any]:
+        try:
+            # The agent supplies free text, never raw JQL: the project clause is
+            # ours, and `text ~` keeps a crafted query from becoming a new clause.
+            escaped = str(args["query"]).replace('"', " ")
+            jql = f'project = "{project_key}" AND text ~ "{escaped}"'
+            results = await asyncio.to_thread(client.search_issues, jql)
+            return _ok(format_jira_search(results))
+        except _FETCH_ERRORS as exc:
+            return _error(str(exc))
+
+    return [fetch_linked_issue, search_project, _emit_tool()]
+
+
 def build_extraction_tools(client: GitHubClient, owner: str, repo: str) -> list[SdkMcpTool[Any]]:
     """Build the read-only fetch tools plus `emit_extraction`, bound to one repo."""
 
@@ -149,12 +219,4 @@ def build_extraction_tools(client: GitHubClient, owner: str, repo: str) -> list[
         except _FETCH_ERRORS as exc:
             return _error(str(exc))
 
-    @tool(EMIT_TOOL, "Emit the final extracted nodes and edges. Call exactly once.", _EMIT_SCHEMA)
-    async def emit_extraction(args: dict[str, Any]) -> dict[str, Any]:
-        # The payload is captured from the transcript and validated in
-        # agent.build_result; this handler only acknowledges the call.
-        node_count = len(args.get("nodes", []))
-        edge_count = len(args.get("edges", []))
-        return _ok(f"Received {node_count} nodes and {edge_count} edges.")
-
-    return [fetch_linked_issue, fetch_commit, search_repo, emit_extraction]
+    return [fetch_linked_issue, fetch_commit, search_repo, _emit_tool()]

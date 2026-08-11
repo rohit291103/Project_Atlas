@@ -19,3 +19,9 @@ venv/
 .env
 .env.*
 !.env.example
+
+# Frontend (Phase 1 slice 1B)
+node_modules/
+frontend/dist/
+# Regenerated from the running app: `python -c "...create_app().openapi()" > openapi.json`
+openapi.json

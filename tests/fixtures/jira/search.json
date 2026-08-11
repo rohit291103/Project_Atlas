@@ -1,0 +1,35 @@
+{
+  "startAt": 0,
+  "maxResults": 50,
+  "total": 2,
+  "issues": [
+    {
+      "id": "10043",
+      "key": "GATE-43",
+      "fields": {
+        "summary": "Add a token-bucket limiter",
+        "issuetype": { "name": "Task" },
+        "status": { "name": "To Do" },
+        "created": "2026-06-02T09:20:00.000+0000",
+        "labels": ["gateway"],
+        "reporter": { "displayName": "Dan Okafor" },
+        "description": null,
+        "issuelinks": []
+      }
+    },
+    {
+      "id": "10044",
+      "key": "GATE-44",
+      "fields": {
+        "summary": "Document the rate-limit headers",
+        "issuetype": { "name": "Task" },
+        "status": { "name": "Done" },
+        "created": "2026-06-05T15:00:00.000+0000",
+        "labels": ["docs"],
+        "reporter": { "displayName": "Priya Raman" },
+        "description": "Plain-text description, as some API responses still return.",
+        "issuelinks": []
+      }
+    }
+  ]
+}

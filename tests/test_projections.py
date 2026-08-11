@@ -27,6 +27,7 @@ from atlas.models.schema import (
     Edge,
     Event,
     EventType,
+    IngestionRunPayload,
     Node,
     NodeEditPayload,
     NodeStatus,
@@ -101,6 +102,30 @@ def node_edited(node: Node, *, content: str, actor: str = "pm@acme.test") -> Eve
     )
 
 
+def ingestion_run(
+    *,
+    feature_scope_id: uuid.UUID = FEATURE_SCOPE_ID,
+    title: str = "ripgrep #111 -- add a --pre preprocessor flag",
+    source_type: SourceType = SourceType.GITHUB_PR,
+    external_id: str = "BurntSushi/ripgrep#111",
+    url: str = "https://github.com/BurntSushi/ripgrep/pull/111",
+    workspace_id: uuid.UUID = WORKSPACE_ID,
+) -> Event:
+    payload = IngestionRunPayload(
+        feature_scope_id=feature_scope_id,
+        title=title,
+        source_type=source_type,
+        external_id=external_id,
+        url=url,
+    )
+    return Event(
+        event_type=EventType.INGESTION_RUN,
+        payload=payload.model_dump(mode="json"),
+        actor="system",
+        workspace_id=workspace_id,
+    )
+
+
 def edge_created(edge: Edge, *, workspace_id: uuid.UUID = WORKSPACE_ID) -> Event:
     return Event(
         event_type=EventType.EDGE_CREATED,
@@ -152,14 +177,7 @@ def test_replay_preserves_all_distinct_nodes() -> None:
 
 
 def test_replay_ingestion_run_event_has_no_node_edge_effect() -> None:
-    audit = Event(
-        event_type=EventType.INGESTION_RUN,
-        payload={"pr": 42},
-        actor="system",
-        workspace_id=WORKSPACE_ID,
-    )
-
-    projection = replay([audit])
+    projection = replay([ingestion_run()])
 
     assert projection.nodes == {}
     assert projection.edges == {}
@@ -354,7 +372,121 @@ def test_replay_materializes_a_manually_added_node() -> None:
     assert materialized.confidence_score is None
 
 
+# --- feature-scope identity (slice 1A') ----------------------------------------
+
+
+def test_replay_ingestion_run_materializes_the_feature_scope() -> None:
+    """The whole point of slice 1A': after replay, the log knows what a scope
+    *is*, not merely that some nodes share a UUID."""
+    projection = replay([ingestion_run()])
+
+    scope = projection.feature_scopes[FEATURE_SCOPE_ID]
+    assert scope.id == FEATURE_SCOPE_ID
+    assert scope.title == "ripgrep #111 -- add a --pre preprocessor flag"
+    assert [run.url for run in scope.runs] == ["https://github.com/BurntSushi/ripgrep/pull/111"]
+
+
+def test_replay_revalidates_the_ingestion_run_payload() -> None:
+    """The validation gate holds on the read path here too: a scope with a blank
+    title must fail to materialize rather than render as an empty rail entry."""
+    bad = Event(
+        event_type=EventType.INGESTION_RUN,
+        payload={
+            "feature_scope_id": str(FEATURE_SCOPE_ID),
+            "title": "   ",
+            "source_type": "github_pr",
+            "external_id": "acme/repo#1",
+            "url": "https://github.com/acme/repo/pull/1",
+        },
+        actor="system",
+        workspace_id=WORKSPACE_ID,
+    )
+
+    with pytest.raises(ValidationError):
+        replay([bad])
+
+
+def test_replay_keeps_feature_scopes_distinct() -> None:
+    other_scope = uuid.uuid4()
+
+    projection = replay(
+        [
+            ingestion_run(),
+            ingestion_run(feature_scope_id=other_scope, title="acme/gateway #7 -- rate limiting"),
+        ]
+    )
+
+    assert projection.feature_scopes.keys() == {FEATURE_SCOPE_ID, other_scope}
+    assert projection.feature_scopes[other_scope].title == "acme/gateway #7 -- rate limiting"
+
+
+def test_replay_accumulates_every_run_that_fed_one_feature_scope() -> None:
+    """A feature is assembled from many sources (`docs/ux/confirmation-flow-spec-v1.md`
+    -- the "assembled from" strip). A second run against the same scope adds to
+    it rather than replacing what the first one contributed."""
+    projection = replay(
+        [
+            ingestion_run(),
+            ingestion_run(
+                source_type=SourceType.JIRA_TICKET,
+                external_id="RG-42",
+                url="https://acme.atlassian.net/browse/RG-42",
+            ),
+        ]
+    )
+
+    scope = projection.feature_scopes[FEATURE_SCOPE_ID]
+    assert [run.source_type for run in scope.runs] == [
+        SourceType.GITHUB_PR,
+        SourceType.JIRA_TICKET,
+    ]
+
+
+def test_replay_keeps_the_title_of_the_run_that_opened_the_scope() -> None:
+    """The one deliberate exception to last-write-wins (slice 1C). Adding a Jira
+    ticket to a feature a GitHub PR opened must not rename it under the reviewer
+    looking at it -- later runs contribute evidence, not a new name."""
+    projection = replay(
+        [
+            ingestion_run(),
+            ingestion_run(
+                title="GATE-42: rate limiting",
+                source_type=SourceType.JIRA_TICKET,
+                external_id="GATE-42",
+                url="https://acme.atlassian.net/browse/GATE-42",
+            ),
+        ]
+    )
+
+    scope = projection.feature_scopes[FEATURE_SCOPE_ID]
+    assert scope.title == "ripgrep #111 -- add a --pre preprocessor flag"
+    assert [run.source_type for run in scope.runs] == [
+        SourceType.GITHUB_PR,
+        SourceType.JIRA_TICKET,
+    ]
+
+
 # --- feature-scope filtering ---------------------------------------------------
+
+
+def test_for_feature_scope_keeps_only_the_matching_scope_identity() -> None:
+    other_scope = uuid.uuid4()
+
+    projection = replay([ingestion_run(), ingestion_run(feature_scope_id=other_scope)])
+    scoped = projection.for_feature_scope(FEATURE_SCOPE_ID)
+
+    assert scoped.feature_scopes.keys() == {FEATURE_SCOPE_ID}
+
+
+def test_for_feature_scope_tolerates_a_scope_with_no_ingestion_run() -> None:
+    """Events written before slice 1A' carry no ingestion_run, so a scope may
+    have nodes and no identity. That replays as an unnamed scope, not a crash."""
+    node = make_node()
+
+    scoped = replay([node_created(node)]).for_feature_scope(FEATURE_SCOPE_ID)
+
+    assert scoped.feature_scopes == {}
+    assert scoped.nodes.keys() == {node.id}
 
 
 def test_for_feature_scope_keeps_only_matching_nodes() -> None:
@@ -480,6 +612,24 @@ def test_load_projection_filters_by_feature_scope(
         projection = load_projection(session, workspace_id=WORKSPACE_ID, feature_scope_id=scope_a)
 
     assert projection.nodes.keys() == {in_a.id}
+
+
+def test_load_projection_returns_the_feature_scope_identity(
+    session_factory: sessionmaker[Session],
+) -> None:
+    """What the confirmation UI's left rail and page header read (slice 1B)."""
+    node = make_node()
+    with session_scope(session_factory) as session:
+        _write(session, ingestion_run())
+        _write(session, node_created(node))
+
+    with session_scope(session_factory) as session:
+        projection = load_projection(
+            session, workspace_id=WORKSPACE_ID, feature_scope_id=FEATURE_SCOPE_ID
+        )
+
+    assert projection.feature_scopes[FEATURE_SCOPE_ID].title.startswith("ripgrep #111")
+    assert projection.nodes.keys() == {node.id}
 
 
 def test_load_projection_orders_by_sequence_not_wall_clock_timestamp(

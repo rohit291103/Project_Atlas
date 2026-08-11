@@ -22,8 +22,14 @@ upstream bug, and swallowing it would make a confirm silently vanish.
 
 There is no separate "manual add" event: TRD Sec3.1's `event_type` enum has no
 such member, so a hand-written node is a plain `node_created` with
-`created_by = user` and no confidence score. `ingestion_run` and `spec_exported`
-are audit-only events with no Node/Edge effect by definition and are skipped.
+`created_by = user` and no confidence score. `spec_exported` is audit-only, with
+no projected effect by definition, and is skipped.
+
+`ingestion_run` projects a third thing alongside nodes and edges: the identity of
+a **feature scope** (Phase1_Architecture Sec4.4). It has no Node/Edge effect, but
+it is what makes a scope UUID mean "ripgrep #111 -- add a --pre flag" instead of
+nothing at all. Scope identity is a projection like everything else -- not a
+registry table, and not a name map living outside the log.
 
 Replay order is load-bearing (an edit after a confirm must win), so
 `load_projection` orders by `event_log.sequence` -- the database-assigned append
@@ -45,6 +51,7 @@ from sqlalchemy.orm import Session
 from atlas.models.schema import (
     Edge,
     EventType,
+    IngestionRunPayload,
     Node,
     NodeEditPayload,
     NodeStatus,
@@ -52,11 +59,11 @@ from atlas.models.schema import (
 )
 from atlas.storage.tables import EventLog
 
-__all__ = ["Projection", "load_projection", "replay"]
+__all__ = ["FeatureScope", "Projection", "load_projection", "replay"]
 
 # Audit-only events: real entries in the log, but they carry no Node/Edge state,
 # so replaying them is a no-op for a Node/Edge projection.
-_NO_OP_EVENTS = frozenset({EventType.INGESTION_RUN, EventType.SPEC_EXPORTED})
+_NO_OP_EVENTS = frozenset({EventType.SPEC_EXPORTED})
 
 # The confirm/reject pair: a human ruling that changes status and nothing else.
 _STATUS_ONLY_TRANSITIONS = {
@@ -84,8 +91,33 @@ class _ReplayableEvent(Protocol):
 
 
 @dataclass(frozen=True)
+class FeatureScope:
+    """The projected identity of one feature scope: what its UUID *means*.
+
+    `runs` is every `ingestion_run` that fed this scope, in append order -- a
+    feature is assembled from many sources, which is what the UI's "assembled
+    from" strip reads.
+
+    **`title` is the *first* run's** -- the one that opened the scope. This is a
+    deliberate exception to the last-write-wins rule the rest of the projection
+    follows, and slice 1C is what forced it: once a second *source* can join an
+    existing scope, last-wins means adding a Jira ticket silently renames a
+    feature a GitHub PR named, changing what a reviewer is looking at mid-review.
+    A feature scope is named by the artifact it was opened from; later runs add
+    evidence to it, they do not re-christen it. The cost is that re-ingesting a
+    retitled PR keeps the original name, which is the lesser wrong -- and a
+    rename, if ever wanted, should be a deliberate act with its own event rather
+    than a side effect of ingestion.
+    """
+
+    id: uuid.UUID
+    title: str
+    runs: tuple[IngestionRunPayload, ...]
+
+
+@dataclass(frozen=True)
 class Projection:
-    """Materialized Node/Edge state at a point in the event log.
+    """Materialized Node/Edge/feature-scope state at a point in the event log.
 
     Keyed by id so a future update event can supersede an entity in place by
     re-assigning the same key. Rebuilt from the log on demand -- never stored.
@@ -93,12 +125,18 @@ class Projection:
 
     nodes: dict[uuid.UUID, Node] = field(default_factory=dict)
     edges: dict[uuid.UUID, Edge] = field(default_factory=dict)
+    feature_scopes: dict[uuid.UUID, FeatureScope] = field(default_factory=dict)
 
     def for_feature_scope(self, feature_scope_id: uuid.UUID) -> Projection:
         """Narrow to one feature scope -- what `atlas review --feature-scope`
         shows. Edges are Node-scoped transitively: an edge is kept only when
         both endpoints survive the filter, so a relationship reaching a node
-        outside the scope doesn't dangle in the scoped view."""
+        outside the scope doesn't dangle in the scoped view.
+
+        A scope ingested before slice 1A' has nodes but no `ingestion_run`, so
+        its identity is simply absent -- the caller renders an unnamed scope
+        rather than being handed a fabricated title.
+        """
         nodes = {
             node_id: node
             for node_id, node in self.nodes.items()
@@ -109,7 +147,12 @@ class Projection:
             for edge_id, edge in self.edges.items()
             if edge.from_node_id in nodes and edge.to_node_id in nodes
         }
-        return Projection(nodes=nodes, edges=edges)
+        scope = self.feature_scopes.get(feature_scope_id)
+        return Projection(
+            nodes=nodes,
+            edges=edges,
+            feature_scopes={} if scope is None else {feature_scope_id: scope},
+        )
 
 
 def _supersede(
@@ -150,6 +193,7 @@ def replay(events: Iterable[_ReplayableEvent]) -> Projection:
     """
     nodes: dict[uuid.UUID, Node] = {}
     edges: dict[uuid.UUID, Edge] = {}
+    feature_scopes: dict[uuid.UUID, FeatureScope] = {}
 
     for event in events:
         event_type = event.event_type
@@ -169,12 +213,20 @@ def replay(events: Iterable[_ReplayableEvent]) -> Projection:
             nodes[edit.node_id] = _supersede(
                 nodes, edit.node_id, event, content=edit.content, status=NodeStatus.EDITED
             )
+        elif event_type == EventType.INGESTION_RUN:
+            run = IngestionRunPayload.model_validate(event.payload)
+            existing = feature_scopes.get(run.feature_scope_id)
+            feature_scopes[run.feature_scope_id] = FeatureScope(
+                id=run.feature_scope_id,
+                title=existing.title if existing else run.title,
+                runs=(*(existing.runs if existing else ()), run),
+            )
         elif event_type in _NO_OP_EVENTS:
             continue
         else:  # pragma: no cover - guards against a new EventType with no handler
             raise ValueError(f"no projection handler for event type {event_type!r}")
 
-    return Projection(nodes=nodes, edges=edges)
+    return Projection(nodes=nodes, edges=edges, feature_scopes=feature_scopes)
 
 
 def load_projection(

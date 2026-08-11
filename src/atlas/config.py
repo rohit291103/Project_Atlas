@@ -41,3 +41,55 @@ class Settings:
             github_token=os.environ["GITHUB_TOKEN"],
             supabase_db_url=os.environ["SUPABASE_DB_URL"],
         )
+
+
+@dataclass(frozen=True)
+class JiraSettings:
+    """Credentials for the second source (slice 1C).
+
+    Email + API token, not OAuth 3LO -- resolving `Phase1_Architecture.md` §10 Q4.
+    A Jira Cloud API token carries exactly the permissions of the person who
+    minted it, so least privilege (Philosophy §6) holds with no scope negotiation:
+    Atlas cannot read a project its holder could not already open. Separate from
+    `Settings` because a GitHub-only ingest must not require Jira credentials to
+    exist, and vice versa.
+    """
+
+    base_url: str
+    email: str
+    api_token: str
+
+    @classmethod
+    def from_env(cls) -> "JiraSettings":
+        return cls(
+            base_url=os.environ["JIRA_BASE_URL"],
+            email=os.environ["JIRA_EMAIL"],
+            api_token=os.environ["JIRA_API_TOKEN"],
+        )
+
+
+@dataclass(frozen=True)
+class ApiSettings:
+    """What the API process needs -- deliberately *not* a superset of `Settings`.
+
+    The API never talks to GitHub and never runs the extraction agent (there is
+    no ingest endpoint in slice 1B -- `docs/decisions/2026-08-11-api-frontend-module-boundary.md`
+    §5), so it must not require `GITHUB_TOKEN` to boot. Least-privilege applies
+    to our own processes too (Engineering Philosophy §6): the web-facing process
+    holds the database URL and its own session secrets, and nothing else.
+
+    `app_passphrase` is Phase 1's whole authentication story -- one workspace,
+    one PM (§4 of the same doc). Slice 1D's real RBAC replaces it.
+    """
+
+    supabase_db_url: str
+    app_passphrase: str
+    session_secret: str
+
+    @classmethod
+    def from_env(cls) -> "ApiSettings":
+        return cls(
+            supabase_db_url=os.environ["SUPABASE_DB_URL"],
+            app_passphrase=os.environ["ATLAS_APP_PASSPHRASE"],
+            session_secret=os.environ["ATLAS_SESSION_SECRET"],
+        )

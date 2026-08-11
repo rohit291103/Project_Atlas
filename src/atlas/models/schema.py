@@ -18,13 +18,27 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
+
+
+def _reject_blank(value: str) -> str:
+    if not value.strip():
+        raise ValueError("must not be blank or whitespace-only")
+    return value  # returned unchanged -- an excerpt's provenance must stay verbatim
+
+
+#: A required string that cannot be empty *or* whitespace-only. `min_length=1`
+#: alone lets `"   "` through, which is how a blank claim or an unattributed audit
+#: record gets stored. Defined once and reused so the rule cannot drift between
+#: the entities, the event payloads, and the API request bodies that all rely on
+#: it -- `api/` reuses this rather than re-deriving the check at the wire.
+NonBlankStr = Annotated[str, Field(min_length=1), AfterValidator(_reject_blank)]
 
 
 class AtlasModel(BaseModel):
@@ -95,6 +109,30 @@ class RelationType(StrEnum):
     DEPENDS_ON = "depends_on"
 
 
+class Role(StrEnum):
+    """What a member may do in a workspace (TRD Sec9 -- RBAC at workspace level).
+
+    Three roles, and the split that matters is `VIEWER` vs. the rest: a viewer
+    can read the extracted draft but cannot rule on it. That is the distinction
+    the product actually needs, because a confirmation *is* the product's unit of
+    truth -- "extraction is a draft until a human acts on it" means little if any
+    reader can act. `ADMIN` differs from `EDITOR` only in managing the workspace
+    itself (members, and connected sources when that surface arrives).
+
+    Feature-level scoping is explicitly Phase 4 (TRD Sec9); this is the workspace
+    -level MVP and nothing more.
+    """
+
+    ADMIN = "admin"
+    EDITOR = "editor"
+    VIEWER = "viewer"
+
+    @property
+    def can_write(self) -> bool:
+        """Whether this role may confirm, edit, reject or add a claim."""
+        return self is not Role.VIEWER
+
+
 class EventType(StrEnum):
     """Matches TRD Sec3.1 Event.event_type. storage/tables.py imports this."""
 
@@ -120,18 +158,11 @@ class SourceRef(AtlasModel):
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4)
     source_type: SourceType
-    external_id: str = Field(min_length=1)
-    url: str = Field(min_length=1)
-    excerpt: str = Field(min_length=1)
+    external_id: NonBlankStr
+    url: NonBlankStr
+    excerpt: NonBlankStr
     fetched_at: datetime = Field(default_factory=_utcnow)
     workspace_id: uuid.UUID
-
-    @field_validator("external_id", "url", "excerpt")
-    @classmethod
-    def _not_blank(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("must not be blank or whitespace-only")
-        return value  # returned unchanged -- excerpt provenance must stay verbatim
 
 
 class Node(AtlasModel):
@@ -143,7 +174,7 @@ class Node(AtlasModel):
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4)
     type: NodeType
-    content: str = Field(min_length=1)
+    content: NonBlankStr
     #: The *machine's* confidence in an extraction, so it exists only for
     #: system-extracted nodes -- see `_confidence_score_belongs_to_extraction`.
     confidence_score: float | None = Field(default=None, ge=0.0, le=1.0)
@@ -155,13 +186,6 @@ class Node(AtlasModel):
     updated_by: str | None = None
     workspace_id: uuid.UUID
     feature_scope_id: uuid.UUID
-
-    @field_validator("content")
-    @classmethod
-    def _content_not_blank(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("content must not be blank or whitespace-only")
-        return value
 
     @model_validator(mode="after")
     def _confidence_score_belongs_to_extraction(self) -> Node:
@@ -230,15 +254,66 @@ class NodeEditPayload(AtlasModel):
     """
 
     node_id: uuid.UUID
-    content: str = Field(min_length=1)
-    previous_content: str = Field(min_length=1)
+    content: NonBlankStr
+    previous_content: NonBlankStr
 
-    @field_validator("content", "previous_content")
-    @classmethod
-    def _not_blank(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("must not be blank or whitespace-only")
-        return value
+
+class ToolCallRecord(AtlasModel):
+    """One tool call an extraction run made -- or was refused (TRD Sec9 audit).
+
+    `Phase0_Architecture.md` Sec2 lists "every tool call is logged" as a guardrail
+    alongside the call cap, and it was the one guardrail not implemented
+    (`docs/decisions/2026-07-28-extraction-tool-call-audit-logging.md`). Without
+    it the read-only, least-privilege promise is *enforced* by the permission
+    gate but not **observable after the fact**, and observability is the whole
+    point of a guardrail someone else has to trust.
+
+    `allowed = False` entries are the valuable ones: they are the record of the
+    gate actually refusing something. Arguments are the agent's own (an issue
+    number, a search string) -- never credentials, which live in the client and
+    never pass through a tool call.
+    """
+
+    tool: NonBlankStr
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    allowed: bool
+
+
+class IngestionRunPayload(AtlasModel):
+    """Payload of an `ingestion_run` Event -- what a feature scope *is*.
+
+    A feature scope is minted as a bare UUID by whatever triggers ingestion, and
+    without this event the log records only that some nodes share that UUID:
+    nothing names the feature, so the confirmation UI's left rail and page header
+    have nothing to render and a reviewer navigates by raw UUID
+    (`docs/architecture/Phase1_Architecture.md` Sec4.4).
+
+    Scope identity therefore lives *in the event log*, like everything else --
+    not in a registry table or a name map inside the API. `title` is the
+    human-facing name of the feature (the PR/issue title, as fetched); the
+    `source_type`/`external_id`/`url` triple is the provenance of the run itself,
+    the same shape a `SourceRef` carries for a Node. `external_id` fully
+    qualifies the artifact within its source (`owner/repo#111`, not `111`),
+    because a feature scope is workspace-global while a bare PR number is only
+    unique inside one repository.
+
+    One scope can be fed by many runs -- that is the cross-source thesis (a
+    feature assembled from GitHub *and* Jira), so the projection accumulates them
+    rather than replacing. Slice 1D's per-run tool-call manifest
+    (`docs/decisions/2026-07-28-extraction-tool-call-audit-logging.md`) lands
+    here as an optional field, which replays cleanly over events written today;
+    `extra="forbid"` means it arrives declared rather than smuggled in.
+    """
+
+    feature_scope_id: uuid.UUID
+    title: NonBlankStr
+    source_type: SourceType
+    external_id: NonBlankStr
+    url: NonBlankStr
+    #: The run's tool-call manifest. Optional with an empty default, exactly as
+    #: slice 1A' planned for: events written before slice 1D carry no manifest and
+    #: still replay cleanly, and no backfill invents calls that were never made.
+    tool_calls: list[ToolCallRecord] = Field(default_factory=list)
 
 
 class Event(AtlasModel):
@@ -253,13 +328,6 @@ class Event(AtlasModel):
     id: uuid.UUID = Field(default_factory=uuid.uuid4)
     event_type: EventType
     payload: dict[str, Any] = Field(default_factory=dict)
-    actor: str = Field(min_length=1)
+    actor: NonBlankStr
     timestamp: datetime = Field(default_factory=_utcnow)
     workspace_id: uuid.UUID
-
-    @field_validator("actor")
-    @classmethod
-    def _actor_not_blank(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("actor must not be blank or whitespace-only")
-        return value

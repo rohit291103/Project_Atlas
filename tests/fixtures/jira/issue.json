@@ -1,0 +1,51 @@
+{
+  "id": "10042",
+  "key": "GATE-42",
+  "self": "https://acme.atlassian.net/rest/api/3/issue/10042",
+  "fields": {
+    "summary": "Rate-limit the gateway per client IP",
+    "issuetype": { "name": "Story" },
+    "status": { "name": "In Progress" },
+    "created": "2026-06-02T09:14:00.000+0000",
+    "labels": ["gateway", "reliability"],
+    "reporter": { "displayName": "Priya Raman" },
+    "parent": { "key": "GATE-1", "fields": { "summary": "Gateway hardening" } },
+    "description": {
+      "type": "doc",
+      "version": 1,
+      "content": [
+        {
+          "type": "paragraph",
+          "content": [
+            { "type": "text", "text": "Bursty clients can starve everyone else. " },
+            { "type": "text", "text": "We must throttle per client IP, not per account." }
+          ]
+        },
+        {
+          "type": "bulletList",
+          "content": [
+            {
+              "type": "listItem",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [{ "type": "text", "text": "Limits must be configurable per route." }]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "issuelinks": [
+      {
+        "type": { "name": "Blocks", "outward": "blocks" },
+        "outwardIssue": { "key": "GATE-43", "fields": { "summary": "Add a token-bucket limiter" } }
+      },
+      {
+        "type": { "name": "Relates", "inward": "relates to" },
+        "inwardIssue": { "key": "GATE-7", "fields": { "summary": "Event loop stalls under burst" } }
+      }
+    ]
+  }
+}

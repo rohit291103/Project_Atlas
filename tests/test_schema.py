@@ -20,6 +20,7 @@ from atlas.models.schema import (
     Edge,
     Event,
     EventType,
+    IngestionRunPayload,
     Node,
     NodeStatus,
     NodeType,
@@ -301,6 +302,57 @@ def test_event_forbids_extra_fields() -> None:
             workspace_id=uuid.uuid4(),
             hallucinated_field="oops",  # type: ignore[call-arg]
         )
+
+
+# --- IngestionRunPayload (feature-scope identity, slice 1A') -------------------
+
+
+def make_ingestion_run(**overrides: object) -> IngestionRunPayload:
+    data: dict[str, object] = {
+        "feature_scope_id": uuid.uuid4(),
+        "title": "Add a --pre flag to preprocess inputs",
+        "source_type": SourceType.GITHUB_PR,
+        "external_id": "BurntSushi/ripgrep#111",
+        "url": "https://github.com/BurntSushi/ripgrep/pull/111",
+    }
+    data.update(overrides)
+    return IngestionRunPayload(**data)  # type: ignore[arg-type]
+
+
+def test_ingestion_run_payload_valid_construction() -> None:
+    run = make_ingestion_run()
+    assert run.title == "Add a --pre flag to preprocess inputs"
+    assert run.source_type is SourceType.GITHUB_PR
+
+
+@pytest.mark.parametrize("field", ["title", "external_id", "url"])
+@pytest.mark.parametrize("value", ["", "   "])
+def test_ingestion_run_payload_rejects_blank_identity_fields(field: str, value: str) -> None:
+    """A scope whose title is whitespace is a scope with no identity -- which is
+    the exact failure this payload exists to fix."""
+    with pytest.raises(ValidationError):
+        make_ingestion_run(**{field: value})
+
+
+def test_ingestion_run_payload_rejects_unknown_source_type() -> None:
+    with pytest.raises(ValidationError):
+        make_ingestion_run(source_type="slack_thread")
+
+
+def test_ingestion_run_payload_forbids_extra_fields() -> None:
+    """Slice 1D's tool-call manifest arrives as a declared optional field, not as
+    an undeclared key smuggled past the gate."""
+    with pytest.raises(ValidationError):
+        make_ingestion_run(tool_calls=["fetch_pull_request"])
+
+
+def test_ingestion_run_payload_json_round_trips_for_event_payload_storage() -> None:
+    run = make_ingestion_run()
+
+    stored = json.loads(json.dumps(run.model_dump(mode="json")))
+    restored = IngestionRunPayload.model_validate(stored)
+
+    assert restored == run
 
 
 def test_schema_event_type_is_the_same_enum_storage_uses() -> None:
