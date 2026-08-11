@@ -60,9 +60,22 @@ Once confirm/edit/reject exist, **replay order becomes load-bearing** (an edit a
 ### 4.3 `confidence_score` becomes optional
 TRD §6: manually-added nodes skip scoring. `Node.confidence_score` moves from required to `float | None`, or a validator that requires it only when `created_by = system`. This is a schema change with a decision doc of its own when built (flagged in the tracker's forward notes).
 
+### 4.4 Feature-scope identity — slice 1A′
+> **Added 2026-08-11** by the `codebase-design` gate (`docs/decisions/2026-08-11-api-frontend-module-boundary.md` §3), which surfaced this as a prerequisite to 1B.
+
+`atlas ingest` mints a bare `uuid4()` feature scope and writes only `node_created`/`edge_created`. **`EventType.INGESTION_RUN` exists but is never emitted**, so the log records that nodes exist under some UUID and nothing about what that UUID *is*. The confirmation UI's left rail and page header (`docs/ux/confirmation-flow-spec-v1.md` §1, §3.1) therefore have no data source, and a PM navigating by raw UUID cannot clear the 20-minute exit criterion.
+
+Fixed before 1B is scaffolded, entirely inside the existing module boundary and event-sourced:
+- **Emit `ingestion_run`.** The enum member already exists — **no Postgres enum migration, no new event type** (same reasoning that killed `node_added` in §4.1).
+- **`IngestionRunPayload`** in `models/schema.py` — `feature_scope_id`, `title`, `source_type`, `external_id`, `url` — so it passes the same gate everything else does.
+- **`Projection` gains `feature_scopes`**: remove `INGESTION_RUN` from `_NO_OP_EVENTS` and add a handler. A feature scope is a projection, not a registry or a new table.
+- `record_extraction` writes it; `atlas ingest` takes the title from the PR it already fetched.
+
+Test-first (`tdd` skill — projection replay and schema validation are both in its mandatory set). Leave room in the payload for slice 1D's deferred tool-call manifest (`docs/decisions/2026-07-28-extraction-tool-call-audit-logging.md`); an optional field added later replays cleanly over events written today.
+
 ---
 
-## 5. New Module Boundary (Slices 1A/1B) — *pending `codebase-design`*
+## 5. New Module Boundary (Slices 1A/1B) — *settled 2026-08-11*
 
 Phase 0's four modules (`ingestion/`, `extraction/`, `storage/`, `cli/`) stay. Phase 1 adds:
 
@@ -71,7 +84,14 @@ Phase 0's four modules (`ingestion/`, `extraction/`, `storage/`, `cli/`) stay. P
 
 **The CLI (`atlas review`) is not thrown away** — it stays as the engineer-facing/debug read path and as the thing that already proves the projection→render flow. The API is a second consumer of the same projections, not a replacement.
 
-> **Gate:** this decomposition (a new `api/` module + a frontend) is a new abstraction, so per `CLAUDE.md`'s Module Boundary rule it must go through the `codebase-design` skill before scaffolding. Treat §5 as the proposal that skill pressure-tests, not a settled boundary.
+> **Gate passed 2026-08-11** — `docs/decisions/2026-08-11-api-frontend-module-boundary.md`. The decomposition above is approved as written, with four things this section did not say:
+>
+> - **`api/` owns HTTP, auth, and serialization — and no domain logic.** Every write endpoint is *authenticate → load projection → call exactly one `storage/confirmations.py` function → return*. Logic that isn't already in `storage/` belongs *in* `storage/`, not in a route handler. Flat layout — `app.py` / `deps.py` / `routes.py`, no `routers/` package, **no `api/schemas.py`** (the domain models are already Pydantic v2; a second wire-level model layer could drift from the validation gate).
+> - **A prerequisite came out of the pass: feature scopes have no identity** — no `ingestion_run` event is ever emitted, so nothing records that a scope *is* "ripgrep #111." The UX spec's left rail and page header have no data source. Fixed **before** scaffolding, as **slice 1A′** (see §4.4 below).
+> - **The auth seam is fixed independently of the auth implementation** (`deps.py::get_principal()` → frozen `Principal(workspace_id, actor)`; no route ever reads either from a request). So **§10 Q2 never blocked scaffolding — it blocks shipping.** Resolved below.
+> - **No ingest endpoint in slice 1B**, which is what keeps the API synchronous and free of any task-queue pressure. Ingestion stays CLI-triggered; connect-sources is 1C/1D surface (`docs/ux/confirmation-flow-spec-v1.md` §8).
+>
+> Frontend: `frontend/` at the **repo root** (not under `src/atlas/` — it is not a Python package and would break hatchling packaging), Vite + React + TypeScript, TS types generated from FastAPI's OpenAPI schema, no component library, no state-management library until undo/optimistic updates actually demand one.
 
 ---
 
@@ -116,7 +136,7 @@ Phase 0's four modules (`ingestion/`, `extraction/`, `storage/`, `cli/`) stay. P
 
 ## 10. Open Questions Carried Into Phase 1
 
-1. **`api/` + frontend module boundary** — must pass `codebase-design` before scaffolding (§5). Chiefly: does the API deserve its own module or live under an existing one, and how thin can it stay.
-2. **Auth for the app itself** — the exit criterion says a PM connects sources "unassisted." How does that PM authenticate *into the product* (as opposed to OAuth-ing a source)? Minimal viable answer needed before slice 1B ships; full SSO stays Phase 4.
-3. **Confirmation UX** — the actual page/flow design (`docs/ux/`) is unwritten. Needs a `feature-discussion` / design pass before slice 1B; the 20-minute exit criterion is a UX bar, not just a functional one.
+1. ~~**`api/` + frontend module boundary**~~ — **RESOLVED 2026-08-11** (`docs/decisions/2026-08-11-api-frontend-module-boundary.md`). `api/` earns its own module as a *transport boundary*, not an abstraction layer, held thin by the rule in §5's amendment. Frontend lives at `frontend/`, repo root.
+2. ~~**Auth for the app itself**~~ — **RESOLVED 2026-08-11** (same doc, §4). Seam and implementation were separated: the seam is `deps.py::get_principal()` → frozen `Principal(workspace_id, actor)`, fixed now and surviving Phase 4's RBAC; the Phase 1 implementation is a signed session cookie behind a shared passphrase, where the PM's typed name becomes `actor` on every event and `workspace_id` is `DEFAULT_WORKSPACE_ID` until slice 1D. Rejected: a `users` table (user identity ahead of 1D's RBAC, for one user) and third-party auth (hosted dependency in the exit-criterion demo; SSO is Phase 4).
+3. ~~**Confirmation UX**~~ — **RESOLVED 2026-08-11**: speced in `docs/ux/design-system-baseline-v1.md` + `docs/ux/confirmation-flow-spec-v1.md` (direction settled in `docs/decisions/2026-08-11-confirmation-ui-design-direction.md`).
 4. **Jira OAuth vs API token** for the alpha (TRD §4.1 allows either) — decide at slice 1C against the design partner's setup.
