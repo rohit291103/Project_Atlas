@@ -20,7 +20,12 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from atlas.models.schema import Role
 from atlas.storage.db import Base, get_engine, get_sessionmaker, session_scope
-from atlas.storage.rbac import WORKSPACE_SETTING, find_membership, scope_to_workspace
+from atlas.storage.rbac import (
+    WORKSPACE_SETTING,
+    find_membership,
+    scope_to_workspace,
+    workspace_session,
+)
 from atlas.storage.tables import Workspace, WorkspaceMember
 
 WORKSPACE_A = uuid.UUID(int=0)
@@ -144,3 +149,44 @@ def test_scope_is_a_no_op_where_there_is_no_row_level_security() -> None:
     scope_to_workspace(session, WORKSPACE_B)  # type: ignore[arg-type]
 
     assert session.statements == []
+
+
+def test_workspace_session_scopes_the_transaction_it_opens(
+    session_factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The RLS policy is FORCEd, so it binds the application's own role: a
+    transaction that never sets the setting reads zero rows and fails every
+    insert. Pairing the two here is what stops a caller opening an unscoped one."""
+    scoped: list[uuid.UUID] = []
+    monkeypatch.setattr(
+        "atlas.storage.rbac.scope_to_workspace",
+        lambda session, workspace_id: scoped.append(workspace_id),
+    )
+
+    with workspace_session(session_factory, WORKSPACE_A):
+        pass
+
+    assert scoped == [WORKSPACE_A]
+
+
+def test_workspace_session_commits_like_session_scope(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with workspace_session(session_factory, WORKSPACE_A) as session:
+        session.add(Workspace(id=WORKSPACE_A, name="Acme"))
+
+    with workspace_session(session_factory, WORKSPACE_A) as session:
+        assert session.get(Workspace, WORKSPACE_A) is not None
+
+
+def test_the_cli_never_opens_an_unscoped_transaction() -> None:
+    """A grep with a reason. Every CLI command touches `event_log`, so one that
+    slips back to a bare `session_scope` would work perfectly against SQLite in
+    tests and silently read nothing in production once RLS is on -- the failure
+    mode no unit test would catch."""
+    from pathlib import Path
+
+    source = (Path(__file__).parent.parent / "src" / "atlas" / "cli.py").read_text()
+
+    assert "session_scope(" not in source
+    assert "workspace_session(" in source

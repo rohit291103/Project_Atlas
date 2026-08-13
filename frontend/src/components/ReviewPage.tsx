@@ -311,29 +311,36 @@ export function ReviewPage({
         );
       })}
 
+      {/* Only the keys this role can actually use. Advertising `c confirm` to a
+          viewer teaches a shortcut that silently does nothing. */}
       <footer className="hints">
         <span>
           <kbd>j</kbd>/<kbd>k</kbd> move
         </span>
-        {!writable && <span>read-only — your role is {role}</span>}
-        <span>
-          <kbd>c</kbd> confirm
-        </span>
-        <span>
-          <kbd>e</kbd> edit
-        </span>
-        <span>
-          <kbd>x</kbd> reject
-        </span>
-        <span>
-          <kbd>a</kbd> add
-        </span>
         <span>
           <kbd>o</kbd> open source
         </span>
-        <span>
-          <kbd>u</kbd> undo
-        </span>
+        {writable ? (
+          <>
+            <span>
+              <kbd>c</kbd> confirm
+            </span>
+            <span>
+              <kbd>e</kbd> edit
+            </span>
+            <span>
+              <kbd>x</kbd> reject
+            </span>
+            <span>
+              <kbd>a</kbd> add
+            </span>
+            <span>
+              <kbd>u</kbd> undo
+            </span>
+          </>
+        ) : (
+          <span>read-only — your role is {role}</span>
+        )}
       </footer>
     </main>
   );

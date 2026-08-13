@@ -29,11 +29,18 @@ target_metadata = Base.metadata
 
 def get_url() -> str:
     """The DB URL always comes from the environment, never from alembic.ini
-    (CLAUDE.md: no secret ever lands anywhere but env/secrets manager)."""
-    url = os.environ.get("SUPABASE_DB_URL")
+    (CLAUDE.md: no secret ever lands anywhere but env/secrets manager).
+
+    Migrations need DDL rights; the application deliberately does not have them
+    (see `c3d8e1f60b21` -- it connects as the NOBYPASSRLS `atlas_app` role so
+    row-level security actually binds). So Alembic prefers the admin URL and
+    only falls back to `SUPABASE_DB_URL` for setups predating that split.
+    """
+    url = os.environ.get("SUPABASE_DB_ADMIN_URL") or os.environ.get("SUPABASE_DB_URL")
     if not url:
         raise RuntimeError(
-            "SUPABASE_DB_URL is not set. Alembic needs it to connect -- see .env.example."
+            "Neither SUPABASE_DB_ADMIN_URL nor SUPABASE_DB_URL is set. "
+            "Alembic needs an owner-level URL to connect -- see .env.example."
         )
     return normalize_database_url(url)
 

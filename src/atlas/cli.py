@@ -40,8 +40,9 @@ from atlas.extraction.agent import (
 from atlas.ingestion.github import GitHubClient, GitHubError
 from atlas.ingestion.jira import JiraClient, JiraError
 from atlas.models.schema import EventType, IngestionRunPayload
-from atlas.storage.db import get_engine, get_sessionmaker, session_scope
+from atlas.storage.db import get_engine, get_sessionmaker
 from atlas.storage.projections import Projection, load_projection
+from atlas.storage.rbac import workspace_session
 from atlas.storage.tables import append_event
 
 app = typer.Typer(help="Project Atlas -- Phase 0 extraction CLI.")
@@ -220,7 +221,7 @@ def ingest(repo: str, pr: int) -> None:
         client.close()
 
     session_factory = get_sessionmaker(get_engine(settings.supabase_db_url))
-    with session_scope(session_factory) as session:
+    with workspace_session(session_factory, DEFAULT_WORKSPACE_ID) as session:
         record_extraction(session, result, workspace_id=DEFAULT_WORKSPACE_ID, ingestion_run=run)
 
     console.print(
@@ -290,7 +291,7 @@ def ingest_jira(
         for key in keys:
             # Re-read per issue: an issue ingested earlier in this same loop is
             # itself context the next one can conflict with.
-            with session_scope(session_factory) as session:
+            with workspace_session(session_factory, DEFAULT_WORKSPACE_ID) as session:
                 known = list(
                     load_projection(
                         session, workspace_id=DEFAULT_WORKSPACE_ID, feature_scope_id=scope_id
@@ -305,7 +306,7 @@ def ingest_jira(
                     known_nodes=known,
                 )
             )
-            with session_scope(session_factory) as session:
+            with workspace_session(session_factory, DEFAULT_WORKSPACE_ID) as session:
                 record_extraction(
                     session, result, workspace_id=DEFAULT_WORKSPACE_ID, ingestion_run=run
                 )
@@ -332,7 +333,7 @@ def review(feature_scope: str) -> None:
     scope_id = _parse_scope(feature_scope)
 
     session_factory = get_sessionmaker(get_engine(_require_db_url()))
-    with session_scope(session_factory) as session:
+    with workspace_session(session_factory, DEFAULT_WORKSPACE_ID) as session:
         projection = load_projection(
             session, workspace_id=DEFAULT_WORKSPACE_ID, feature_scope_id=scope_id
         )

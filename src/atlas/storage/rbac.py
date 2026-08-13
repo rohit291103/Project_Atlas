@@ -19,15 +19,18 @@ Two jobs, both about the tenant boundary:
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 from sqlalchemy import select, text
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from atlas.models.schema import Role
+from atlas.storage.db import session_scope
 from atlas.storage.tables import WorkspaceMember
 
-__all__ = ["Membership", "find_membership", "scope_to_workspace"]
+__all__ = ["Membership", "find_membership", "scope_to_workspace", "workspace_session"]
 
 #: Read by the RLS policies in migration `b7c2f1a45d90`. Namespaced so it cannot
 #: collide with anything Postgres or Supabase sets.
@@ -82,3 +85,25 @@ def scope_to_workspace(session: Session, workspace_id: uuid.UUID) -> None:
         text(f"SELECT set_config('{WORKSPACE_SETTING}', :workspace_id, true)"),
         {"workspace_id": str(workspace_id)},
     )
+
+
+@contextmanager
+def workspace_session(
+    session_factory: sessionmaker[Session], workspace_id: uuid.UUID
+) -> Iterator[Session]:
+    """A transaction already scoped to one workspace -- the only way non-API code
+    should open one once RLS is enabled.
+
+    This exists because the policy is `FORCE`d, which means it binds the
+    application's own role: a transaction that never sets the setting reads
+    **zero rows** and fails every insert's `WITH CHECK`. So `session_scope` alone
+    is no longer sufficient for anything that touches `event_log`, and pairing the
+    two here makes forgetting structurally hard rather than a thing to remember.
+
+    The API cannot use this -- it does not know the workspace until it has read
+    the session cookie, so `deps.get_principal` scopes the transaction after
+    resolving membership instead.
+    """
+    with session_scope(session_factory) as session:
+        scope_to_workspace(session, workspace_id)
+        yield session

@@ -45,6 +45,21 @@ __all__ = [
 API_ROOT = "/rest/api/3"
 _MAX_SEARCH_RESULTS = 50  # hard ceiling; scoped ingestion (slice 1D) sets its own
 
+#: What `/search/jql` must be asked for by name -- it returns bare ids otherwise.
+#: Exactly the fields `_Parser.issue` reads, so search results and `fetch_issue`
+#: produce the same shape of issue (minus comments, which search never returns).
+_SEARCH_FIELDS = (
+    "summary",
+    "description",
+    "status",
+    "issuetype",
+    "reporter",
+    "created",
+    "labels",
+    "parent",
+    "issuelinks",
+)
+
 
 class JiraError(RuntimeError):
     """A non-success response from the Jira API.
@@ -228,6 +243,14 @@ class _Parser:
     def issue(self, data: dict[str, Any], comments: tuple[JiraComment, ...]) -> JiraIssue:
         fields = data.get("fields") or {}
         key = str(data.get("key", ""))
+        if not key:
+            # The key is what every provenance URL for this issue is built from, so
+            # a blank one yields `<site>/browse/` -- a link that resolves to a page
+            # having nothing to do with the claim. Provenance that points at the
+            # wrong thing is worse than provenance that is missing, because nothing
+            # downstream can tell. Fail here instead (CLAUDE.md: a Node without a
+            # sound SourceRef is a bug, not an edge case).
+            raise JiraError(0, f"Jira returned an issue with no key: {sorted(data)}")
         parent = fields.get("parent")
         labels = fields.get("labels")
         return JiraIssue(
@@ -309,10 +332,20 @@ class JiraClient:
         epic/label, so a scope is pulled deliberately rather than by crawling a
         whole Jira site. Results carry no comments (the search endpoint doesn't
         return them); `fetch_issue` gets those when an issue is actually read.
+
+        `fields` is not optional. `/search/jql` returns **only issue ids** when it
+        is omitted -- not an error, just objects with nothing in them, which parse
+        into issues whose key, summary and provenance URL are all empty strings.
+        The predecessor endpoint returned a default field set, which is why this
+        reads like a redundant parameter and is not one.
         """
         data = self._get(
             f"{API_ROOT}/search/jql",
-            params={"jql": jql, "maxResults": min(limit, _MAX_SEARCH_RESULTS)},
+            params={
+                "jql": jql,
+                "maxResults": min(limit, _MAX_SEARCH_RESULTS),
+                "fields": ",".join(_SEARCH_FIELDS),
+            },
         )
         return tuple(self._parser.issue(issue, ()) for issue in data.get("issues", []))
 

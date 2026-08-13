@@ -501,6 +501,16 @@ button {
   font-weight: 600;
 }
 
+/* A reviewed, unfocused card recedes — its conflict shrinks to a marker rather
+   than vanishing, so a done item stops shouting without losing the warning. */
+.conflict--compact {
+  background: transparent;
+  border-color: transparent;
+  padding: 0;
+  font-size: var(--text-xs);
+  color: var(--text-3);
+}
+
 .conflict__target {
   color: var(--text-2);
 }

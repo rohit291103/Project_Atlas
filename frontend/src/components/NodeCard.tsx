@@ -30,7 +30,10 @@ function Provenance({ refs }: { refs: SourceRef[] }) {
               aria-expanded={expanded}
               onClick={() => setExpanded((open) => !open)}
             >
-              {expanded ? "▾" : "▸"} “{ref.excerpt}”
+              {/* Collapsed, this line *is* the excerpt (clipped to one line).
+                  Expanded, the well below carries it in full — so the line steps
+                  aside rather than repeating the same words twice. */}
+              {expanded ? "▾ hide excerpt" : `▸ “${ref.excerpt}”`}
             </button>
             {ref.source_type === "human_assertion" ? (
               <span className="provenance__asserted">asserted by {ref.external_id}</span>
@@ -46,7 +49,7 @@ function Provenance({ refs }: { refs: SourceRef[] }) {
               </a>
             )}
           </div>
-          {expanded && <div className="provenance__well">{ref.excerpt}</div>}
+          {expanded && <div className="provenance__well">“{ref.excerpt}”</div>}
         </div>
       ))}
     </div>
@@ -128,6 +131,7 @@ export function NodeCard({
   const ref = useRef<HTMLDivElement>(null);
   const status = STATUS_MARKS[node.status];
   const reviewed = node.status !== "unconfirmed";
+  const receded = reviewed && !focused;
 
   useEffect(() => {
     if (focused) ref.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -166,8 +170,12 @@ export function NodeCard({
         <p className="card__claim">{node.content}</p>
       )}
 
+      {/* A conflict never disappears — confirming one side does not resolve it
+          (TRD §5.2). But once a card is reviewed and unfocused it recedes, and a
+          full-loud banner there would make a *done* item the noisiest thing on
+          the page. So it shrinks to a marker and keeps the signal. */}
       {conflicts.map((other) => (
-        <div className="conflict" key={other.id}>
+        <div className={`conflict ${receded ? "conflict--compact" : ""}`} key={other.id}>
           <span className="conflict__mark" aria-hidden>
             ⚠
           </span>
@@ -176,8 +184,10 @@ export function NodeCard({
             {/* Naming the other side's source is the point: a requirement in a PR
                 contradicting a decision in Jira is the thing no single tool could
                 have shown you (design baseline §6.6). */}
-            {crossesSource(node, other) && <> in {sourceLabel(other)}</>}{" "}
-            <span className="conflict__target">— “{other.content}”</span>
+            {crossesSource(node, other) && <> in {sourceLabel(other)}</>}
+            {!receded && (
+              <span className="conflict__target"> — “{other.content}”</span>
+            )}
           </span>
         </div>
       ))}

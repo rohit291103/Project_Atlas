@@ -169,6 +169,37 @@ def test_search_issues_parses_results_and_sends_the_jql() -> None:
     assert seen["maxResults"] == "25"
 
 
+def test_search_asks_for_fields_by_name() -> None:
+    """`/search/jql` returns bare issue ids when `fields` is omitted -- no error,
+    just objects that parse into issues with an empty key and a provenance URL of
+    `<site>/browse/`. Caught only by running against a live Jira, so it gets a
+    test that fails if the parameter is ever dropped again."""
+    seen: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.update(request.url.params)
+        return route_fixtures(request)
+
+    make_client(handler).search_issues("project = GATE")
+
+    requested = set(seen["fields"].split(","))
+    assert {"summary", "description", "status", "issuetype", "labels", "parent"} <= requested
+
+
+def test_an_issue_with_no_key_is_rejected() -> None:
+    """A blank key builds `<site>/browse/` -- a link to something other than the
+    claim. Provenance pointing at the wrong page is worse than none, because
+    nothing downstream can tell the difference."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/comment"):
+            return httpx.Response(200, json={"comments": []})
+        return httpx.Response(200, json={"id": "10009"})  # what a fields-less search returns
+
+    with pytest.raises(JiraError, match="no key"):
+        make_client(handler).fetch_issue("GATE-42")
+
+
 def test_search_result_with_a_plain_string_description_still_parses() -> None:
     issues = make_client(route_fixtures).search_issues("project = GATE")
 

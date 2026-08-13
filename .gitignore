@@ -25,3 +25,5 @@ node_modules/
 frontend/dist/
 # Regenerated from the running app: `python -c "...create_app().openapi()" > openapi.json`
 openapi.json
+frontend/test-results/
+frontend/playwright-report/

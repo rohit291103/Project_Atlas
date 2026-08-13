@@ -78,9 +78,12 @@ def upgrade() -> None:
     # The sentinel, provisioned. Every event written in Phase 0 and Phase 1 up to
     # this point already carries this id, so they all become rows of a real
     # workspace with no data rewritten.
+    # The CAST is load-bearing: a bound Python str binds as VARCHAR, which
+    # Postgres will not implicitly coerce to uuid on INSERT.
     op.execute(
         sa.text(
-            "INSERT INTO workspace (id, name) VALUES (:id, :name) ON CONFLICT (id) DO NOTHING"
+            "INSERT INTO workspace (id, name) VALUES (CAST(:id AS uuid), :name) "
+            "ON CONFLICT (id) DO NOTHING"
         ).bindparams(id=NIL_WORKSPACE, name="Default workspace")
     )
 
