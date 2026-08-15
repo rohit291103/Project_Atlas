@@ -1,0 +1,77 @@
+{
+ "nodes": [
+  {
+   "id": "ad9c93f8-bc57-468d-82b0-c7a18ab52410",
+   "type": "requirement",
+   "content": "Users should be able to import existing work from a CSV or another tool such as Asana or Notion.",
+   "confidence_score": 0.6,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "24febbc7-d221-4a92-b701-7ce1ea0f5c75",
+     "source_type": "jira_ticket",
+     "external_id": "SCRUM-1",
+     "url": "https://rohitg291103.atlassian.net/browse/SCRUM-1",
+     "excerpt": "Have existing work? Import from a CSV or another tool (like Asana or Notion).",
+     "fetched_at": "2026-08-14T13:33:44.568955Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-08-14T13:33:44.569090Z",
+   "updated_at": "2026-08-14T13:33:44.569092Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "f6952736-897c-46dc-bca3-ae9ecb14ca59"
+  },
+  {
+   "id": "d8731fc3-cd19-4ac6-b14c-9bdf3f7bb4ea",
+   "type": "requirement",
+   "content": "Users should be able to use Rovo, the AI assistant, to turn an idea into structured tasks instantly.",
+   "confidence_score": 0.6,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "ca1952be-8226-41a3-ad32-e9c5787e7dff",
+     "source_type": "jira_ticket",
+     "external_id": "SCRUM-1",
+     "url": "https://rohitg291103.atlassian.net/browse/SCRUM-1",
+     "excerpt": "Have an idea to plan out? Use Rovo, your AI assistant, to turn it into structured tasks instantly.",
+     "fetched_at": "2026-08-14T13:33:44.569137Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-08-14T13:33:44.569151Z",
+   "updated_at": "2026-08-14T13:33:44.569151Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "f6952736-897c-46dc-bca3-ae9ecb14ca59"
+  },
+  {
+   "id": "5dc16894-50c3-4b62-99d1-a900d40b8363",
+   "type": "goal",
+   "content": "Accelerate work by using AI agents to refine tasks and drive projects forward.",
+   "confidence_score": 0.6,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "8472a10a-4e84-4934-88f7-cdf3ded9a5c4",
+     "source_type": "jira_ticket",
+     "external_id": "SCRUM-1",
+     "url": "https://rohitg291103.atlassian.net/browse/SCRUM-1",
+     "excerpt": "Want to accelerate work? Use AI agents to refine tasks and drive projects forward.",
+     "fetched_at": "2026-08-14T13:33:44.569166Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-08-14T13:33:44.569176Z",
+   "updated_at": "2026-08-14T13:33:44.569177Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "f6952736-897c-46dc-bca3-ae9ecb14ca59"
+  }
+ ],
+ "edges": []
+}

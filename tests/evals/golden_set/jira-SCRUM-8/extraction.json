@@ -1,0 +1,222 @@
+{
+ "nodes": [
+  {
+   "id": "a4a40b2b-c8b2-4004-84f1-f242ef40c182",
+   "type": "decision",
+   "content": "--maxdepth counts levels from the user's current working directory, not from the search starting points passed on the command line.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "5ac68edd-cb21-4921-b7d7-94093db31ae0",
+     "source_type": "jira_ticket",
+     "external_id": "SCRUM-8",
+     "url": "https://rohitg291103.atlassian.net/browse/SCRUM-8",
+     "excerpt": "--maxdepth counts levels from the user's current working directory, not from the search starting points passed on the command line",
+     "fetched_at": "2026-08-15T07:42:05.201197Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-08-15T07:42:05.201248Z",
+   "updated_at": "2026-08-15T07:42:05.201248Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "88e33143-889f-4e8e-81a7-ad2b03614d61"
+  },
+  {
+   "id": "a5ffbb55-559d-43be-b4f8-b63c8922b20e",
+   "type": "requirement",
+   "content": "--maxdepth 0 must still return matches in files sitting directly inside the current directory.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "4661287f-7837-41d7-8a55-cf6480b61dbd",
+     "source_type": "jira_ticket",
+     "external_id": "SCRUM-8",
+     "url": "https://rohitg291103.atlassian.net/browse/SCRUM-8",
+     "excerpt": "--maxdepth 0 should still return matches in files sitting directly inside the current directory",
+     "fetched_at": "2026-08-15T07:42:05.201268Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-08-15T07:42:05.201273Z",
+   "updated_at": "2026-08-15T07:42:05.201273Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "88e33143-889f-4e8e-81a7-ad2b03614d61"
+  },
+  {
+   "id": "96842e54-9a2d-46b5-a8d9-a46c8e007b85",
+   "type": "requirement",
+   "content": "The help text and documentation must say \"current directory\" throughout.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "30b11e0f-f84a-4a7d-adb5-2a4bf28245dd",
+     "source_type": "jira_ticket",
+     "external_id": "SCRUM-8",
+     "url": "https://rohitg291103.atlassian.net/browse/SCRUM-8",
+     "excerpt": "The help text and documentation must say \"current directory\" throughout",
+     "fetched_at": "2026-08-15T07:42:05.201278Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-08-15T07:42:05.201282Z",
+   "updated_at": "2026-08-15T07:42:05.201282Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "88e33143-889f-4e8e-81a7-ad2b03614d61"
+  },
+  {
+   "id": "f9bab1c4-3151-4656-af3b-a6ac780728f7",
+   "type": "rejected_alternative",
+   "content": "Matching GNU find's --maxdepth semantics was explicitly rejected; consistency with the older tool is valued less than matching user expectations.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "fcff50ba-d170-47b3-b00c-3d33b409dd83",
+     "source_type": "jira_ticket",
+     "external_id": "SCRUM-8",
+     "url": "https://rohitg291103.atlassian.net/browse/SCRUM-8",
+     "excerpt": "We are explicitly not matching GNU find here -- consistency with a 1990s tool is worth less than matching what our users expect",
+     "fetched_at": "2026-08-15T07:42:05.201286Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-08-15T07:42:05.201290Z",
+   "updated_at": "2026-08-15T07:42:05.201290Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "88e33143-889f-4e8e-81a7-ad2b03614d61"
+  },
+  {
+   "id": "aba43a16-38f3-41c1-b8f1-775fd3f1c5c8",
+   "type": "goal",
+   "content": "Match what users expect: users reason about where they are (the current directory), not about the arguments they happened to type.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "005ca0ca-f704-4857-8fb8-c62d32ed1e94",
+     "source_type": "jira_ticket",
+     "external_id": "SCRUM-8",
+     "url": "https://rohitg291103.atlassian.net/browse/SCRUM-8",
+     "excerpt": "Users reason about where they are, not about what they happened to type as arguments",
+     "fetched_at": "2026-08-15T07:42:05.201294Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-08-15T07:42:05.201297Z",
+   "updated_at": "2026-08-15T07:42:05.201298Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "88e33143-889f-4e8e-81a7-ad2b03614d61"
+  },
+  {
+   "id": "af0ae266-346b-4dd2-bb93-92adb5cefbe1",
+   "type": "goal",
+   "content": "Give engineers working in large monorepos a way to stop ripgrep descending into deeply nested vendored directories, by shipping a depth-limit flag.",
+   "confidence_score": 0.6,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "7c35f908-76e2-41e0-87a5-01e9c6f8bfb3",
+     "source_type": "jira_ticket",
+     "external_id": "SCRUM-6",
+     "url": "https://rohitg291103.atlassian.net/browse/SCRUM-6",
+     "excerpt": "Engineers working in large monorepos need a way to stop ripgrep descending into deeply nested vendored directories",
+     "fetched_at": "2026-08-15T07:42:05.201302Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-08-15T07:42:05.201305Z",
+   "updated_at": "2026-08-15T07:42:05.201305Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "88e33143-889f-4e8e-81a7-ad2b03614d61"
+  },
+  {
+   "id": "2d08dbcb-ae54-4982-8a6d-0f89d45efa54",
+   "type": "problem",
+   "content": "The only current workaround is an .rgignore file, which must be copied from repository to repository and drifts out of date.",
+   "confidence_score": 0.6,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "26c2be61-8394-4d4a-a17e-8a48fb6d1fe4",
+     "source_type": "jira_ticket",
+     "external_id": "SCRUM-6",
+     "url": "https://rohitg291103.atlassian.net/browse/SCRUM-6",
+     "excerpt": "the only workaround is an .rgignore file, which has to be copied from repository to repository and drifts out of date",
+     "fetched_at": "2026-08-15T07:42:05.201309Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-08-15T07:42:05.201313Z",
+   "updated_at": "2026-08-15T07:42:05.201313Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "88e33143-889f-4e8e-81a7-ad2b03614d61"
+  }
+ ],
+ "edges": [
+  {
+   "id": "8ef51a19-e66f-4ded-bad1-a5167f5e2724",
+   "from_node_id": "a4a40b2b-c8b2-4004-84f1-f242ef40c182",
+   "to_node_id": "aba43a16-38f3-41c1-b8f1-775fd3f1c5c8",
+   "relation_type": "implements",
+   "confidence_score": 0.9,
+   "created_at": "2026-08-15T07:42:05.201331Z"
+  },
+  {
+   "id": "f596b892-a59b-4674-877a-a547210f95dd",
+   "from_node_id": "a4a40b2b-c8b2-4004-84f1-f242ef40c182",
+   "to_node_id": "f9bab1c4-3151-4656-af3b-a6ac780728f7",
+   "relation_type": "rejects",
+   "confidence_score": 0.9,
+   "created_at": "2026-08-15T07:42:05.201343Z"
+  },
+  {
+   "id": "bd3ae045-1629-4373-bf4c-8f864c8e2b35",
+   "from_node_id": "a5ffbb55-559d-43be-b4f8-b63c8922b20e",
+   "to_node_id": "a4a40b2b-c8b2-4004-84f1-f242ef40c182",
+   "relation_type": "derives_from",
+   "confidence_score": 0.9,
+   "created_at": "2026-08-15T07:42:05.201346Z"
+  },
+  {
+   "id": "70b54962-d401-45db-9f1f-33dbef90e34f",
+   "from_node_id": "96842e54-9a2d-46b5-a8d9-a46c8e007b85",
+   "to_node_id": "a4a40b2b-c8b2-4004-84f1-f242ef40c182",
+   "relation_type": "derives_from",
+   "confidence_score": 0.9,
+   "created_at": "2026-08-15T07:42:05.201349Z"
+  },
+  {
+   "id": "7f376d34-8a20-49bc-9a16-c1e849cb32de",
+   "from_node_id": "af0ae266-346b-4dd2-bb93-92adb5cefbe1",
+   "to_node_id": "2d08dbcb-ae54-4982-8a6d-0f89d45efa54",
+   "relation_type": "derives_from",
+   "confidence_score": 0.6,
+   "created_at": "2026-08-15T07:42:05.201352Z"
+  },
+  {
+   "id": "74a23cb5-e31d-49de-b75d-9874d7166551",
+   "from_node_id": "a4a40b2b-c8b2-4004-84f1-f242ef40c182",
+   "to_node_id": "af0ae266-346b-4dd2-bb93-92adb5cefbe1",
+   "relation_type": "depends_on",
+   "confidence_score": 0.3,
+   "created_at": "2026-08-15T07:42:05.201356Z"
+  }
+ ]
+}

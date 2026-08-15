@@ -35,6 +35,7 @@ import os
 from collections.abc import Sequence
 
 from alembic import op
+from sqlalchemy.engine import Connection
 
 revision: str = "c3d8e1f60b21"
 down_revision: str | Sequence[str] | None = "b7c2f1a45d90"
@@ -42,6 +43,38 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 APP_ROLE = "atlas_app"
+
+
+def _set_password(conn: Connection, password: str) -> None:
+    """Set the role's password without the plaintext ever reaching an error path.
+
+    `ALTER ROLE ... PASSWORD` takes no bind parameter, so the literal has to be
+    inlined into the statement text -- quoted by the server via `quote_literal`
+    rather than by string formatting here, so a password containing a quote can
+    neither break out nor be mis-escaped.
+
+    The statement text is therefore a secret. A driver exception carries the
+    statement that failed, so an unwrapped failure (role renamed, permission
+    revoked, connection dropped mid-statement) would print the cleartext password
+    to stderr and into whatever captured it -- CI log, scrollback, error tracker.
+    Both statements are wrapped so the original exception is dropped, not
+    chained: `from None` matters, because a chained cause prints too.
+    """
+    try:
+        quoted = conn.exec_driver_sql("SELECT quote_literal(%s)", (password,)).scalar()
+    except Exception as exc:
+        raise RuntimeError(
+            f"Failed to quote the {APP_ROLE} password (error text withheld: it may "
+            f"echo the value). Original exception type: {type(exc).__name__}"
+        ) from None
+    try:
+        conn.exec_driver_sql(f"ALTER ROLE {APP_ROLE} PASSWORD {quoted}")
+    except Exception as exc:
+        raise RuntimeError(
+            f"ALTER ROLE {APP_ROLE} PASSWORD failed (error text withheld: it would "
+            f"contain the password in cleartext). Original exception type: "
+            f"{type(exc).__name__}. Re-run with a psql session to diagnose."
+        ) from None
 
 
 def upgrade() -> None:
@@ -65,10 +98,7 @@ def upgrade() -> None:
         """
     )
 
-    # `ALTER ROLE ... PASSWORD` takes no bind parameter, so the literal is quoted
-    # by the server rather than by string formatting here.
-    quoted = conn.exec_driver_sql("SELECT quote_literal(%s)", (password,)).scalar()
-    conn.exec_driver_sql(f"ALTER ROLE {APP_ROLE} PASSWORD {quoted}")
+    _set_password(conn, password)
 
     conn.exec_driver_sql(f"GRANT USAGE ON SCHEMA public TO {APP_ROLE}")
     # Append-only, enforced by the grant and not by convention.

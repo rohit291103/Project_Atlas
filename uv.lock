@@ -103,6 +103,7 @@ source = { editable = "." }
 dependencies = [
     { name = "alembic" },
     { name = "claude-agent-sdk" },
+    { name = "cryptography" },
     { name = "fastapi" },
     { name = "httpx" },
     { name = "itsdangerous" },
@@ -129,6 +130,7 @@ dev = [
 requires-dist = [
     { name = "alembic" },
     { name = "claude-agent-sdk" },
+    { name = "cryptography", specifier = ">=43" },
     { name = "fastapi", specifier = ">=0.141.1" },
     { name = "httpx" },
     { name = "itsdangerous", specifier = ">=2.2.0" },

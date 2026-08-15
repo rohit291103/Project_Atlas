@@ -28,11 +28,11 @@ from atlas.models.schema import SourceType
 # Node types the agent may emit, kept in lockstep with models.schema.NodeType so
 # the prompt and the validation gate describe the same vocabulary.
 _NODE_TYPE_GUIDE = """\
-- goal: an intended outcome or objective
+- goal: the outcome the work is meant to achieve -- why it is being done
 - problem: a pain point or motivating issue
 - evidence: a concrete observation supporting a claim
 - decision: a choice that was made
-- requirement: something the solution must do
+- requirement: something the solution must do -- what it must do
 - constraint: a limit the solution must respect
 - architecture_note: a technical design detail
 - open_question: an unresolved question
@@ -65,7 +65,14 @@ use the available tools \
 before extracting from it. Use at most a handful of tool calls.
 4. Flag conflicts, don't resolve them. If two sources disagree on the same \
 point, emit both Nodes and a `conflicts_with` Edge between them.
-5. Finish with exactly one call to `emit_extraction`, passing every Node and \
+5. ONE CLAIM, ONE NODE. Never emit two Nodes that assert the same thing in \
+different words, and never emit two Nodes from the same excerpt unless they \
+genuinely say different things. A sentence often states an outcome *and* what \
+must be built to reach it -- pick the single type that fits it best and emit it \
+once. A `goal` that restates a `requirement` or `decision` you have already \
+emitted is a duplicate, not a second claim, and it forces a reviewer to rule \
+twice on one idea.
+6. Finish with exactly one call to `emit_extraction`, passing every Node and \
 Edge. Give each Node a short local `ref` (e.g. "n1") and wire Edges by \
 `from_ref`/`to_ref`. Do not write anything to any system -- extraction is \
 read-only.

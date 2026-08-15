@@ -1,0 +1,20 @@
+{
+ "issue": {
+  "comments": [],
+  "created_at": "2026-08-13T22:47:14.370000+05:30",
+  "description": "Engineers working in large monorepos need a way to stop ripgrep descending into deeply nested vendored directories. Today the only workaround is an .rgignore file, which has to be copied from repository to repository and drifts out of date.\nThis epic covers shipping a depth limit flag and, more importantly, agreeing what its behaviour actually is before we document it.",
+  "issue_type": "Epic",
+  "key": "SCRUM-6",
+  "labels": [
+   "maxdepth"
+  ],
+  "links": [],
+  "parent_key": null,
+  "reporter": "Rohit Gupta",
+  "status": "Idea",
+  "summary": "Depth-limited search for large monorepos",
+  "url": "https://rohitg291103.atlassian.net/browse/SCRUM-6"
+ },
+ "issue_key": "SCRUM-6",
+ "site": "https://rohitg291103.atlassian.net/"
+}

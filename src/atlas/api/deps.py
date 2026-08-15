@@ -41,7 +41,9 @@ __all__ = [
     "WriterDep",
     "require_writer",
     "SessionDep",
+    "SessionFactoryDep",
     "SettingsDep",
+    "get_session_factory",
     "SESSION_COOKIE",
     "get_api_settings",
     "get_principal",
@@ -103,6 +105,25 @@ def get_session() -> Iterator[Session]:
 #: dependency set stays small enough to enumerate here.
 SettingsDep = Annotated[ApiSettings, Depends(get_api_settings)]
 SessionDep = Annotated[Session, Depends(get_session)]
+
+
+def get_session_factory(settings: SettingsDep) -> sessionmaker[Session]:
+    """The session *factory*, for work that outlives the request.
+
+    A background ingestion run cannot borrow the request's session -- that one is
+    committed and closed the moment the 202 goes out. It opens its own
+    workspace-scoped transactions instead, through the same factory, so there is
+    still exactly one engine and one pool per process.
+
+    Takes `settings` as a dependency rather than calling `get_api_settings()`
+    directly, so a test that overrides settings overrides this too -- otherwise
+    the override is silently bypassed and the background path reads the real
+    environment.
+    """
+    return _session_factory(settings.supabase_db_url)
+
+
+SessionFactoryDep = Annotated["sessionmaker[Session]", Depends(get_session_factory)]
 
 
 def _serializer(settings: ApiSettings) -> URLSafeTimedSerializer:

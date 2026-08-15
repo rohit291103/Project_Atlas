@@ -39,6 +39,7 @@ __all__ = [
     "Issue",
     "IssueComment",
     "PullRequest",
+    "RepositoryAccess",
 ]
 
 DEFAULT_BASE_URL = "https://api.github.com"
@@ -179,6 +180,16 @@ def _parse_commit(data: dict[str, Any]) -> Commit:
 # --- client --------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class RepositoryAccess:
+    """What a credential can see at one repository. Shown, never stored."""
+
+    full_name: str
+    private: bool
+    description: str | None
+    open_issues: int
+
+
 class GitHubClient:
     """A thin, read-only GitHub REST client.
 
@@ -230,6 +241,22 @@ class GitHubClient:
         raw_comments = self._get_paginated(f"/repos/{owner}/{repo}/issues/{number}/comments")
         comments = tuple(_parse_comment(c) for c in raw_comments)
         return _parse_pull_request(data, comments)
+
+    def describe_repository(self, owner: str, repo: str) -> RepositoryAccess:
+        """What this credential can actually see at `owner/repo` — or an error.
+
+        The trust moment in the connect flow (slice 2B): before a PM saves a
+        token, Atlas shows them what it reaches with it. That is worth a round
+        trip, because "least privilege" is a claim the product otherwise just
+        asserts. Read-only and cheap: one repository metadata call, no crawl.
+        """
+        data = self._get(f"/repos/{owner}/{repo}")
+        return RepositoryAccess(
+            full_name=data.get("full_name") or f"{owner}/{repo}",
+            private=bool(data.get("private")),
+            description=data.get("description") or None,
+            open_issues=int(data.get("open_issues_count") or 0),
+        )
 
     def fetch_issue(self, owner: str, repo: str, number: int) -> Issue:
         return _parse_issue(self._get(f"/repos/{owner}/{repo}/issues/{number}"))

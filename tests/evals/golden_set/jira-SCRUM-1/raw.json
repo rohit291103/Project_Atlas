@@ -1,0 +1,18 @@
+{
+ "issue": {
+  "comments": [],
+  "created_at": "2026-08-13T22:41:05.388000+05:30",
+  "description": "Have existing work? Import from a CSV or another tool (like Asana or Notion).\nHave an idea to plan out? Use Rovo, your AI assistant, to turn it into structured tasks instantly.\nWant to accelerate work? Use AI agents to refine tasks and drive projects forward.",
+  "issue_type": "Feature",
+  "key": "SCRUM-1",
+  "labels": [],
+  "links": [],
+  "parent_key": null,
+  "reporter": "Rohit Gupta",
+  "status": "Idea",
+  "summary": "Start here: Add your team's work",
+  "url": "https://rohitg291103.atlassian.net/browse/SCRUM-1"
+ },
+ "issue_key": "SCRUM-1",
+ "site": "https://rohitg291103.atlassian.net/"
+}

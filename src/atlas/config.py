@@ -72,19 +72,27 @@ class JiraSettings:
 class ApiSettings:
     """What the API process needs -- deliberately *not* a superset of `Settings`.
 
-    The API never talks to GitHub and never runs the extraction agent (there is
-    no ingest endpoint in slice 1B -- `docs/decisions/2026-08-11-api-frontend-module-boundary.md`
-    §5), so it must not require `GITHUB_TOKEN` to boot. Least-privilege applies
-    to our own processes too (Engineering Philosophy §6): the web-facing process
-    holds the database URL and its own session secrets, and nothing else.
+    **It still holds no source credential of its own.** Slice 2B gave the API an
+    ingest endpoint, so it does now reach GitHub and Jira -- but with a
+    per-product credential the PM connected, decrypted from the `connection`
+    table for the duration of one run. `GITHUB_TOKEN` and `JIRA_API_TOKEN` remain
+    absent from this class on purpose: the web-facing process must not carry an
+    ambient credential that every request could use
+    (Engineering Philosophy §6, least privilege applied to our own processes).
+
+    `secret_key` is the Fernet key those connections are encrypted with. It lives
+    in the environment, never in the database, which is what makes "a database
+    compromise alone yields ciphertext" true
+    (`docs/decisions/2026-08-15-connections-and-ui-ingestion.md`).
 
     `app_passphrase` is Phase 1's whole authentication story -- one workspace,
-    one PM (§4 of the same doc). Slice 1D's real RBAC replaces it.
+    one shared passphrase plus a name that becomes the audit `actor`.
     """
 
     supabase_db_url: str
     app_passphrase: str
     session_secret: str
+    secret_key: str
 
     @classmethod
     def from_env(cls) -> "ApiSettings":
@@ -92,4 +100,5 @@ class ApiSettings:
             supabase_db_url=os.environ["SUPABASE_DB_URL"],
             app_passphrase=os.environ["ATLAS_APP_PASSPHRASE"],
             session_secret=os.environ["ATLAS_SESSION_SECRET"],
+            secret_key=os.environ["ATLAS_SECRET_KEY"],
         )

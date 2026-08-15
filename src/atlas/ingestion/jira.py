@@ -39,6 +39,7 @@ __all__ = [
     "JiraComment",
     "JiraError",
     "JiraIssue",
+    "ProjectAccess",
     "adf_to_text",
 ]
 
@@ -274,6 +275,15 @@ class _Parser:
 # --- client --------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class ProjectAccess:
+    """What a credential can see in one Jira project. Shown, never stored."""
+
+    key: str
+    name: str
+    project_type: str | None
+
+
 class JiraClient:
     """A thin, read-only Jira Cloud REST client.
 
@@ -317,6 +327,20 @@ class JiraClient:
 
     def close(self) -> None:
         self._client.close()
+
+    def describe_project(self, key: str) -> ProjectAccess:
+        """What this credential can actually see in one Jira project.
+
+        The Jira half of the connect flow's trust moment (slice 2B). A Jira API
+        token carries exactly its owner's permissions, so this answers "what does
+        Atlas get" with the site's own answer rather than with a promise.
+        """
+        data = self._get(f"{API_ROOT}/project/{key}")
+        return ProjectAccess(
+            key=data.get("key") or key,
+            name=data.get("name") or key,
+            project_type=data.get("projectTypeKey") or None,
+        )
 
     def fetch_issue(self, key: str) -> JiraIssue:
         """Fetch an issue's fields plus its full comment thread."""

@@ -1,0 +1,25 @@
+# Minimal Tier-1 expectations for SCRUM-10 ("Do we also need a --mindepth
+# counterpart?"). A conservative FLOOR, not the full expected output.
+#
+# CAVEAT: seeded fixture -- see the note in jira-SCRUM-7/rubric.yaml.
+issue: SCRUM-10
+source: SCRUM-10 (seeded fixture)
+
+required_node_types: # >=1 node of each type must be present
+  - open_question # --mindepth is undecided, not committed for this release
+
+must_mention: # >=1 node whose content contains each (case-insensitive substring)
+  - mindepth
+  - before ga # the decision deadline ("before GA" -- NOT bare "ga", which
+    # matches inside ordinary words like "regarding")
+
+notes: |
+  The one fixture whose headline claim is an `open_question` rather than a
+  decision or requirement. Extraction that flattens every ticket into
+  requirements would still mention --mindepth and still pass a keyword check, so
+  the required node *type* is doing the real work in this floor.
+
+  This ticket also quotes the epic (SCRUM-6) for its background, and both
+  recorded runs correctly attributed those excerpts to SCRUM-6 rather than to
+  SCRUM-10 -- which the provenance check now verifies per source, not against a
+  merged blob.

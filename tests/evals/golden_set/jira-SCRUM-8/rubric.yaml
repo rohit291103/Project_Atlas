@@ -1,0 +1,30 @@
+# Minimal Tier-1 expectations for SCRUM-8 ("--maxdepth counts from the current
+# working directory"). A conservative FLOOR, not the full expected output.
+#
+# CAVEAT: seeded fixture, written by the build team -- and this one was written
+# to *deliberately contradict* ripgrep PR #111, so the cross-source conflict the
+# UI surfaces is a real disagreement rather than a decorative one. That makes it
+# a good test of conflict detection and a poor sample of real Jira prose. See the
+# note in jira-SCRUM-7/rubric.yaml.
+issue: SCRUM-8
+source: SCRUM-8 (seeded fixture, planted conflict)
+
+required_node_types: # >=1 node of each type must be present
+  - decision # depth counts from the CWD, not from the search starting points
+
+must_mention: # >=1 node whose content contains each (case-insensitive substring)
+  - current # "current working directory" / "current directory"
+  - find # GNU find, explicitly not matched
+  - maxdepth 0 # the sharpest claim, and the one that conflicts with PR #111
+
+notes: |
+  `maxdepth 0` is in the floor because it is the claim that produces the most
+  valuable cross-source conflict: PR #111 quotes a man page showing `-maxdepth 0`
+  applies only to the starting points themselves, while this ticket decides it
+  must still return matches inside the current directory. An extraction that
+  captures only the headline decision and drops this loses the contradiction.
+
+  NOT in the floor, though both recorded runs produced it: a `rejected_alternative`
+  for GNU find semantics. It is the right call by eye, but requiring a specific
+  node *type* for an implicit rejection is a judgment call that belongs in the
+  Tier-2 review, not in a deterministic floor.

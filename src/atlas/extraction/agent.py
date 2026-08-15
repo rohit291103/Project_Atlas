@@ -535,6 +535,7 @@ async def extract_from_pull_request(
     number: int,
     workspace_id: uuid.UUID,
     feature_scope_id: uuid.UUID,
+    known_nodes: Sequence[Node] = (),
     model: str = DEFAULT_MODEL,
     max_tool_calls: int = MAX_TOOL_CALLS,
 ) -> tuple[IngestionRunPayload, ExtractionResult]:
@@ -546,9 +547,21 @@ async def extract_from_pull_request(
     It is built here rather than by the caller because this is where the fetched
     `PullRequest` lives -- deriving the title anywhere else would mean fetching
     the same PR twice or hand-assembling a URL the connector already parsed.
+
+    `known_nodes` mirrors the Jira path exactly (slice 2B): once a source can be
+    connected from the UI, GitHub is as likely to be the *second* source into a
+    feature as the first, and without this a PM who connects Jira then GitHub
+    gets no cross-source conflicts at all -- the asymmetry would be invisible and
+    would silently withhold the product's most valuable output. When it is empty
+    the seed prompt is byte-identical to the one Phase 0's evals validated, which
+    is what keeps that evidence good (`build_known_nodes_block` returns "" for an
+    empty sequence, and the *system* prompt is untouched and still golden-tested).
     """
     pr = await asyncio.to_thread(client.fetch_pull_request, owner, repo, number)
-    seed_prompt = prompts.build_seed_prompt(pr)
+    seed_prompt = prompts.build_seed_prompt(pr) + prompts.build_known_nodes_block(
+        (node.id, node.type.value, node.content, node.source_refs[0].source_type)
+        for node in known_nodes
+    )
     manifest: list[ToolCallRecord] = []
     agent_call = _make_agent_call(
         client, owner, repo, model=model, max_tool_calls=max_tool_calls, manifest=manifest
@@ -558,6 +571,7 @@ async def extract_from_pull_request(
         workspace_id=workspace_id,
         feature_scope_id=feature_scope_id,
         agent_call=agent_call,
+        known_node_ids=[node.id for node in known_nodes],
     )
     run = IngestionRunPayload(
         feature_scope_id=feature_scope_id,

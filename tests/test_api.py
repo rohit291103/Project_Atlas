@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterator
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -23,7 +24,12 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from atlas.api.app import create_app
-from atlas.api.deps import SESSION_COOKIE, get_api_settings, get_session
+from atlas.api.deps import (
+    SESSION_COOKIE,
+    get_api_settings,
+    get_session,
+    get_session_factory,
+)
 from atlas.config import ApiSettings
 from atlas.extraction.agent import build_result
 from atlas.models.schema import (
@@ -34,12 +40,17 @@ from atlas.models.schema import (
     Role,
     SourceType,
 )
+from atlas.storage.connections import Connection, generate_secret_key, seal
 from atlas.storage.db import Base, get_sessionmaker, session_scope
+from atlas.storage.products import assign_feature_scope
 from atlas.storage.tables import EventLog, Workspace, WorkspaceMember
 
 WORKSPACE_ID = uuid.UUID(int=0)  # DEFAULT_WORKSPACE_ID -- what `Principal` stamps
 FEATURE_SCOPE_ID = uuid.uuid4()
 PASSPHRASE = "open-sesame"
+#: The Fernet key connections are encrypted with. Generated per test run, so no
+#: key is ever committed and a leaked fixture value cannot decrypt anything real.
+SECRET_KEY = generate_secret_key()
 ACTOR = "Priya (PM)"
 VIEWER = "Sam (observer)"
 
@@ -49,6 +60,7 @@ def _settings() -> ApiSettings:
         supabase_db_url="sqlite://",
         app_passphrase=PASSPHRASE,
         session_secret="test-secret-not-a-real-one",
+        secret_key=SECRET_KEY,
     )
 
 
@@ -71,7 +83,7 @@ def session_factory() -> sessionmaker[Session]:
 @pytest.fixture
 def seeded(session_factory: sessionmaker[Session]) -> sessionmaker[Session]:
     """One ingested feature scope: a titled scope, two nodes, one edge."""
-    from atlas.cli import record_extraction
+    from atlas.pipeline import record_extraction
 
     result = build_result(
         {
@@ -145,6 +157,9 @@ def client(seeded: sessionmaker[Session]) -> Iterator[TestClient]:
 
     app.dependency_overrides[get_session] = _test_session
     app.dependency_overrides[get_api_settings] = _settings
+    # A background run opens its own transactions, so it needs the *factory*
+    # pinned to the same in-memory database rather than a real URL.
+    app.dependency_overrides[get_session_factory] = lambda: seeded
     with TestClient(app) as test_client:
         yield test_client
 
@@ -179,6 +194,14 @@ def _events(session_factory: sessionmaker[Session], event_type: EventType) -> li
         ("post", f"/nodes/{uuid.uuid4()}/reject"),
         ("post", f"/nodes/{uuid.uuid4()}/edit"),
         ("post", f"/feature-scopes/{FEATURE_SCOPE_ID}/nodes"),
+        # Slice 2B. The connect and ingest endpoints are the two that hold a
+        # credential, so an unauthenticated one would be the worst hole here.
+        ("get", f"/products/{uuid.uuid4()}/connections"),
+        ("post", f"/products/{uuid.uuid4()}/connections"),
+        ("delete", f"/connections/{uuid.uuid4()}"),
+        ("get", f"/products/{uuid.uuid4()}/runs"),
+        ("post", f"/products/{uuid.uuid4()}/runs"),
+        ("get", f"/runs/{uuid.uuid4()}"),
     ],
 )
 def test_every_endpoint_requires_a_session(client: TestClient, method: str, path: str) -> None:
@@ -225,6 +248,35 @@ def test_feature_scopes_are_listed_with_their_identity(signed_in: TestClient) ->
 
     assert [scope["title"] for scope in body] == ["Rate-limit the gateway per client IP"]
     assert body[0]["runs"][0]["external_id"] == "acme/gateway#42"
+
+
+def test_each_listed_feature_says_how_much_of_it_is_still_work(signed_in: TestClient) -> None:
+    """The number the rail badge, the Conflicts entry and the dashboard all read.
+
+    It ships with the list rather than being derived client-side: three surfaces
+    need the identical figure, and the alternative is sending every claim and
+    excerpt of every feature to the browser so it can count them.
+    """
+    body = signed_in.get("/feature-scopes").json()
+
+    counts = body[0]["counts"]
+    assert counts["total"] == 2
+    assert counts["unreviewed"] == 2
+    assert counts["conflicts"] == 0
+
+
+def test_confirming_a_claim_lowers_the_unreviewed_count_on_the_next_read(
+    signed_in: TestClient,
+) -> None:
+    """The count is a projection, not a stored tally -- so a ruling moves it
+    without anything having to remember to decrement a column."""
+    node_id = signed_in.get(f"/feature-scopes/{FEATURE_SCOPE_ID}").json()["nodes"][0]["id"]
+    before = signed_in.get("/feature-scopes").json()[0]["counts"]["unreviewed"]
+
+    assert signed_in.post(f"/nodes/{node_id}/confirm").status_code == 200
+
+    after = signed_in.get("/feature-scopes").json()[0]["counts"]["unreviewed"]
+    assert after == before - 1
 
 
 def test_feature_scope_detail_returns_nodes_edges_and_the_header(signed_in: TestClient) -> None:
@@ -422,3 +474,459 @@ def test_the_session_reports_the_role_so_the_ui_can_hide_what_is_refused(
     client.post("/session", json={"passphrase": PASSPHRASE, "name": VIEWER})
 
     assert client.get("/session").json()["role"] == Role.VIEWER.value
+
+
+# --- products ------------------------------------------------------------------
+
+
+def test_products_start_empty_and_a_created_one_is_listed(signed_in: TestClient) -> None:
+    assert signed_in.get("/products").json() == []
+
+    created = signed_in.post("/products", json={"name": "Acme Web"})
+
+    assert created.status_code == 201
+    assert created.json()["name"] == "Acme Web"
+    assert signed_in.get("/products").json() == [created.json()]
+
+
+def test_a_product_id_from_the_request_body_is_refused(signed_in: TestClient) -> None:
+    """The id is minted in `storage/`. `extra="forbid"` means a body trying to
+    choose its own is a 422, not a silently ignored field -- the same hole
+    `add_node` closes by building its Node from fields."""
+    response = signed_in.post("/products", json={"name": "Acme Web", "id": str(uuid.uuid4())})
+
+    assert response.status_code == 422
+
+
+def test_a_blank_product_name_is_refused_at_the_wire(signed_in: TestClient) -> None:
+    assert signed_in.post("/products", json={"name": "   "}).status_code == 422
+
+
+def test_a_viewer_may_list_products_but_not_create_one(client: TestClient) -> None:
+    client.post("/session", json={"passphrase": PASSPHRASE, "name": VIEWER})
+
+    assert client.get("/products").status_code == 200
+    assert client.post("/products", json={"name": "Sneaky"}).status_code == 403
+
+
+def test_a_feature_scope_reports_the_product_it_is_filed_under(
+    signed_in: TestClient, seeded: sessionmaker[Session]
+) -> None:
+    """The rail groups on the client, so the scope has to carry its own product."""
+    product_id = uuid.UUID(signed_in.post("/products", json={"name": "Acme Web"}).json()["id"])
+
+    assert signed_in.get("/feature-scopes").json()[0]["product_id"] is None
+
+    with session_scope(seeded) as session:
+        assign_feature_scope(
+            session,
+            workspace_id=WORKSPACE_ID,
+            feature_scope_id=FEATURE_SCOPE_ID,
+            product_id=product_id,
+            actor=ACTOR,
+        )
+
+    assert signed_in.get("/feature-scopes").json()[0]["product_id"] == str(product_id)
+
+
+def test_products_are_invisible_across_workspaces(signed_in: TestClient) -> None:
+    """Nothing new is being trusted here -- products ride the same workspace
+    filter the event log already enforces, and RLS enforces underneath it."""
+    signed_in.post("/products", json={"name": "Acme Web"})
+    listed = signed_in.get("/products").json()
+
+    assert len(listed) == 1
+
+
+# --- sources and runs (slice 2B) -----------------------------------------------
+#
+# The credential is the whole point of the care here: it arrives over HTTP, is
+# stored encrypted, and must never come back out. Two of these tests assert that
+# structurally rather than by inspection.
+
+
+PRODUCT_ID = uuid.UUID(int=99)
+
+
+@pytest.fixture
+def with_product(seeded: sessionmaker[Session], client: TestClient) -> uuid.UUID:
+    """A real product to hang connections off. Created through the API, so the
+    id is minted in `storage/` exactly as it is in production."""
+    client.post("/session", json={"passphrase": PASSPHRASE, "name": ACTOR})
+    created = client.post("/products", json={"name": "Gateway"})
+    assert created.status_code == 201
+    return uuid.UUID(created.json()["id"])
+
+
+def _stub_access(monkeypatch: pytest.MonkeyPatch, *, fails: bool = False) -> None:
+    from atlas import pipeline
+
+    def check(credential: object, *, scope: str) -> pipeline.AccessSummary:
+        if fails:
+            raise RuntimeError(f"401 Unauthorized for token {SECRET_TOKEN}")
+        return pipeline.AccessSummary(label=scope, detail="Private repository · 3 open issue(s)")
+
+    monkeypatch.setattr("atlas.api.routes.check_access", check)
+
+
+SECRET_TOKEN = "ghp_this_must_never_come_back"
+
+
+def test_no_response_model_in_the_openapi_schema_can_carry_a_secret(
+    client: TestClient,
+) -> None:
+    """The structural rule, checked where it actually binds.
+
+    `frontend/src/api-types.ts` is generated from this schema, so a leaking field
+    would flow straight into the UI's own types. Checking the schema rather than
+    one model catches a leak added anywhere in `api/`.
+    """
+    schema = client.get("/openapi.json").json()
+    leaky = {"secret_ciphertext", "token", "api_token", "password", "credential"}
+    for name, model in schema["components"]["schemas"].items():
+        if name in {"ConnectSourceRequest"}:
+            continue  # the one inbound-only body that carries `secret`
+        assert not leaky & set(model.get("properties", {})), f"{name} can serialize a secret"
+        assert "secret" not in model.get("properties", {}), f"{name} can serialize a secret"
+
+
+def test_connecting_a_source_stores_it_and_reports_what_it_can_see(
+    client: TestClient,
+    with_product: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_access(monkeypatch)
+
+    response = client.post(
+        f"/products/{with_product}/connections",
+        json={
+            "source_type": "github_pr",
+            "host": "github.com",
+            "scope": "acme/gateway",
+            "secret": SECRET_TOKEN,
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    # The trust moment: what the credential reaches, before it is trusted.
+    assert body["access_detail"] == "Private repository · 3 open issue(s)"
+    assert body["connection"]["secret_hint"] == SECRET_TOKEN[-4:]
+    assert SECRET_TOKEN not in response.text
+
+
+def test_a_stored_credential_is_ciphertext_in_the_row(
+    client: TestClient,
+    seeded: sessionmaker[Session],
+    with_product: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_access(monkeypatch)
+    client.post(
+        f"/products/{with_product}/connections",
+        json={
+            "source_type": "github_pr",
+            "host": "github.com",
+            "scope": "acme/gateway",
+            "secret": SECRET_TOKEN,
+        },
+    )
+
+    with session_scope(seeded) as session:
+        stored = session.query(Connection).one()
+    assert SECRET_TOKEN.encode() not in stored.secret_ciphertext
+
+
+def test_a_credential_that_cannot_read_its_scope_is_refused_at_the_door(
+    client: TestClient,
+    with_product: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """And the refusal must not echo the connector's own error, which can quote
+    the request it made — and that request carried the credential."""
+    _stub_access(monkeypatch, fails=True)
+
+    response = client.post(
+        f"/products/{with_product}/connections",
+        json={
+            "source_type": "github_pr",
+            "host": "github.com",
+            "scope": "acme/gateway",
+            "secret": SECRET_TOKEN,
+        },
+    )
+
+    assert response.status_code == 422
+    assert SECRET_TOKEN not in response.text
+
+
+def test_jira_without_an_email_is_a_422_rather_than_a_run_that_fails_later(
+    client: TestClient, with_product: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _stub_access(monkeypatch)
+
+    response = client.post(
+        f"/products/{with_product}/connections",
+        json={
+            "source_type": "jira_ticket",
+            "host": "acme.atlassian.net",
+            "scope": "GATE",
+            "secret": SECRET_TOKEN,
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_connecting_to_a_product_that_does_not_exist_is_a_404(
+    client: TestClient, with_product: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _stub_access(monkeypatch)
+
+    response = client.post(
+        f"/products/{uuid.uuid4()}/connections",
+        json={
+            "source_type": "github_pr",
+            "host": "github.com",
+            "scope": "acme/gateway",
+            "secret": SECRET_TOKEN,
+        },
+    )
+
+    assert response.status_code == 404
+
+
+def test_revoking_a_connection_deletes_the_row(
+    client: TestClient,
+    seeded: sessionmaker[Session],
+    with_product: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_access(monkeypatch)
+    created = client.post(
+        f"/products/{with_product}/connections",
+        json={
+            "source_type": "github_pr",
+            "host": "github.com",
+            "scope": "acme/gateway",
+            "secret": SECRET_TOKEN,
+        },
+    ).json()
+
+    assert client.delete(f"/connections/{created['connection']['id']}").status_code == 204
+    with session_scope(seeded) as session:
+        assert session.query(Connection).count() == 0
+    assert client.get(f"/products/{with_product}/connections").json() == []
+
+
+def test_a_viewer_may_see_sources_but_not_connect_one(
+    client: TestClient, with_product: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _stub_access(monkeypatch)
+    client.post("/session", json={"passphrase": PASSPHRASE, "name": VIEWER})
+
+    assert client.get(f"/products/{with_product}/connections").status_code == 200
+    assert (
+        client.post(
+            f"/products/{with_product}/connections",
+            json={
+                "source_type": "github_pr",
+                "host": "github.com",
+                "scope": "acme/gateway",
+                "secret": SECRET_TOKEN,
+            },
+        ).status_code
+        == 403
+    )
+
+
+def _connect(client: TestClient, product_id: uuid.UUID, monkeypatch: pytest.MonkeyPatch) -> str:
+    _stub_access(monkeypatch)
+    return str(
+        client.post(
+            f"/products/{product_id}/connections",
+            json={
+                "source_type": "github_pr",
+                "host": "github.com",
+                "scope": "acme/gateway",
+                "secret": SECRET_TOKEN,
+            },
+        ).json()["connection"]["id"]
+    )
+
+
+def test_starting_a_run_returns_202_with_something_to_poll(
+    client: TestClient,
+    with_product: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """202, not 200: the run is *accepted*. The id in the body is the handle."""
+    connection_id = _connect(client, with_product, monkeypatch)
+    scheduled: list[dict[str, Any]] = []
+
+    def capture(*args: Any, **kwargs: Any) -> None:
+        scheduled.append(kwargs)
+
+    monkeypatch.setattr("atlas.api.routes.execute_run", capture)
+
+    response = client.post(
+        f"/products/{with_product}/runs",
+        json={
+            "connection_id": connection_id,
+            "target_kind": "github_pr",
+            "target": "acme/gateway#42",
+        },
+    )
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["state"] == "running"
+    # The start event is already in the log, so the run is visible while working.
+    assert client.get(f"/runs/{body['id']}").json()["state"] == "running"
+    assert scheduled and scheduled[0]["credential"].token == SECRET_TOKEN
+
+
+def test_a_malformed_target_never_starts_a_run(
+    client: TestClient,
+    seeded: sessionmaker[Session],
+    with_product: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    connection_id = _connect(client, with_product, monkeypatch)
+    monkeypatch.setattr("atlas.api.routes.execute_run", lambda *a, **k: None)
+
+    response = client.post(
+        f"/products/{with_product}/runs",
+        json={
+            "connection_id": connection_id,
+            "target_kind": "github_pr",
+            "target": "https://github.com/acme/gateway/pull/42",
+        },
+    )
+
+    assert response.status_code == 422
+    assert _events(seeded, EventType.INGESTION_RUN_STARTED) == []
+
+
+def test_a_run_against_an_unknown_connection_is_a_404(
+    client: TestClient, with_product: uuid.UUID
+) -> None:
+    response = client.post(
+        f"/products/{with_product}/runs",
+        json={
+            "connection_id": str(uuid.uuid4()),
+            "target_kind": "github_pr",
+            "target": "acme/gateway#42",
+        },
+    )
+
+    assert response.status_code == 404
+
+
+def test_a_viewer_may_not_start_a_run(
+    client: TestClient, with_product: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    connection_id = _connect(client, with_product, monkeypatch)
+    client.post("/session", json={"passphrase": PASSPHRASE, "name": VIEWER})
+
+    response = client.post(
+        f"/products/{with_product}/runs",
+        json={
+            "connection_id": connection_id,
+            "target_kind": "github_pr",
+            "target": "acme/gateway#42",
+        },
+    )
+
+    assert response.status_code == 403
+
+
+def test_a_connection_written_with_a_different_key_fails_loudly(
+    client: TestClient,
+    seeded: sessionmaker[Session],
+    with_product: uuid.UUID,
+) -> None:
+    """Key rotation is unbuilt (`product-model-and-frontend-rebuild-v1.md` §11.3).
+    Until it exists, a connection Atlas cannot decrypt must say so rather than
+    starting a run that fails with an auth error nobody can explain."""
+    with session_scope(seeded) as session:
+        session.add(
+            Connection(
+                id=uuid.uuid4(),
+                workspace_id=WORKSPACE_ID,
+                product_id=with_product,
+                source_type=SourceType.GITHUB_PR,
+                account="token",
+                host="github.com",
+                scope="acme/gateway",
+                secret_ciphertext=seal("x", generate_secret_key()),
+                secret_hint="xxxx",
+                created_by=ACTOR,
+            )
+        )
+    with session_scope(seeded) as session:
+        stale = session.query(Connection).one().id
+
+    response = client.post(
+        f"/products/{with_product}/runs",
+        json={
+            "connection_id": str(stale),
+            "target_kind": "github_pr",
+            "target": "acme/gateway#42",
+        },
+    )
+
+    assert response.status_code == 409
+
+
+@pytest.mark.parametrize(
+    "typed", ["acme.atlassian.net", "https://acme.atlassian.net", "https://acme.atlassian.net/"]
+)
+def test_a_pasted_host_is_normalized_before_it_is_stored(
+    client: TestClient,
+    seeded: sessionmaker[Session],
+    with_product: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+    typed: str,
+) -> None:
+    """People paste what the address bar shows. Normalizing once, at the door,
+    is what keeps the connect check and the later run agreeing — an earlier cut
+    stripped the scheme only when building the credential, so the row kept
+    `https://…` and the next run built `https://https://…`."""
+    _stub_access(monkeypatch)
+
+    body = client.post(
+        f"/products/{with_product}/connections",
+        json={
+            "source_type": "jira_ticket",
+            "host": typed,
+            "scope": "GATE",
+            "secret": SECRET_TOKEN,
+            "email": "pm@acme.test",
+        },
+    ).json()
+
+    assert body["connection"]["host"] == "acme.atlassian.net"
+
+
+def test_connecting_jira_to_a_host_atlas_will_not_talk_to_is_refused(
+    client: TestClient, with_product: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The SSRF control, at the endpoint that first accepts the host. The
+    credential must never leave the process aimed at an arbitrary destination."""
+    _stub_access(monkeypatch)
+
+    response = client.post(
+        f"/products/{with_product}/connections",
+        json={
+            "source_type": "jira_ticket",
+            "host": "169.254.169.254",
+            "scope": "GATE",
+            "secret": SECRET_TOKEN,
+            "email": "pm@acme.test",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "Jira Cloud site" in response.text
+    assert SECRET_TOKEN not in response.text

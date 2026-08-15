@@ -1,0 +1,142 @@
+{
+ "nodes": [
+  {
+   "id": "dd22c156-a992-48d6-88de-5b7d3386b5f5",
+   "type": "decision",
+   "content": "--maxdepth counts levels from the user's current working directory, not from the search starting points passed on the command line.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "015aa7ff-dfe6-46a6-bc88-8792142c86ad",
+     "source_type": "jira_ticket",
+     "external_id": "SCRUM-8",
+     "url": "https://rohitg291103.atlassian.net/browse/SCRUM-8",
+     "excerpt": "--maxdepth counts levels from the user's current working directory, not from the search starting points passed on the command line.",
+     "fetched_at": "2026-08-15T07:49:00.528158Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-08-15T07:49:00.529788Z",
+   "updated_at": "2026-08-15T07:49:00.529791Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "bb6b5214-f7ab-48c3-9d5f-80f583d40325"
+  },
+  {
+   "id": "54786345-2a06-4434-80cf-e2099cbf6faf",
+   "type": "requirement",
+   "content": "--maxdepth 0 must still return matches in files sitting directly inside the current directory.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "2ddb61bf-62da-4898-922d-3a45dbda777c",
+     "source_type": "jira_ticket",
+     "external_id": "SCRUM-8",
+     "url": "https://rohitg291103.atlassian.net/browse/SCRUM-8",
+     "excerpt": "This means --maxdepth 0 should still return matches in files sitting directly inside the current directory.",
+     "fetched_at": "2026-08-15T07:49:00.529828Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-08-15T07:49:00.529835Z",
+   "updated_at": "2026-08-15T07:49:00.529835Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "bb6b5214-f7ab-48c3-9d5f-80f583d40325"
+  },
+  {
+   "id": "476f5785-62ce-4530-91e8-2a1ef5b02f40",
+   "type": "requirement",
+   "content": "The help text and documentation must say \"current directory\" throughout.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "ad189322-14bd-400d-adc4-2d5e51b58102",
+     "source_type": "jira_ticket",
+     "external_id": "SCRUM-8",
+     "url": "https://rohitg291103.atlassian.net/browse/SCRUM-8",
+     "excerpt": "The help text and documentation must say \"current directory\" throughout.",
+     "fetched_at": "2026-08-15T07:49:00.529842Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-08-15T07:49:00.529846Z",
+   "updated_at": "2026-08-15T07:49:00.529847Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "bb6b5214-f7ab-48c3-9d5f-80f583d40325"
+  },
+  {
+   "id": "b7f7a918-da0f-46d0-8c5c-ae52c856025b",
+   "type": "rejected_alternative",
+   "content": "Matching GNU find's maxdepth semantics was explicitly not chosen.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "b4c13fc9-580c-46d9-ac4b-474a5ad7a0c6",
+     "source_type": "jira_ticket",
+     "external_id": "SCRUM-8",
+     "url": "https://rohitg291103.atlassian.net/browse/SCRUM-8",
+     "excerpt": "We are explicitly not matching GNU find here -- consistency with a 1990s tool is worth less than matching what our users expect.",
+     "fetched_at": "2026-08-15T07:49:00.529851Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-08-15T07:49:00.529856Z",
+   "updated_at": "2026-08-15T07:49:00.529856Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "bb6b5214-f7ab-48c3-9d5f-80f583d40325"
+  }
+ ],
+ "edges": [
+  {
+   "id": "6e90ab78-bef5-487e-8d14-a340d526ba81",
+   "from_node_id": "dd22c156-a992-48d6-88de-5b7d3386b5f5",
+   "to_node_id": "b7f7a918-da0f-46d0-8c5c-ae52c856025b",
+   "relation_type": "rejects",
+   "confidence_score": 0.9,
+   "created_at": "2026-08-15T07:49:00.530244Z"
+  },
+  {
+   "id": "ae4ccdac-7242-4afa-b863-dafd8f03d2fa",
+   "from_node_id": "dd22c156-a992-48d6-88de-5b7d3386b5f5",
+   "to_node_id": "195eb7f8-0afe-484b-9910-66de96c5f8ac",
+   "relation_type": "conflicts_with",
+   "confidence_score": 0.9,
+   "created_at": "2026-08-15T07:49:00.530759Z"
+  },
+  {
+   "id": "85f00274-67f9-4183-98a1-c50660616bad",
+   "from_node_id": "54786345-2a06-4434-80cf-e2099cbf6faf",
+   "to_node_id": "dd22c156-a992-48d6-88de-5b7d3386b5f5",
+   "relation_type": "derives_from",
+   "confidence_score": 0.9,
+   "created_at": "2026-08-15T07:49:00.530767Z"
+  },
+  {
+   "id": "6a5bf9a6-91eb-4207-a48e-6836f5094a12",
+   "from_node_id": "54786345-2a06-4434-80cf-e2099cbf6faf",
+   "to_node_id": "35ad0f48-02bc-4b7b-a714-d2ee1cad09b5",
+   "relation_type": "conflicts_with",
+   "confidence_score": 0.9,
+   "created_at": "2026-08-15T07:49:00.530773Z"
+  },
+  {
+   "id": "e342b33f-e709-4ab2-90c7-e7887b6cb57d",
+   "from_node_id": "476f5785-62ce-4530-91e8-2a1ef5b02f40",
+   "to_node_id": "474252ba-8f6c-4493-95f5-2c4eabec3cc1",
+   "relation_type": "conflicts_with",
+   "confidence_score": 0.9,
+   "created_at": "2026-08-15T07:49:00.530779Z"
+  }
+ ]
+}

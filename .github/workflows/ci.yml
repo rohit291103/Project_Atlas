@@ -25,8 +25,12 @@ jobs:
       - name: Format check (ruff format)
         run: uv run ruff format --check .
 
+      # `tests` joined `src` and `scripts` here on 2026-08-15, when the 17
+      # pre-existing strict errors in the suite were fixed. A test file is the
+      # thing most likely to paper over a type change with an `Any`, so leaving
+      # it unchecked was the wrong half of the codebase to exempt.
       - name: Type check (mypy)
-        run: uv run mypy src
+        run: uv run mypy src scripts tests
 
       - name: Test (pytest)
         run: uv run pytest

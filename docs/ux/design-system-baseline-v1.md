@@ -95,6 +95,8 @@ Same roles, remapped: `--bg #FFFFFF`, `--surface #F7F8FA`, `--surface-2 #EEF0F3`
   - Excerpt monospace runs one step down from surrounding claim text (13/20) so evidence reads as subordinate to the claim.
 - **Weight:** 400 body, 500 labels/tags, 600 headers. Bold is declarative and rationed.
 
+> **Correction, 2026-08-16.** The build had drifted from this section — it shipped `11/12.5/14/17/23`, hardcoded `10px` in 42 places, and dropped the 500-weight rule. Now corrected to the scale above, with one addition: **`--text-micro: 11px`**, reserved for uppercase mono labels (which read larger than their nominal size) and the only value permitted below 12px. `--text-faint` and light `--paper-dim` were also failing WCAG AA and were re-solved to clear 4.5:1. Full record: `docs/decisions/2026-08-16-typography-drift-correction.md`.
+
 ---
 
 ## 5. Motion

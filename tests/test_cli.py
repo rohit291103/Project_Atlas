@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Callable
+from pathlib import Path
 
 import httpx
 import pytest
@@ -22,7 +23,7 @@ from rich.console import Console
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from atlas.cli import _parse_repo, record_extraction, render_projection, resolve_jira_keys
+from atlas.cli import _parse_repo, render_projection
 from atlas.extraction.agent import build_result
 from atlas.ingestion.jira import JiraClient
 from atlas.models.schema import (
@@ -31,9 +32,11 @@ from atlas.models.schema import (
     Node,
     NodeStatus,
     NodeType,
+    RunTargetKind,
     SourceRef,
     SourceType,
 )
+from atlas.pipeline import TargetError, record_extraction, resolve_jira_keys
 from atlas.storage.db import Base, get_engine, get_sessionmaker, session_scope
 from atlas.storage.projections import Projection, load_projection
 
@@ -137,7 +140,9 @@ def test_resolve_jira_keys_for_a_single_issue_makes_no_request() -> None:
     def refuse(request: httpx.Request) -> httpx.Response:
         raise AssertionError("no search should be issued for --issue")
 
-    keys = resolve_jira_keys(_jira_client(refuse), issue="GATE-42", epic=None, label=None, limit=10)
+    keys = resolve_jira_keys(
+        _jira_client(refuse), kind=RunTargetKind.JIRA_ISSUE, target="GATE-42", limit=10
+    )
 
     assert keys == ["GATE-42"]
 
@@ -145,7 +150,9 @@ def test_resolve_jira_keys_for_a_single_issue_makes_no_request() -> None:
 def test_resolve_jira_keys_scopes_by_epic() -> None:
     seen, handler = _capture_jql()
 
-    keys = resolve_jira_keys(_jira_client(handler), issue=None, epic="GATE-1", label=None, limit=10)
+    keys = resolve_jira_keys(
+        _jira_client(handler), kind=RunTargetKind.JIRA_EPIC, target="GATE-1", limit=10
+    )
 
     assert keys == ["GATE-43"]
     assert 'parent = "GATE-1"' in seen["jql"]
@@ -155,7 +162,7 @@ def test_resolve_jira_keys_scopes_by_label() -> None:
     seen, handler = _capture_jql()
 
     keys = resolve_jira_keys(
-        _jira_client(handler), issue=None, epic=None, label="gateway", limit=10
+        _jira_client(handler), kind=RunTargetKind.JIRA_LABEL, target="gateway", limit=10
     )
 
     assert 'labels = "gateway"' in seen["jql"]
@@ -166,18 +173,19 @@ def test_resolve_jira_keys_passes_the_limit_as_a_hard_ceiling() -> None:
     """A mistyped label must not start an unbounded ingestion run."""
     seen, handler = _capture_jql()
 
-    resolve_jira_keys(_jira_client(handler), issue=None, epic=None, label="typo", limit=3)
+    resolve_jira_keys(_jira_client(handler), kind=RunTargetKind.JIRA_LABEL, target="typo", limit=3)
 
     assert seen["maxResults"] == "3"
 
 
-def test_resolve_jira_keys_requires_a_scope() -> None:
-    with pytest.raises(typer.BadParameter):
+def test_resolve_jira_keys_refuses_a_target_that_is_not_a_jira_key() -> None:
+    """The target arrives from a browser as of slice 2B, so a permissive parse
+    here is how "ingest one issue" quietly becomes something wider."""
+    with pytest.raises(TargetError):
         resolve_jira_keys(
             _jira_client(lambda request: httpx.Response(200, json={})),
-            issue=None,
-            epic=None,
-            label=None,
+            kind=RunTargetKind.JIRA_ISSUE,
+            target="not a key",
             limit=10,
         )
 
@@ -278,10 +286,10 @@ def test_render_projection_shows_content_confidence_status_and_provenance(
     assert "derives_from" in text  # edge rendered
 
     # edges are mappable: each endpoint's short id labels a node row in the report
-    edge = next(iter(projection.edges.values()))  # type: ignore[attr-defined]
+    edge = next(iter(projection.edges.values()))
     for endpoint in (edge.from_node_id, edge.to_node_id):
         assert str(endpoint)[:8] in text
-        assert endpoint in projection.nodes  # type: ignore[attr-defined]
+        assert endpoint in projection.nodes
 
 
 def test_render_projection_titles_the_report_with_the_feature_scope(
@@ -342,3 +350,38 @@ def test_render_projection_empty_scope_is_handled(
             session, workspace_id=WORKSPACE_ID, feature_scope_id=uuid.uuid4()
         )
     assert "No nodes" in _render(projection)
+
+
+# --- the boundary between cli.py and pipeline.py -------------------------------
+
+
+def test_cli_holds_no_orchestration_of_its_own() -> None:
+    """`cli.py` must stay a caller of `pipeline`, not a second copy of it.
+
+    Same shape as the existing guard that fails if a bare `session_scope` returns
+    to `cli.py`. Two copies of "parse a target -> build a client -> run the agent
+    -> write validated events" would drift, and the thing that would drift is the
+    path along which "extraction never reaches storage unvalidated" holds — which
+    makes this a correctness guard, not a style one.
+    """
+    source = (Path(__file__).resolve().parents[1] / "src" / "atlas" / "cli.py").read_text()
+
+    for forbidden in (
+        "extract_from_pull_request",  # calling the agent directly
+        "extract_from_jira_issue",
+        "append_event",  # writing events directly
+        "GitHubClient(",  # building a source client directly
+        "JiraClient(",
+        "asyncio.run",  # driving the async extraction itself
+    ):
+        assert forbidden not in source, (
+            f"{forbidden} is back in cli.py — orchestration belongs in atlas/pipeline.py"
+        )
+
+
+def test_cli_never_opens_an_unscoped_transaction() -> None:
+    """The 2026-08-12 verification finding, kept closed: under FORCE RLS a bare
+    `session_scope` reads zero rows and fails every insert."""
+    source = (Path(__file__).resolve().parents[1] / "src" / "atlas" / "cli.py").read_text()
+    assert "session_scope(" not in source
+    assert "workspace_session(" in source

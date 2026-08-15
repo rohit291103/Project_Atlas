@@ -662,3 +662,136 @@ def test_load_projection_empty_log_is_empty(
     assert isinstance(projection, Projection)
     assert projection.nodes == {}
     assert projection.edges == {}
+
+
+# --- work-left counts ----------------------------------------------------------
+#
+# What the rail, the Conflicts nav entry and the product dashboard all read: how
+# much of a feature still needs a human. The count is computed here rather than
+# in the frontend because three surfaces need the same number, and because
+# deriving it client-side means shipping every node and edge of every feature to
+# the browser just to count them.
+
+
+def test_counts_report_nothing_for_a_scope_with_no_nodes() -> None:
+    projection = replay([ingestion_run()])
+
+    counts = projection.counts_for(FEATURE_SCOPE_ID)
+
+    assert counts.total == 0
+    assert counts.unreviewed == 0
+    assert counts.conflicts == 0
+
+
+def test_unreviewed_counts_only_nodes_awaiting_a_ruling() -> None:
+    untouched = make_node(content="Still needs a decision")
+    confirmed = make_node(content="Already ruled on")
+    rejected = make_node(content="Ruled out")
+    edited = make_node(content="Reworded by a human")
+
+    projection = replay(
+        [
+            node_created(untouched),
+            node_created(confirmed),
+            node_created(rejected),
+            node_created(edited),
+            status_change(EventType.NODE_CONFIRMED, confirmed),
+            status_change(EventType.NODE_REJECTED, rejected),
+            node_edited(edited, content="Reworded"),
+        ]
+    )
+
+    counts = projection.counts_for(FEATURE_SCOPE_ID)
+
+    # Confirmed, rejected and edited are all *rulings* -- a human has acted. Only
+    # the untouched one is still work.
+    assert counts.total == 4
+    assert counts.unreviewed == 1
+
+
+def test_counts_are_scoped_to_one_feature() -> None:
+    other_scope = uuid.uuid4()
+    mine = make_node(content="Mine")
+    theirs = make_node(content="Theirs", feature_scope_id=other_scope)
+
+    projection = replay([node_created(mine), node_created(theirs)])
+
+    assert projection.counts_for(FEATURE_SCOPE_ID).unreviewed == 1
+    assert projection.counts_for(other_scope).unreviewed == 1
+
+
+def test_conflicts_count_each_disagreement_once_not_once_per_side() -> None:
+    a = make_node(content="Run it on everything")
+    b = make_node(content="Run it only on matching globs")
+
+    conflict = Edge(
+        from_node_id=a.id,
+        to_node_id=b.id,
+        relation_type=RelationType.CONFLICTS_WITH,
+        confidence_score=0.8,
+    )
+
+    projection = replay([node_created(a), node_created(b), edge_created(conflict)])
+
+    # The review screen reports both endpoints so either card can show a banner.
+    # A *count* must not do that, or five disagreements read as ten.
+    assert projection.counts_for(FEATURE_SCOPE_ID).conflicts == 1
+
+
+def test_only_conflict_edges_are_counted_as_conflicts() -> None:
+    a = make_node(content="A")
+    b = make_node(content="B")
+
+    supports = Edge(
+        from_node_id=a.id,
+        to_node_id=b.id,
+        relation_type=RelationType.SUPPORTS,
+        confidence_score=0.8,
+    )
+
+    projection = replay([node_created(a), node_created(b), edge_created(supports)])
+
+    assert projection.counts_for(FEATURE_SCOPE_ID).conflicts == 0
+
+
+def test_a_conflict_reaching_outside_the_scope_is_not_counted_in_it() -> None:
+    """Edges are kept only when *both* endpoints survive a scope filter
+    (`for_feature_scope`). The count follows the same rule, so a badge saying
+    "2 conflicts" always matches what the Conflicts screen goes on to show."""
+    inside = make_node(content="Inside")
+    outside = make_node(content="Outside", feature_scope_id=uuid.uuid4())
+
+    crossing = Edge(
+        from_node_id=inside.id,
+        to_node_id=outside.id,
+        relation_type=RelationType.CONFLICTS_WITH,
+        confidence_score=0.8,
+    )
+
+    projection = replay([node_created(inside), node_created(outside), edge_created(crossing)])
+
+    assert projection.counts_for(FEATURE_SCOPE_ID).conflicts == 0
+
+
+def test_a_rejected_claim_stops_counting_as_a_conflict() -> None:
+    """Rejecting one side settles the disagreement. Leaving it in the count
+    would leave a number on screen that no action can ever clear."""
+    a = make_node(content="Run it on everything")
+    b = make_node(content="Run it only on matching globs")
+    conflict = Edge(
+        from_node_id=a.id,
+        to_node_id=b.id,
+        relation_type=RelationType.CONFLICTS_WITH,
+        confidence_score=0.8,
+    )
+
+    projection = replay(
+        [
+            node_created(a),
+            node_created(b),
+            edge_created(conflict),
+            status_change(EventType.NODE_REJECTED, b),
+        ]
+    )
+
+    assert projection.counts_for(FEATURE_SCOPE_ID).conflicts == 0

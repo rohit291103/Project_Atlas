@@ -1,0 +1,41 @@
+# The restraint fixture. SCRUM-1 is untouched Atlassian onboarding copy ("Start
+# here: Add your team's work") that shipped with the project template -- nobody
+# wrote it, nobody wrote it to be extractable, and it contains no product claim
+# about any feature Atlas would ever spec.
+#
+# Every other Jira fixture in this set was authored by the build team, which the
+# `writing-evals` skill warns will quietly inflate scores. This one is the
+# antidote: the only Jira content here that was not written with extraction in
+# mind. It is graded by CEILINGS rather than floors, because the question it asks
+# is the opposite one -- not "did extraction find the claims" but "did extraction
+# invent claims where there are none".
+issue: SCRUM-1
+source: SCRUM-1 (Atlassian project template, unmodified)
+
+# Marketing prose about importing CSVs and using an AI assistant is not a feature
+# specification. Extraction cannot currently tell the difference and will always
+# produce something; what it must not do is produce a lot, or produce it
+# confidently. Both recorded runs stayed at 3 nodes, none above 0.6.
+max_nodes: 4
+max_confidence: 0.6
+
+notes: |
+  What the recorded run actually did, and why this fixture exists:
+
+  It emitted 3 nodes, all at confidence 0.6, all with verbatim correctly
+  attributed excerpts -- and all restating onboarding tips as product
+  requirements ("Users should be able to import existing work from a CSV").
+  Nothing is fabricated; the provenance is sound. But a PM reviewing a real
+  backlog would see cards like these for every chore, template and stub ticket in
+  it, and would have to reject them one at a time.
+
+  So this is not a failing fixture, it is a *calibrated* one. The confidence
+  split is the finding: 0.9 on the seeded feature tickets, 0.6 here, with no
+  prompt ever telling it to make that distinction. `max_confidence` pins that
+  behaviour down so a prompt change that flattens it into uniform 0.9 fails
+  loudly instead of silently making every card look equally trustworthy.
+
+  Deliberately NOT `max_nodes: 0`. Demanding silence would be grading a judgment
+  call ("is an onboarding tip a requirement?") as if it were a fact, and would
+  turn any reasonable disagreement into a red test. The ceiling is a guard
+  against volume, not a claim that the right answer is zero.

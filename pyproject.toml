@@ -15,6 +15,10 @@ dependencies = [
     "fastapi>=0.141.1",
     "itsdangerous>=2.2.0",
     "uvicorn>=0.51.0",
+    # Slice 2B: per-product source credentials are encrypted at rest with Fernet
+    # (authenticated AES-CBC + HMAC). Vetted primitives only — nothing here is
+    # hand-rolled. See docs/decisions/2026-08-15-connections-and-ui-ingestion.md.
+    "cryptography>=43",
 ]
 
 [project.scripts]

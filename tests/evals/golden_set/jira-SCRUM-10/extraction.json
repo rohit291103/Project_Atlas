@@ -1,0 +1,191 @@
+{
+ "nodes": [
+  {
+   "id": "533e06d9-d041-444e-aff9-ea89b7aa3cfb",
+   "type": "open_question",
+   "content": "Whether ripgrep should ship a --mindepth flag as a counterpart to --maxdepth is undecided and not committed for this release.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "f167703d-b64f-4527-a043-153a1145e039",
+     "source_type": "jira_ticket",
+     "external_id": "SCRUM-10",
+     "url": "https://rohitg291103.atlassian.net/browse/SCRUM-10",
+     "excerpt": "Do we also need a --mindepth counterpart?",
+     "fetched_at": "2026-08-15T07:45:51.123274Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+     "id": "bb038ec0-4089-4393-a7e4-63e2dbd2c16b",
+     "source_type": "jira_ticket",
+     "external_id": "SCRUM-10",
+     "url": "https://rohitg291103.atlassian.net/browse/SCRUM-10",
+     "excerpt": "Open question, not committed for this release.",
+     "fetched_at": "2026-08-15T07:45:51.123330Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-08-15T07:45:51.123370Z",
+   "updated_at": "2026-08-15T07:45:51.123371Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "ee361dad-dd60-4cb5-af9e-f749b48b31ee"
+  },
+  {
+   "id": "8cc139a9-ac7a-4d3a-abcb-a0f439a632cf",
+   "type": "evidence",
+   "content": "Several users have requested a --mindepth flag alongside --maxdepth to skip shallow results rather than deep ones.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "8fb002ad-f5d5-4095-941c-c9a30a7ac0dd",
+     "source_type": "jira_ticket",
+     "external_id": "SCRUM-10",
+     "url": "https://rohitg291103.atlassian.net/browse/SCRUM-10",
+     "excerpt": "Several users have asked for a --mindepth flag alongside --maxdepth, to skip shallow results rather than deep ones.",
+     "fetched_at": "2026-08-15T07:45:51.123412Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-08-15T07:45:51.123421Z",
+   "updated_at": "2026-08-15T07:45:51.123422Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "ee361dad-dd60-4cb5-af9e-f749b48b31ee"
+  },
+  {
+   "id": "01b955a0-e9a3-48b9-944e-a156bf2a19ba",
+   "type": "requirement",
+   "content": "A decision on the --mindepth counterpart must be reached before GA.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "44413249-5566-4210-a0bb-b7fb2bfb6145",
+     "source_type": "jira_ticket",
+     "external_id": "SCRUM-10",
+     "url": "https://rohitg291103.atlassian.net/browse/SCRUM-10",
+     "excerpt": "We need a decision before GA.",
+     "fetched_at": "2026-08-15T07:45:51.123432Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-08-15T07:45:51.123440Z",
+   "updated_at": "2026-08-15T07:45:51.123441Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "ee361dad-dd60-4cb5-af9e-f749b48b31ee"
+  },
+  {
+   "id": "6ed970e8-7942-4653-834f-ea770acbe18b",
+   "type": "architecture_note",
+   "content": "Shipping --maxdepth with semantics that differ from find would make adding --mindepth later harder to explain.",
+   "confidence_score": 0.6,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "83748606-9bd3-4406-a34e-197f381fb715",
+     "source_type": "jira_ticket",
+     "external_id": "SCRUM-10",
+     "url": "https://rohitg291103.atlassian.net/browse/SCRUM-10",
+     "excerpt": "If we ship --maxdepth with semantics that differ from find, adding --mindepth later becomes harder to explain.",
+     "fetched_at": "2026-08-15T07:45:51.123450Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-08-15T07:45:51.123458Z",
+   "updated_at": "2026-08-15T07:45:51.123459Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "ee361dad-dd60-4cb5-af9e-f749b48b31ee"
+  },
+  {
+   "id": "70e50c8b-dfaa-4e1e-ae7f-a9b67b62ce64",
+   "type": "goal",
+   "content": "Give engineers in large monorepos a way to stop ripgrep descending into deeply nested vendored directories via a depth-limited search.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "a5484772-6ca6-4c06-8fbf-2763a81070a2",
+     "source_type": "jira_ticket",
+     "external_id": "SCRUM-6",
+     "url": "https://rohitg291103.atlassian.net/browse/SCRUM-6",
+     "excerpt": "Engineers working in large monorepos need a way to stop ripgrep descending into deeply nested vendored directories.",
+     "fetched_at": "2026-08-15T07:45:51.123467Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-08-15T07:45:51.123475Z",
+   "updated_at": "2026-08-15T07:45:51.123475Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "ee361dad-dd60-4cb5-af9e-f749b48b31ee"
+  },
+  {
+   "id": "5fd5bf94-8f8d-418a-b146-67ad1503d006",
+   "type": "problem",
+   "content": "The only current workaround, an .rgignore file, must be copied between repositories and drifts out of date.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "8af29ab6-923c-476a-ad31-d02090c62580",
+     "source_type": "jira_ticket",
+     "external_id": "SCRUM-6",
+     "url": "https://rohitg291103.atlassian.net/browse/SCRUM-6",
+     "excerpt": "Today the only workaround is an .rgignore file, which has to be copied from repository to repository and drifts out of date.",
+     "fetched_at": "2026-08-15T07:45:51.123484Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-08-15T07:45:51.123492Z",
+   "updated_at": "2026-08-15T07:45:51.123492Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "ee361dad-dd60-4cb5-af9e-f749b48b31ee"
+  }
+ ],
+ "edges": [
+  {
+   "id": "89d42732-464e-4474-82cc-8aa62ad3fdc6",
+   "from_node_id": "8cc139a9-ac7a-4d3a-abcb-a0f439a632cf",
+   "to_node_id": "533e06d9-d041-444e-aff9-ea89b7aa3cfb",
+   "relation_type": "supports",
+   "confidence_score": 0.9,
+   "created_at": "2026-08-15T07:45:51.123523Z"
+  },
+  {
+   "id": "e51bcd38-f127-4634-b683-e4d7841091e8",
+   "from_node_id": "533e06d9-d041-444e-aff9-ea89b7aa3cfb",
+   "to_node_id": "70e50c8b-dfaa-4e1e-ae7f-a9b67b62ce64",
+   "relation_type": "derives_from",
+   "confidence_score": 0.6,
+   "created_at": "2026-08-15T07:45:51.123551Z"
+  },
+  {
+   "id": "2bf2037e-8afe-4f4a-b88b-d6a3fc5b7a09",
+   "from_node_id": "6ed970e8-7942-4653-834f-ea770acbe18b",
+   "to_node_id": "01b955a0-e9a3-48b9-944e-a156bf2a19ba",
+   "relation_type": "supports",
+   "confidence_score": 0.6,
+   "created_at": "2026-08-15T07:45:51.123558Z"
+  },
+  {
+   "id": "4353fde2-e6a0-430f-ab7b-87b069c316cd",
+   "from_node_id": "70e50c8b-dfaa-4e1e-ae7f-a9b67b62ce64",
+   "to_node_id": "5fd5bf94-8f8d-418a-b146-67ad1503d006",
+   "relation_type": "derives_from",
+   "confidence_score": 0.9,
+   "created_at": "2026-08-15T07:45:51.123565Z"
+  }
+ ]
+}

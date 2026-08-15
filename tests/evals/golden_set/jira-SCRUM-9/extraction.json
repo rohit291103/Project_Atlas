@@ -1,0 +1,158 @@
+{
+ "nodes": [
+  {
+   "id": "c7f2c6c3-c439-4e42-ba57-12bbeb874372",
+   "type": "goal",
+   "content": "Give engineers working in large monorepos a way to stop ripgrep descending into deeply nested vendored directories.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "a0ed0edc-1bf1-4f0a-8233-df89e2f0f8b8",
+     "source_type": "jira_ticket",
+     "external_id": "SCRUM-6",
+     "url": "https://rohitg291103.atlassian.net/browse/SCRUM-6",
+     "excerpt": "Engineers working in large monorepos need a way to stop ripgrep descending into deeply nested vendored directories.",
+     "fetched_at": "2026-08-15T07:44:01.629770Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-08-15T07:44:01.629859Z",
+   "updated_at": "2026-08-15T07:44:01.629860Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "b84140c5-a345-49b9-8e93-f26a2518a8eb"
+  },
+  {
+   "id": "ef8df0dc-4ca7-40f2-bc75-42140539dcd3",
+   "type": "problem",
+   "content": "The only current workaround (an .rgignore file) must be copied between repositories and drifts out of date.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "e66d362e-1e76-4cff-bf2d-18088ad86772",
+     "source_type": "jira_ticket",
+     "external_id": "SCRUM-6",
+     "url": "https://rohitg291103.atlassian.net/browse/SCRUM-6",
+     "excerpt": "the only workaround is an .rgignore file, which has to be copied from repository to repository and drifts out of date.",
+     "fetched_at": "2026-08-15T07:44:01.629888Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-08-15T07:44:01.629898Z",
+   "updated_at": "2026-08-15T07:44:01.629899Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "b84140c5-a345-49b9-8e93-f26a2518a8eb"
+  },
+  {
+   "id": "ee2ceffc-ad7b-40ce-a9c3-33bfd3845f8b",
+   "type": "requirement",
+   "content": "When --maxdepth is not supplied, traversal depth must remain unlimited.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "aa5fc584-5f91-4c4a-a7fb-5bf9f9050665",
+     "source_type": "jira_ticket",
+     "external_id": "SCRUM-9",
+     "url": "https://rohitg291103.atlassian.net/browse/SCRUM-9",
+     "excerpt": "when --maxdepth is not supplied, traversal depth must remain unlimited",
+     "fetched_at": "2026-08-15T07:44:01.629907Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-08-15T07:44:01.629915Z",
+   "updated_at": "2026-08-15T07:44:01.629915Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "b84140c5-a345-49b9-8e93-f26a2518a8eb"
+  },
+  {
+   "id": "41e751f1-ff07-45af-871d-aa50684882b0",
+   "type": "requirement",
+   "content": "There must be no measurable performance regression on the default search path when --maxdepth is not passed.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "1f20766e-d3a0-40a5-a9e4-8607c8f6b48d",
+     "source_type": "jira_ticket",
+     "external_id": "SCRUM-9",
+     "url": "https://rohitg291103.atlassian.net/browse/SCRUM-9",
+     "excerpt": "there must be no measurable performance regression on the default search path",
+     "fetched_at": "2026-08-15T07:44:01.629922Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-08-15T07:44:01.629929Z",
+   "updated_at": "2026-08-15T07:44:01.629930Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "b84140c5-a345-49b9-8e93-f26a2518a8eb"
+  },
+  {
+   "id": "1a33d8af-9bdd-4adb-a436-7558e9f3092f",
+   "type": "constraint",
+   "content": "Sign-off from the performance owner is required before this ships.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "f5770827-e1af-4cfc-9dc5-14d3db3fccd1",
+     "source_type": "jira_ticket",
+     "external_id": "SCRUM-9",
+     "url": "https://rohitg291103.atlassian.net/browse/SCRUM-9",
+     "excerpt": "Sign-off from the performance owner is required before this ships.",
+     "fetched_at": "2026-08-15T07:44:01.629937Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-08-15T07:44:01.629943Z",
+   "updated_at": "2026-08-15T07:44:01.629944Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "b84140c5-a345-49b9-8e93-f26a2518a8eb"
+  }
+ ],
+ "edges": [
+  {
+   "id": "5938a18c-723f-4cc5-ab06-fcaa24b8dd7d",
+   "from_node_id": "c7f2c6c3-c439-4e42-ba57-12bbeb874372",
+   "to_node_id": "ef8df0dc-4ca7-40f2-bc75-42140539dcd3",
+   "relation_type": "derives_from",
+   "confidence_score": 0.9,
+   "created_at": "2026-08-15T07:44:01.629970Z"
+  },
+  {
+   "id": "9408ba87-a3c4-42dc-82b8-01029ad4cd34",
+   "from_node_id": "ee2ceffc-ad7b-40ce-a9c3-33bfd3845f8b",
+   "to_node_id": "c7f2c6c3-c439-4e42-ba57-12bbeb874372",
+   "relation_type": "derives_from",
+   "confidence_score": 0.6,
+   "created_at": "2026-08-15T07:44:01.629992Z"
+  },
+  {
+   "id": "38a396c9-22f0-4f2e-abf3-a3b2cc0e404f",
+   "from_node_id": "41e751f1-ff07-45af-871d-aa50684882b0",
+   "to_node_id": "c7f2c6c3-c439-4e42-ba57-12bbeb874372",
+   "relation_type": "derives_from",
+   "confidence_score": 0.6,
+   "created_at": "2026-08-15T07:44:01.630000Z"
+  },
+  {
+   "id": "e9ed3535-40a1-4189-b7cf-9b53e9b5fd12",
+   "from_node_id": "41e751f1-ff07-45af-871d-aa50684882b0",
+   "to_node_id": "1a33d8af-9bdd-4adb-a436-7558e9f3092f",
+   "relation_type": "depends_on",
+   "confidence_score": 0.6,
+   "created_at": "2026-08-15T07:44:01.630006Z"
+  }
+ ]
+}

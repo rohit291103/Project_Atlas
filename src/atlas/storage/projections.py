@@ -41,8 +41,8 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterable
-from dataclasses import dataclass, field
-from datetime import datetime
+from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
 from sqlalchemy import select
@@ -51,19 +51,51 @@ from sqlalchemy.orm import Session
 from atlas.models.schema import (
     Edge,
     EventType,
+    FeatureScopeAssignedPayload,
     IngestionRunPayload,
     Node,
     NodeEditPayload,
     NodeStatus,
     NodeStatusChangePayload,
+    ProductPayload,
+    RelationType,
+    RunFailedPayload,
+    RunFinishedPayload,
+    RunStartedPayload,
+    RunState,
+    RunTargetKind,
 )
 from atlas.storage.tables import EventLog
 
-__all__ = ["FeatureScope", "Projection", "load_projection", "replay"]
+__all__ = [
+    "INTERRUPTED_AFTER",
+    "FeatureScope",
+    "Product",
+    "Projection",
+    "Run",
+    "load_projection",
+    "replay",
+]
 
 # Audit-only events: real entries in the log, but they carry no Node/Edge state,
-# so replaying them is a no-op for a Node/Edge projection.
-_NO_OP_EVENTS = frozenset({EventType.SPEC_EXPORTED})
+# so replaying them is a no-op for a Node/Edge projection. Connection events are
+# here because a connection lives in a table (it must be deletable); the log
+# records only that one was made or revoked, for audit.
+_NO_OP_EVENTS = frozenset(
+    {EventType.SPEC_EXPORTED, EventType.CONNECTION_CREATED, EventType.CONNECTION_REVOKED}
+)
+
+#: How long a run may sit with a start event and no terminal event before the
+#: projection stops calling it "running" and calls it interrupted.
+#:
+#: Ingestion started from the UI runs in the API process -- no queue, no worker,
+#: no new deployable (an explicit CLAUDE.md Non-Goal). The cost of that choice is
+#: real and stated here rather than hidden: a process that dies mid-run leaves
+#: exactly the same trace as a slow one. Thirty minutes is comfortably longer
+#: than any observed run (the slowest live extraction to date is under three) and
+#: short enough that a PM is not left watching a spinner for a run that is never
+#: coming back.
+INTERRUPTED_AFTER = timedelta(minutes=30)
 
 # The confirm/reject pair: a human ruling that changes status and nothing else.
 _STATUS_ONLY_TRANSITIONS = {
@@ -113,11 +145,106 @@ class FeatureScope:
     id: uuid.UUID
     title: str
     runs: tuple[IngestionRunPayload, ...]
+    #: The product this feature is filed under, or None for a scope ingested
+    #: before products existed. Resolved at the end of `replay` rather than
+    #: during the fold, because an assignment and a run can arrive in either
+    #: order and the answer must not depend on which.
+    product_id: uuid.UUID | None = None
+
+
+@dataclass(frozen=True)
+class ScopeCounts:
+    """How much of one feature still needs a human.
+
+    Deliberately *not* a field on `FeatureScope`: that dataclass is the scope's
+    identity -- what its UUID means -- and identity does not change when someone
+    confirms a claim. These are derived aggregates over Nodes and Edges, and
+    keeping them apart stops the identity record from looking mutable.
+
+    Computed in `storage/` rather than in the browser because three surfaces
+    need the same number (the feature list, the Conflicts nav entry, the product
+    dashboard), and because deriving it client-side means shipping every node
+    and edge of every feature to the browser in order to count them.
+    """
+
+    #: Every claim in the scope, whatever its status.
+    total: int
+    #: Claims still awaiting a ruling. Confirmed, edited and rejected all count
+    #: as ruled -- a human has acted on each -- so this is the work that is left.
+    unreviewed: int
+    #: Disagreements, counted **once each** rather than once per side.
+    conflicts: int
+
+
+@dataclass(frozen=True)
+class Product:
+    """One product a PM works on -- its own GitHub org, its own Jira site.
+
+    A product is a projection, not a table, for the same reason feature-scope
+    identity is (slice 1A'): the event log is the source of truth and adding a
+    table would put state outside it. It is deliberately *not* derived from
+    ingested data such as `external_id` -- a product has to exist before the
+    first connection is made to it, so it cannot be inferred from the results of
+    ingestion that has not happened yet.
+    """
+
+    id: uuid.UUID
+    name: str
+
+
+@dataclass(frozen=True)
+class Run:
+    """One ingestion job, as replayed from the log.
+
+    A run is *not* the same thing as an `ingestion_run` event. That event means
+    "one artifact was pulled and extracted", and one job can produce several of
+    them -- pulling an epic's children is one thing a PM asked for and four
+    artifacts fetched. So a job is bracketed by `ingestion_run_started` and
+    exactly one `ingestion_run_finished` / `ingestion_run_failed`, and the
+    `ingestion_run` events in between name their job through `run_id`.
+
+    `state` is a method rather than a field because one of the four states is a
+    function of *now*: see `INTERRUPTED_AFTER`. Storing it would mean writing a
+    status column that has to be corrected later, which is the pattern
+    event-sourcing exists to avoid.
+    """
+
+    id: uuid.UUID
+    feature_scope_id: uuid.UUID
+    product_id: uuid.UUID | None
+    connection_id: uuid.UUID | None
+    target_kind: RunTargetKind
+    target: str
+    started_at: datetime
+    started_by: str
+    finished_at: datetime | None = None
+    #: `None` while running; set by whichever terminal event arrived.
+    outcome: RunState | None = None
+    error: str | None = None
+    artifacts: int = 0
+    nodes: int = 0
+    edges: int = 0
+    #: The feature scopes this run actually fed. Usually one -- an epic's
+    #: children all land in the same scope -- but it is a tuple because nothing
+    #: in the model forbids a run from opening more than one.
+    feature_scope_ids: tuple[uuid.UUID, ...] = ()
+
+    def state(self, *, now: datetime | None = None) -> RunState:
+        """The run's state as of `now`, defaulting to the current time."""
+        if self.outcome is not None:
+            return self.outcome
+        moment = now or datetime.now(UTC)
+        # Postgres hands back an aware timestamp; SQLite (tests only) hands back a
+        # naive one, and subtracting the two raises. The log is written in UTC
+        # either way, so reading a naive value as UTC is the truth rather than a
+        # guess -- the same class of dialect shim as `_UUID` in storage/tables.py.
+        started = self.started_at if self.started_at.tzinfo else self.started_at.replace(tzinfo=UTC)
+        return RunState.INTERRUPTED if moment - started > INTERRUPTED_AFTER else RunState.RUNNING
 
 
 @dataclass(frozen=True)
 class Projection:
-    """Materialized Node/Edge/feature-scope state at a point in the event log.
+    """Materialized Node/Edge/feature-scope/product state at a point in the log.
 
     Keyed by id so a future update event can supersede an entity in place by
     re-assigning the same key. Rebuilt from the log on demand -- never stored.
@@ -126,6 +253,83 @@ class Projection:
     nodes: dict[uuid.UUID, Node] = field(default_factory=dict)
     edges: dict[uuid.UUID, Edge] = field(default_factory=dict)
     feature_scopes: dict[uuid.UUID, FeatureScope] = field(default_factory=dict)
+    products: dict[uuid.UUID, Product] = field(default_factory=dict)
+    #: Ingestion jobs, oldest first (the log's own order).
+    runs: dict[uuid.UUID, Run] = field(default_factory=dict)
+
+    def for_product(self, product_id: uuid.UUID) -> Projection:
+        """Narrow to the features filed under one product.
+
+        A scope with no product is excluded rather than swept into the first
+        product: "not yet filed" and "filed here" are different states, and
+        merging them would show a PM someone else's feature.
+
+        `products` is deliberately *not* narrowed -- the product switcher still
+        has to list the ones you are not currently looking at.
+        """
+        scopes = {
+            scope_id: scope
+            for scope_id, scope in self.feature_scopes.items()
+            if scope.product_id == product_id
+        }
+        nodes = {
+            node_id: node for node_id, node in self.nodes.items() if node.feature_scope_id in scopes
+        }
+        edges = {
+            edge_id: edge
+            for edge_id, edge in self.edges.items()
+            if edge.from_node_id in nodes and edge.to_node_id in nodes
+        }
+        return Projection(
+            nodes=nodes,
+            edges=edges,
+            feature_scopes=scopes,
+            products=dict(self.products),
+            # A run is kept when it *targeted* this product, whether or not it
+            # got far enough to produce a feature — a failed run is exactly what
+            # the Sources screen most needs to show.
+            runs={run_id: run for run_id, run in self.runs.items() if run.product_id == product_id},
+        )
+
+    def counts_for(self, feature_scope_id: uuid.UUID) -> ScopeCounts:
+        """How much of one feature is still work.
+
+        Two rules here are load-bearing and both were chosen to make the number
+        on a badge agree with the screen it sends you to:
+
+        1. **A conflict is counted once, not once per side.** The review screen
+           deliberately reports both endpoints so either card can raise a
+           banner; a count that did the same would render five disagreements as
+           ten. Counting edges rather than endpoints gets this for free.
+        2. **An edge belongs to the scope only when both endpoints do**, which
+           is the rule `for_feature_scope` already applies. A conflict reaching
+           a node in another feature is real, but it is not this feature's
+           number, and showing it here would send a reviewer to a screen where
+           it does not appear.
+
+        Rejected claims drop out of the conflict count: rejecting one side is
+        how a person settles a disagreement, and a number no action can clear is
+        worse than no number.
+        """
+        node_ids = {
+            node_id
+            for node_id, node in self.nodes.items()
+            if node.feature_scope_id == feature_scope_id
+        }
+        live = {node_id for node_id in node_ids if self.nodes[node_id].status is not NodeStatus.REJECTED}
+        return ScopeCounts(
+            total=len(node_ids),
+            unreviewed=sum(
+                1 for node_id in node_ids if self.nodes[node_id].status is NodeStatus.UNCONFIRMED
+            ),
+            conflicts=sum(
+                1
+                for edge in self.edges.values()
+                if edge.relation_type is RelationType.CONFLICTS_WITH
+                and edge.from_node_id in live
+                and edge.to_node_id in live
+            ),
+        )
 
     def for_feature_scope(self, feature_scope_id: uuid.UUID) -> Projection:
         """Narrow to one feature scope -- what `atlas review --feature-scope`
@@ -152,6 +356,12 @@ class Projection:
             nodes=nodes,
             edges=edges,
             feature_scopes={} if scope is None else {feature_scope_id: scope},
+            products=dict(self.products),
+            runs={
+                run_id: run
+                for run_id, run in self.runs.items()
+                if run.feature_scope_id == feature_scope_id
+            },
         )
 
 
@@ -183,6 +393,22 @@ def _supersede(
     )
 
 
+def _require_run(runs: dict[uuid.UUID, Run], run_id: uuid.UUID, event_type: EventType) -> Run:
+    """The run a terminal event names, or raise.
+
+    Same rule the node transitions follow: a terminal event for a run the log
+    never started means a corrupt log or an upstream bug, and skipping it would
+    make a finished run silently vanish from the history a PM reads.
+    """
+    run = runs.get(run_id)
+    if run is None:
+        raise ValueError(
+            f"{event_type.value!r} names unknown run {run_id}: "
+            "the log has no ingestion_run_started for it"
+        )
+    return run
+
+
 def replay(events: Iterable[_ReplayableEvent]) -> Projection:
     """Fold an ordered event stream into a `Projection`.
 
@@ -194,6 +420,16 @@ def replay(events: Iterable[_ReplayableEvent]) -> Projection:
     nodes: dict[uuid.UUID, Node] = {}
     edges: dict[uuid.UUID, Edge] = {}
     feature_scopes: dict[uuid.UUID, FeatureScope] = {}
+    products: dict[uuid.UUID, Product] = {}
+    runs: dict[uuid.UUID, Run] = {}
+    # Two ways a scope can learn its product, kept apart until the fold is over.
+    # `assigned` is a deliberate human act; `defaulted` is whatever triggered
+    # ingestion supplying a default. Resolving at the end rather than in the fold
+    # is what makes the answer independent of the order the two arrive in --
+    # otherwise a re-ingestion landing after a filing would silently move the
+    # feature out of the product a person put it in.
+    assigned: dict[uuid.UUID, uuid.UUID] = {}
+    defaulted: dict[uuid.UUID, uuid.UUID] = {}
 
     for event in events:
         event_type = event.event_type
@@ -221,12 +457,81 @@ def replay(events: Iterable[_ReplayableEvent]) -> Projection:
                 title=existing.title if existing else run.title,
                 runs=(*(existing.runs if existing else ()), run),
             )
+            # Only a stated product is recorded. `None` is an absence, not a
+            # claim that the feature belongs nowhere, so a pre-product run
+            # replaying after an assignment must not unfile the feature.
+            if run.product_id is not None:
+                defaulted[run.feature_scope_id] = run.product_id
+            # An `ingestion_run` written before slice 2B (or by a CLI command
+            # with no job around it) names no run, and must not conjure one.
+            if run.run_id is not None and run.run_id in runs:
+                job = runs[run.run_id]
+                runs[run.run_id] = replace(
+                    job,
+                    artifacts=job.artifacts + 1,
+                    feature_scope_ids=tuple(
+                        dict.fromkeys((*job.feature_scope_ids, run.feature_scope_id))
+                    ),
+                )
+        elif event_type == EventType.INGESTION_RUN_STARTED:
+            started = RunStartedPayload.model_validate(event.payload)
+            runs[started.run_id] = Run(
+                id=started.run_id,
+                feature_scope_id=started.feature_scope_id,
+                product_id=started.product_id,
+                connection_id=started.connection_id,
+                target_kind=started.target_kind,
+                target=started.target,
+                started_at=event.timestamp,
+                started_by=event.actor,
+            )
+        elif event_type == EventType.INGESTION_RUN_FINISHED:
+            done = RunFinishedPayload.model_validate(event.payload)
+            runs[done.run_id] = replace(
+                _require_run(runs, done.run_id, event_type),
+                finished_at=event.timestamp,
+                outcome=RunState.SUCCEEDED,
+                nodes=done.nodes,
+                edges=done.edges,
+            )
+        elif event_type == EventType.INGESTION_RUN_FAILED:
+            broke = RunFailedPayload.model_validate(event.payload)
+            runs[broke.run_id] = replace(
+                _require_run(runs, broke.run_id, event_type),
+                finished_at=event.timestamp,
+                outcome=RunState.FAILED,
+                error=broke.error,
+            )
+        elif event_type == EventType.PRODUCT_CREATED:
+            created = ProductPayload.model_validate(event.payload)
+            products[created.product_id] = Product(id=created.product_id, name=created.name)
+        elif event_type == EventType.PRODUCT_RENAMED:
+            renamed = ProductPayload.model_validate(event.payload)
+            if renamed.product_id not in products:
+                raise ValueError(
+                    f"'product_renamed' names unknown product {renamed.product_id}: "
+                    "the log has no product_created for it"
+                )
+            products[renamed.product_id] = Product(id=renamed.product_id, name=renamed.name)
+        elif event_type == EventType.FEATURE_SCOPE_ASSIGNED:
+            assignment = FeatureScopeAssignedPayload.model_validate(event.payload)
+            assigned[assignment.feature_scope_id] = assignment.product_id
         elif event_type in _NO_OP_EVENTS:
             continue
         else:  # pragma: no cover - guards against a new EventType with no handler
             raise ValueError(f"no projection handler for event type {event_type!r}")
 
-    return Projection(nodes=nodes, edges=edges, feature_scopes=feature_scopes)
+    # An assignment outranks a run's default, in either order. A scope named by
+    # an assignment but never opened by a run stays absent: it has no title, and
+    # inventing one would be exactly the fabrication the rest of this module
+    # refuses.
+    feature_scopes = {
+        scope_id: replace(scope, product_id=assigned.get(scope_id, defaulted.get(scope_id)))
+        for scope_id, scope in feature_scopes.items()
+    }
+    return Projection(
+        nodes=nodes, edges=edges, feature_scopes=feature_scopes, products=products, runs=runs
+    )
 
 
 def load_projection(

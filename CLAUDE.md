@@ -49,6 +49,8 @@ Explicitly **not** current priority (these are Phase 2–4, don't build ahead of
 5. **Idempotent, incremental ingestion.** Re-running ingestion must never duplicate or corrupt existing data (binding from Phase 1's scoped/incremental sync onward).
 6. **Least-privilege data access.** The system only ever sees what the connecting credential already has access to in the source tool.
 
+**One amendment, made deliberately (2026-08-15, slice 2B).** The `security-review` checklist below used to read "no secret ever lands in the database (env/secrets manager only)". That held while there was one GitHub token and one Jira token in `.env`; it cannot hold once a PM connects their own products' sources *from a browser*, which is what Phase 1 exists to prove. Per-product source credentials now live in the `connection` table **encrypted at rest with a key held outside the database** (`ATLAS_SECRET_KEY`), are never returned by any endpoint (`ConnectionView` has no field one could occupy), are never logged, and are deletable — because revocation must actually remove a credential. Full argument and the posture that replaces the rule: `docs/decisions/2026-08-15-connections-and-ui-ingestion.md` §1. **Nothing else changed:** no other secret goes in the database, and application/session secrets stay in env.
+
 ## System Architecture / Module Boundary
 
 This is the module decomposition — don't invent a different one without running it through the `codebase-design` skill first:
@@ -56,9 +58,11 @@ This is the module decomposition — don't invent a different one without runnin
 1. **`ingestion/`** — read-only source connectors. GitHub only in Phase 0; Jira/Linear and a doc tool join in Phase 1–2.
 2. **`extraction/`** — the Claude Agent SDK agent + its tools + prompts. Turns raw ingested content into schema-validated `Node`/`Edge` output. This is where "AI reasoning" lives — it never writes directly to storage without passing through schema validation first.
 3. **`storage/`** — `event_log` (Supabase/Postgres, append-only JSONB) plus projections (materialized Node/Edge views replayed from events).
-4. **`cli/`** — Typer entrypoint. Phase 0's stand-in for the confirmation UI (`atlas ingest`, `atlas review`).
+4. **`cli/`** — Typer entrypoint. The engineer-facing read/debug path. **It holds no orchestration** as of slice 2B (below) — the commands read credentials from the environment, hand `pipeline` a request, and render the result.
+5. **`api/`** — a thin FastAPI read/write layer over `storage/` projections + the event log. Owns HTTP, auth and serialization and **no domain logic**: every write endpoint is authenticate → load → call one `storage/` function → return.
+6. **`pipeline.py`** — one ingestion run, start to finish: parse a target → build a read-only client → run the agent → write validated events. Its own module because it spans `ingestion/`, `extraction/` and `storage/` and has two real callers (the CLI and the ingest endpoint); duplicating it would let the path along which "extraction never reaches storage unvalidated" holds drift between them. `tests/test_cli.py` fails if orchestration returns to `cli.py`.
 
-Arriving in Phase 1 (in progress, proposed in `Phase1_Architecture.md` §5, **pending a `codebase-design` pass before scaffolding**): **`api/`** — a thin FastAPI read/write layer over `storage/` projections + the event log, serving the confirmation UI and obeying the same "no direct Node/Edge mutation, append an event" rule the CLI does; and a **React frontend** (the confirmation UI itself, talking only to `api/`). The CLI stays as the engineer-facing/debug read path, not replaced. Still later per the Roadmap: spec assembly/export (Phase 2), Q&A retrieval layer (Phase 3).
+Modules 5 and 6 arrived during Phase 1 and each passed the `codebase-design` gate before it was scaffolded: `api/` in `docs/decisions/2026-08-11-api-frontend-module-boundary.md`, `pipeline.py` in `docs/architecture/product-model-and-frontend-rebuild-v1.md` §5. Alongside them sits the **React frontend** (repo-root `frontend/`) — the confirmation UI, the public landing/sign-in surface, and the Sources screen — talking only to `api/`. The CLI stays as the engineer-facing/debug read path, not replaced. Still later per the Roadmap: spec assembly/export (Phase 2), Q&A retrieval layer (Phase 3).
 
 ## Tech Stack (Phase 0 — see `docs/architecture/Phase0_Architecture.md` for full rationale)
 
@@ -66,7 +70,7 @@ Python 3.12 + `uv` · Claude Agent SDK (agentic extraction) · `httpx` (GitHub) 
 
 ## Explicit Non-Goals (PRD §2.3, TRD §12 — don't build these ahead of schedule)
 
-No dedicated graph database (Postgres + projections is sufficient). No fine-tuned extraction model (prompting + retrieval only). No write-back to any source system. No real-time collaborative editing. No cross-workspace/cross-org querying. No automated dependency-propagation engine. No task queue, vector store usage, or RBAC until the phase that actually needs them.
+No dedicated graph database (Postgres + projections is sufficient). No fine-tuned extraction model (prompting + retrieval only). No write-back to any source system. No real-time collaborative editing. No cross-workspace/cross-org querying. No automated dependency-propagation engine. No task queue, vector store usage, or RBAC until the phase that actually needs them — UI-triggered ingestion runs **in-process** via FastAPI `BackgroundTasks` precisely so no broker is introduced; the day there is more than one API worker, or a run that must survive a deploy, is the day a queue is warranted, and that is the phase that should build it.
 
 ## Documentation Rules
 
@@ -103,7 +107,7 @@ A version bump (`v2`, a new `PhaseN_Architecture.md`) always creates a new file 
 
 ### Security review
 1. Global `security-review` skill on the pending diff.
-2. Cross-check TRD §9: read-only architecture preserved, credential scoped to least privilege, no raw source content persisted beyond the extraction run, no secret ever lands in the database (env/secrets manager only).
+2. Cross-check TRD §9: read-only architecture preserved, credential scoped to least privilege, no raw source content persisted beyond the extraction run, and **source credentials only ever reach the database through `storage/connections.py`** — encrypted, key in env, never in a response model, never in a log line, deletable (see the amendment in Engineering Philosophy above). Every other secret is env/secrets-manager only.
 3. Touching Supabase schema or access patterns? Check the `security-*` prefixed rules in the `supabase-postgres-best-practices` skill (RLS basics apply once there's more than one credential/tenant — not yet in Phase 0, but design with it in mind).
 
 ### Refactor / architecture change

@@ -1,0 +1,22 @@
+# Minimal Tier-1 expectations for SCRUM-9 ("No regression when --maxdepth is not
+# passed"). A conservative FLOOR, not the full expected output.
+#
+# CAVEAT: seeded fixture -- see the note in jira-SCRUM-7/rubric.yaml.
+issue: SCRUM-9
+source: SCRUM-9 (seeded fixture)
+
+required_node_types: # >=1 node of each type must be present
+  - requirement # unlimited depth by default; no measurable regression
+  - constraint # performance owner sign-off before it ships
+
+must_mention: # >=1 node whose content contains each (case-insensitive substring)
+  - regression
+  - performance
+
+notes: |
+  Two claims are bundled in one sentence here ("depth must remain unlimited" AND
+  "no measurable performance regression"). Both recorded runs split them into
+  separate nodes, which is the behaviour we want -- one node per claim, so a
+  reviewer can confirm one and reject the other. The floor does not encode the
+  split, because requiring a node *count* would be brittle against phrasing; the
+  Tier-2 review is where "did it split compound claims" gets judged.

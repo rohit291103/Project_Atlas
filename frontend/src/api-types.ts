@@ -34,6 +34,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Products
+         * @description Every product in the caller's workspace, in creation order.
+         *
+         *     Feature scopes carry their own `product_id`, so grouping the rail happens on
+         *     the client -- consistent with node ordering and the progress meter, which are
+         *     presentation decisions the API deliberately does not make.
+         */
+        get: operations["list_products_products_get"];
+        put?: never;
+        /**
+         * Create Product
+         * @description Open a new product. The id is minted in `storage/`, never taken from the
+         *     request -- same reason `add_node` builds its Node from fields.
+         */
+        post: operations["create_product_products_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/feature-scopes": {
         parameters: {
             query?: never;
@@ -44,6 +73,12 @@ export interface paths {
         /**
          * List Feature Scopes
          * @description The left rail. Ordered by ingestion, oldest first -- the log's own order.
+         *
+         *     Each row carries its own work-left counts. The alternative -- letting the
+         *     client fetch every scope's full detail and count nodes itself -- means
+         *     shipping every claim and excerpt of every feature to the browser to render
+         *     a number in a sidebar, and it puts the definition of "unreviewed" in the
+         *     frontend where three screens would each get their own copy of it.
          */
         get: operations["list_feature_scopes_feature_scopes_get"];
         put?: never;
@@ -66,6 +101,115 @@ export interface paths {
          * @description The review page: every node and edge for one feature, flat and ungrouped.
          */
         get: operations["get_feature_scope_feature_scopes__feature_scope_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/products/{product_id}/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Connections
+         * @description The Sources screen. Returns `ConnectionView`, which cannot carry a secret.
+         */
+        get: operations["list_connections_products__product_id__connections_get"];
+        put?: never;
+        /**
+         * Connect Source
+         * @description Verify a credential against the scope it claims, then store it encrypted.
+         *
+         *     The verification is not decoration. A credential that cannot see its own
+         *     scope is rejected *here*, where the PM is still looking at the form and can
+         *     fix it -- rather than at the first run, where the failure reads as "Atlas is
+         *     broken". It also produces the access summary the flow spec asks for, so
+         *     least privilege is demonstrated rather than asserted.
+         *
+         *     One round trip, not two: a "preview then save" pair would mean the browser
+         *     holding the token across two requests, which is worse than checking it once
+         *     on the way in.
+         */
+        post: operations["connect_source_products__product_id__connections_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/connections/{connection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke Connection
+         * @description Revocation is a real delete -- the ciphertext stops existing. The event
+         *     log keeps the record that it happened, which is the part that should.
+         */
+        delete: operations["revoke_connection_connections__connection_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/products/{product_id}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Runs
+         * @description Run history for one product, oldest first -- the log's own order.
+         */
+        get: operations["list_runs_products__product_id__runs_get"];
+        put?: never;
+        /**
+         * Start Ingestion
+         * @description Accept an ingestion job and return before it finishes.
+         *
+         *     202, not 200: the run is *accepted*, and the id in the response is what the
+         *     client polls. The `ingestion_run_started` event is written inside this
+         *     request, so the job is already in the history the moment the response goes
+         *     out -- and a run that dies on its first network call has still left a trace.
+         *
+         *     The credential is decrypted here, at the composition root, and handed to
+         *     `pipeline` as an argument. Nothing in `pipeline/` or `ingestion/` knows where
+         *     it came from, and the API process holds no ambient source credential of its
+         *     own.
+         */
+        post: operations["start_ingestion_products__product_id__runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Run
+         * @description What the client polls after a 202. State is derived, never stored.
+         */
+        get: operations["get_run_runs__run_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -160,6 +304,91 @@ export interface components {
             content: string;
         };
         /**
+         * ConnectSourceRequest
+         * @description Connect one source to one product.
+         *
+         *     `secret` is the *only* field in this file that ever holds a credential, it
+         *     only ever travels inbound, and nothing echoes it back -- the response is a
+         *     `ConnectionView`, which has no field it could occupy.
+         *
+         *     `email` is required for Jira and meaningless for GitHub: Jira Cloud
+         *     authenticates email + API token, GitHub authenticates the token alone. The
+         *     endpoint validates that pairing rather than accepting a half-filled
+         *     connection that would fail on its first run.
+         */
+        ConnectSourceRequest: {
+            source_type: components["schemas"]["SourceType"];
+            /** Host */
+            host: string;
+            /** Scope */
+            scope: string;
+            /** Secret */
+            secret: string;
+            /** Email */
+            email?: string | null;
+        };
+        /**
+         * ConnectionCreated
+         * @description The stored connection, plus what its credential turned out to reach.
+         *
+         *     The access summary is the trust moment: a PM sees "Private repository · 12
+         *     open issues" *before* Atlas is trusted with anything. It is shown and
+         *     discarded -- never stored, because it is a fact about right now, not
+         *     provenance.
+         */
+        ConnectionCreated: {
+            connection: components["schemas"]["ConnectionView"];
+            /** Access Label */
+            access_label: string;
+            /** Access Detail */
+            access_detail: string;
+        };
+        /**
+         * ConnectionView
+         * @description What an endpoint may say about a connection. The whole of it.
+         *
+         *     There is no `secret` field, no `ciphertext` field, and no `Any`-typed extras
+         *     bag — so a secret cannot reach a response by someone forgetting to exclude
+         *     it. `tests/test_connections.py` asserts that absence directly, and
+         *     `tests/test_api.py` asserts it again over the generated OpenAPI schema, which
+         *     is what the frontend's types are built from.
+         */
+        ConnectionView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            source_type: components["schemas"]["SourceType"];
+            /** Account */
+            account: string;
+            /** Host */
+            host: string;
+            /** Scope */
+            scope: string;
+            /** Secret Hint */
+            secret_hint: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string;
+            /** Last Used At */
+            last_used_at?: string | null;
+        };
+        /** CreateProductRequest */
+        CreateProductRequest: {
+            /** Name */
+            name: string;
+        };
+        /**
          * CreatedBy
          * @enum {string}
          */
@@ -227,6 +456,8 @@ export interface components {
             title: string;
             /** Runs */
             runs: components["schemas"]["IngestionRunPayload"][];
+            /** Product Id */
+            product_id?: string | null;
         };
         /**
          * FeatureScopeDetail
@@ -242,6 +473,30 @@ export interface components {
             nodes: components["schemas"]["Node"][];
             /** Edges */
             edges: components["schemas"]["Edge"][];
+        };
+        /**
+         * FeatureScopeRow
+         * @description One row of a feature list: the scope's identity plus how much of it is
+         *     still work.
+         *
+         *     A separate envelope from the `FeatureScope` projection dataclass because the
+         *     two answer different questions -- that one is identity, this one is identity
+         *     *and* state as of now. Composed rather than flattened so the counts stay
+         *     recognisably derived, and so adding a fourth number later touches one place.
+         */
+        FeatureScopeRow: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
+            /** Runs */
+            runs: components["schemas"]["IngestionRunPayload"][];
+            /** Product Id */
+            product_id: string | null;
+            counts: components["schemas"]["ScopeCounts"];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -289,6 +544,10 @@ export interface components {
             url: string;
             /** Tool Calls */
             tool_calls?: components["schemas"]["ToolCallRecord"][];
+            /** Product Id */
+            product_id?: string | null;
+            /** Run Id */
+            run_id?: string | null;
         };
         /**
          * Node
@@ -348,6 +607,26 @@ export interface components {
          */
         NodeType: "goal" | "problem" | "evidence" | "decision" | "requirement" | "constraint" | "architecture_note" | "open_question" | "rejected_alternative";
         /**
+         * Product
+         * @description One product a PM works on -- its own GitHub org, its own Jira site.
+         *
+         *     A product is a projection, not a table, for the same reason feature-scope
+         *     identity is (slice 1A'): the event log is the source of truth and adding a
+         *     table would put state outside it. It is deliberately *not* derived from
+         *     ingested data such as `external_id` -- a product has to exist before the
+         *     first connection is made to it, so it cannot be inferred from the results of
+         *     ingestion that has not happened yet.
+         */
+        Product: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
          * RelationType
          * @enum {string}
          */
@@ -368,6 +647,107 @@ export interface components {
          * @enum {string}
          */
         Role: "admin" | "editor" | "viewer";
+        /**
+         * RunState
+         * @description A run's derived state -- never stored, always replayed.
+         *
+         *     `INTERRUPTED` is the honest one. Ingestion started from the UI runs in the API
+         *     process (no task queue -- an explicit CLAUDE.md Non-Goal), so a process that
+         *     dies mid-run leaves a start event with no terminal event, which is
+         *     indistinguishable from a run that is merely slow. Rather than report that as
+         *     "running" forever, a start older than `INTERRUPTED_AFTER` with no terminal
+         *     event is reported as interrupted: fail-visible, the same instinct that makes
+         *     an unscoped query return zero rows instead of an error.
+         * @enum {string}
+         */
+        RunState: "running" | "succeeded" | "failed" | "interrupted";
+        /**
+         * RunTargetKind
+         * @description How a run's `target` string should be read.
+         *
+         *     Scoped ingestion (TRD Sec4.2) is *deliberate*: a run names one PR, one issue,
+         *     one epic's children or one label -- never "everything in this project". The
+         *     kind is what the API validates against, so the UI cannot ask for a crawl by
+         *     sending a target the CLI would have refused.
+         * @enum {string}
+         */
+        RunTargetKind: "github_pr" | "jira_issue" | "jira_epic" | "jira_label";
+        /**
+         * RunView
+         * @description One run, as the Sources screen reads it.
+         *
+         *     `state` is resolved here, at read time, because one of its four values is a
+         *     function of *now* -- a start with no terminal event older than
+         *     `INTERRUPTED_AFTER` is interrupted, not running.
+         */
+        RunView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Feature Scope Id
+             * Format: uuid
+             */
+            feature_scope_id: string;
+            /** Product Id */
+            product_id: string | null;
+            /** Connection Id */
+            connection_id: string | null;
+            target_kind: components["schemas"]["RunTargetKind"];
+            /** Target */
+            target: string;
+            state: components["schemas"]["RunState"];
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Started By */
+            started_by: string;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Error */
+            error?: string | null;
+            /**
+             * Artifacts
+             * @default 0
+             */
+            artifacts: number;
+            /**
+             * Nodes
+             * @default 0
+             */
+            nodes: number;
+            /**
+             * Edges
+             * @default 0
+             */
+            edges: number;
+        };
+        /**
+         * ScopeCounts
+         * @description How much of one feature still needs a human.
+         *
+         *     Deliberately *not* a field on `FeatureScope`: that dataclass is the scope's
+         *     identity -- what its UUID means -- and identity does not change when someone
+         *     confirms a claim. These are derived aggregates over Nodes and Edges, and
+         *     keeping them apart stops the identity record from looking mutable.
+         *
+         *     Computed in `storage/` rather than in the browser because three surfaces
+         *     need the same number (the feature list, the Conflicts nav entry, the product
+         *     dashboard), and because deriving it client-side means shipping every node
+         *     and edge of every feature to the browser in order to count them.
+         */
+        ScopeCounts: {
+            /** Total */
+            total: number;
+            /** Unreviewed */
+            unreviewed: number;
+            /** Conflicts */
+            conflicts: number;
+        };
         /**
          * SignInRequest
          * @description `name` becomes the `actor` on every Event this person goes on to write --
@@ -436,6 +816,32 @@ export interface components {
          * @enum {string}
          */
         SourceType: "github_pr" | "github_issue" | "github_commit" | "jira_ticket" | "notion_page" | "gdoc" | "human_assertion";
+        /**
+         * StartRunRequest
+         * @description Pull one target into a feature -- a new one, or one that already exists.
+         *
+         *     Naming an existing `feature_scope_id` is what makes a feature cross-source:
+         *     the run is handed the claims the other source already produced, so a
+         *     contradiction between them becomes a `conflicts_with` edge instead of two
+         *     unaware halves.
+         */
+        StartRunRequest: {
+            /**
+             * Connection Id
+             * Format: uuid
+             */
+            connection_id: string;
+            target_kind: components["schemas"]["RunTargetKind"];
+            /** Target */
+            target: string;
+            /** Feature Scope Id */
+            feature_scope_id?: string | null;
+            /**
+             * Limit
+             * @default 10
+             */
+            limit: number;
+        };
         /**
          * ToolCallRecord
          * @description One tool call an extraction run made -- or was refused (TRD Sec9 audit).
@@ -555,6 +961,59 @@ export interface operations {
             };
         };
     };
+    list_products_products_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Product"][];
+                };
+            };
+        };
+    };
+    create_product_products_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateProductRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Product"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_feature_scopes_feature_scopes_get: {
         parameters: {
             query?: never;
@@ -570,7 +1029,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FeatureScope"][];
+                    "application/json": components["schemas"]["FeatureScopeRow"][];
                 };
             };
         };
@@ -593,6 +1052,198 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FeatureScopeDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_connections_products__product_id__connections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionView"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    connect_source_products__product_id__connections_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectSourceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_connection_connections__connection_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_runs_products__product_id__runs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunView"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_ingestion_products__product_id__runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunView"];
                 };
             };
             /** @description Validation Error */

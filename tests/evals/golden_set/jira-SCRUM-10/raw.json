@@ -1,0 +1,20 @@
+{
+ "issue": {
+  "comments": [],
+  "created_at": "2026-08-13T22:47:20.543000+05:30",
+  "description": "Open question, not committed for this release. Several users have asked for a --mindepth flag alongside --maxdepth, to skip shallow results rather than deep ones.\nWe need a decision before GA. If we ship --maxdepth with semantics that differ from find, adding --mindepth later becomes harder to explain.",
+  "issue_type": "Task",
+  "key": "SCRUM-10",
+  "labels": [
+   "maxdepth"
+  ],
+  "links": [],
+  "parent_key": "SCRUM-6",
+  "reporter": "Rohit Gupta",
+  "status": "Idea",
+  "summary": "Do we also need a --mindepth counterpart?",
+  "url": "https://rohitg291103.atlassian.net/browse/SCRUM-10"
+ },
+ "issue_key": "SCRUM-10",
+ "site": "https://rohitg291103.atlassian.net/"
+}

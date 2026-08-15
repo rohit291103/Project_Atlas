@@ -1,0 +1,182 @@
+{
+ "nodes": [
+  {
+   "id": "f7723be3-9c0e-4d05-a647-eab9ccb6fb5b",
+   "type": "requirement",
+   "content": "Add a --maxdepth command line option that limits a search to a set number of directory levels below where the search begins.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "2a4df0a0-cb89-427c-8426-da8aae126403",
+     "source_type": "jira_ticket",
+     "external_id": "SCRUM-7",
+     "url": "https://rohitg291103.atlassian.net/browse/SCRUM-7",
+     "excerpt": "We will add a --maxdepth command line option so a search can be limited to a set number of directory levels below where the search begins.",
+     "fetched_at": "2026-08-15T07:39:47.975634Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-08-15T07:39:47.975870Z",
+   "updated_at": "2026-08-15T07:39:47.975873Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "25d9cc41-6bbf-4499-a443-d2b6049610c7"
+  },
+  {
+   "id": "e0a113a7-1a10-4370-a959-d52f1f040ef3",
+   "type": "decision",
+   "content": "The --maxdepth flag replaces the .rgignore workaround for the depth use case.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "a68fa6f5-68f5-4e4a-a3f7-6a60c36a02d8",
+     "source_type": "jira_ticket",
+     "external_id": "SCRUM-7",
+     "url": "https://rohitg291103.atlassian.net/browse/SCRUM-7",
+     "excerpt": "This replaces the .rgignore workaround for the depth use case.",
+     "fetched_at": "2026-08-15T07:39:47.975978Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-08-15T07:39:47.976009Z",
+   "updated_at": "2026-08-15T07:39:47.976011Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "25d9cc41-6bbf-4499-a443-d2b6049610c7"
+  },
+  {
+   "id": "f44bfc4c-bc63-452c-9b02-de4e2bc809f2",
+   "type": "constraint",
+   "content": "The flag does not replace .rgignore for excluding specific paths; that use of .rgignore stays as it is.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "bbdf123a-6443-4a3d-9a8f-da172a718379",
+     "source_type": "jira_ticket",
+     "external_id": "SCRUM-7",
+     "url": "https://rohitg291103.atlassian.net/browse/SCRUM-7",
+     "excerpt": "It does not replace .rgignore for excluding specific paths -- that stays as it is.",
+     "fetched_at": "2026-08-15T07:39:47.976022Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-08-15T07:39:47.976029Z",
+   "updated_at": "2026-08-15T07:39:47.976029Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "25d9cc41-6bbf-4499-a443-d2b6049610c7"
+  },
+  {
+   "id": "b4b1ed58-f072-4aed-b98a-626f7161b476",
+   "type": "goal",
+   "content": "Give engineers working in large monorepos a way to stop ripgrep descending into deeply nested vendored directories.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "cc6c7d93-4e89-40f7-a77f-af730d9aab24",
+     "source_type": "jira_ticket",
+     "external_id": "SCRUM-6",
+     "url": "https://rohitg291103.atlassian.net/browse/SCRUM-6",
+     "excerpt": "Engineers working in large monorepos need a way to stop ripgrep descending into deeply nested vendored directories.",
+     "fetched_at": "2026-08-15T07:39:47.976042Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-08-15T07:39:47.976048Z",
+   "updated_at": "2026-08-15T07:39:47.976049Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "25d9cc41-6bbf-4499-a443-d2b6049610c7"
+  },
+  {
+   "id": "531165b8-6d26-414b-b73a-45288af4a37c",
+   "type": "problem",
+   "content": "The only current workaround is an .rgignore file, which must be copied from repository to repository and drifts out of date.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "4fc0d0b0-6910-4b69-8ece-a274c0e38282",
+     "source_type": "jira_ticket",
+     "external_id": "SCRUM-6",
+     "url": "https://rohitg291103.atlassian.net/browse/SCRUM-6",
+     "excerpt": "Today the only workaround is an .rgignore file, which has to be copied from repository to repository and drifts out of date.",
+     "fetched_at": "2026-08-15T07:39:47.976055Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-08-15T07:39:47.976061Z",
+   "updated_at": "2026-08-15T07:39:47.976061Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "25d9cc41-6bbf-4499-a443-d2b6049610c7"
+  },
+  {
+   "id": "4b0b13d1-ab0a-495b-9ba7-1fbf7eeb62e7",
+   "type": "open_question",
+   "content": "The exact behaviour of the depth limit flag still needs to be agreed before it is documented.",
+   "confidence_score": 0.6,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "7690ee0b-c43b-4250-9b2d-6d0af444542e",
+     "source_type": "jira_ticket",
+     "external_id": "SCRUM-6",
+     "url": "https://rohitg291103.atlassian.net/browse/SCRUM-6",
+     "excerpt": "agreeing what its behaviour actually is before we document it",
+     "fetched_at": "2026-08-15T07:39:47.976068Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-08-15T07:39:47.976073Z",
+   "updated_at": "2026-08-15T07:39:47.976073Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "25d9cc41-6bbf-4499-a443-d2b6049610c7"
+  }
+ ],
+ "edges": [
+  {
+   "id": "4b741061-3343-4fef-a5c9-dfec552c677c",
+   "from_node_id": "f7723be3-9c0e-4d05-a647-eab9ccb6fb5b",
+   "to_node_id": "b4b1ed58-f072-4aed-b98a-626f7161b476",
+   "relation_type": "implements",
+   "confidence_score": 0.9,
+   "created_at": "2026-08-15T07:39:47.976109Z"
+  },
+  {
+   "id": "92e14d7d-9fce-4ee9-8c0b-81dda9f2162c",
+   "from_node_id": "b4b1ed58-f072-4aed-b98a-626f7161b476",
+   "to_node_id": "531165b8-6d26-414b-b73a-45288af4a37c",
+   "relation_type": "derives_from",
+   "confidence_score": 0.6,
+   "created_at": "2026-08-15T07:39:47.976146Z"
+  },
+  {
+   "id": "50f3058b-2970-4bbe-a5dc-9603be477eaa",
+   "from_node_id": "e0a113a7-1a10-4370-a959-d52f1f040ef3",
+   "to_node_id": "531165b8-6d26-414b-b73a-45288af4a37c",
+   "relation_type": "supports",
+   "confidence_score": 0.6,
+   "created_at": "2026-08-15T07:39:47.976200Z"
+  },
+  {
+   "id": "3894af8f-4563-4313-891b-b39e3e4a6038",
+   "from_node_id": "4b0b13d1-ab0a-495b-9ba7-1fbf7eeb62e7",
+   "to_node_id": "f7723be3-9c0e-4d05-a647-eab9ccb6fb5b",
+   "relation_type": "depends_on",
+   "confidence_score": 0.6,
+   "created_at": "2026-08-15T07:39:47.976219Z"
+  }
+ ]
+}

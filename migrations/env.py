@@ -7,6 +7,7 @@ from sqlalchemy import engine_from_config, pool
 # Registers EventLog onto Base.metadata so autogenerate can see it; storage/
 # is the only module that should ever define tables (Module Boundary in
 # root CLAUDE.md).
+from atlas.storage import connections as _connections  # noqa: F401
 from atlas.storage import tables as _tables  # noqa: F401
 from atlas.storage.db import Base, normalize_database_url
 

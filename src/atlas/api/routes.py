@@ -12,19 +12,42 @@ serializes the domain models directly, so there is no wire-level mirror that can
 drift from the validation gate. That is the same reason there is no
 `api/schemas.py`: the models that matter already exist and are already validated.
 
-Deliberately absent: any ingest or "connect a source" endpoint. Ingestion stays
-CLI-triggered in slice 1B, which is what keeps this API synchronous and free of
-task-queue pressure (an explicit CLAUDE.md Non-Goal). Also absent: grouping,
-counting and progress endpoints -- node ordering and the progress meter are
-presentation decisions already fixed in `docs/ux/confirmation-flow-spec-v1.md`
-§3.2-3.3, and putting them here would move a UX decision into the backend.
+Slice 2B added the two endpoints slice 1B deliberately refused -- connecting a
+source and starting a run -- and the reasoning that refused them is not being
+waved away, it is being solved. A run returns **202 immediately** and does its
+work in-process via `BackgroundTasks`: no broker, no worker, no new deployable,
+none of the task-queue pressure that was the objection (an explicit CLAUDE.md
+Non-Goal). The cost -- a process that dies mid-run -- is made visible by the
+projection rather than hidden (`storage/projections.py::INTERRUPTED_AFTER`).
+
+The thinness rule holds for both: the ingest endpoint's one function is
+`pipeline.start_run`, and the connect endpoint's is
+`storage/connections.py::create_connection`. **No secret appears in any response
+model in this file**, and `ConnectionView` has no field one could occupy.
+
+Still absent: grouping and ordering endpoints -- node ordering and the four
+queue sections are presentation decisions already fixed in
+`docs/ux/confirmation-flow-spec-v1.md` §3.2-3.3, and putting them here would move
+a UX decision into the backend.
+
+**Counting is no longer in that list, deliberately.** `FeatureScopeRow` carries
+`counts`, and the line this crosses is narrower than it looks: *how many claims
+are still unreviewed* is a fact about stored state, the same kind of fact as a
+node's status, whereas *how to group and order them* is a choice about a screen.
+What forced it is that three surfaces need the identical number -- the feature
+list, the Conflicts entry, the product dashboard -- and the alternative was
+shipping every claim and excerpt of every feature to the browser so it could
+count them, with the definition of "unreviewed" copied into three components.
+The rule that still holds: the API returns the number, and never decides how it
+is grouped, sorted or drawn.
 """
 
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 
-from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from atlas.api.deps import (
@@ -33,15 +56,40 @@ from atlas.api.deps import (
     Principal,
     PrincipalDep,
     SessionDep,
+    SessionFactoryDep,
     SettingsDep,
     WriterDep,
     issue_session,
     verify_passphrase,
 )
-from atlas.models.schema import AtlasModel, Edge, Node, NodeType, NonBlankStr, Role
-from atlas.storage import confirmations
-from atlas.storage.projections import FeatureScope, load_projection
-from atlas.storage.rbac import find_membership
+from atlas.models.schema import (
+    AtlasModel,
+    Edge,
+    IngestionRunPayload,
+    Node,
+    NodeType,
+    NonBlankStr,
+    Role,
+    RunState,
+    RunTargetKind,
+    SourceType,
+)
+from atlas.pipeline import (
+    DEFAULT_LIMIT,
+    MAX_LIMIT,
+    Credential,
+    GitHubCredential,
+    JiraCredential,
+    RunRequest,
+    TargetError,
+    check_access,
+    execute_run,
+    start_run,
+)
+from atlas.storage import confirmations, connections, products
+from atlas.storage.connections import ConnectionView, SecretError
+from atlas.storage.projections import FeatureScope, Product, Run, ScopeCounts, load_projection
+from atlas.storage.rbac import find_membership, workspace_session
 
 router = APIRouter()
 
@@ -74,6 +122,120 @@ class EditNodeRequest(AtlasModel):
 class AddNodeRequest(AtlasModel):
     type: NodeType
     content: NonBlankStr
+
+
+class CreateProductRequest(AtlasModel):
+    name: NonBlankStr
+
+
+class ConnectSourceRequest(AtlasModel):
+    """Connect one source to one product.
+
+    `secret` is the *only* field in this file that ever holds a credential, it
+    only ever travels inbound, and nothing echoes it back -- the response is a
+    `ConnectionView`, which has no field it could occupy.
+
+    `email` is required for Jira and meaningless for GitHub: Jira Cloud
+    authenticates email + API token, GitHub authenticates the token alone. The
+    endpoint validates that pairing rather than accepting a half-filled
+    connection that would fail on its first run.
+    """
+
+    source_type: SourceType
+    host: NonBlankStr
+    scope: NonBlankStr
+    secret: NonBlankStr
+    email: str | None = None
+
+
+class ConnectionCreated(AtlasModel):
+    """The stored connection, plus what its credential turned out to reach.
+
+    The access summary is the trust moment: a PM sees "Private repository · 12
+    open issues" *before* Atlas is trusted with anything. It is shown and
+    discarded -- never stored, because it is a fact about right now, not
+    provenance.
+    """
+
+    connection: ConnectionView
+    access_label: str
+    access_detail: str
+
+
+class StartRunRequest(AtlasModel):
+    """Pull one target into a feature -- a new one, or one that already exists.
+
+    Naming an existing `feature_scope_id` is what makes a feature cross-source:
+    the run is handed the claims the other source already produced, so a
+    contradiction between them becomes a `conflicts_with` edge instead of two
+    unaware halves.
+    """
+
+    connection_id: uuid.UUID
+    target_kind: RunTargetKind
+    target: NonBlankStr
+    feature_scope_id: uuid.UUID | None = None
+    limit: int = DEFAULT_LIMIT
+
+
+class RunView(AtlasModel):
+    """One run, as the Sources screen reads it.
+
+    `state` is resolved here, at read time, because one of its four values is a
+    function of *now* -- a start with no terminal event older than
+    `INTERRUPTED_AFTER` is interrupted, not running.
+    """
+
+    id: uuid.UUID
+    feature_scope_id: uuid.UUID
+    product_id: uuid.UUID | None
+    connection_id: uuid.UUID | None
+    target_kind: RunTargetKind
+    target: str
+    state: RunState
+    started_at: datetime
+    started_by: str
+    finished_at: datetime | None = None
+    error: str | None = None
+    artifacts: int = 0
+    nodes: int = 0
+    edges: int = 0
+
+    @classmethod
+    def of(cls, run: Run) -> RunView:
+        return cls(
+            id=run.id,
+            feature_scope_id=run.feature_scope_id,
+            product_id=run.product_id,
+            connection_id=run.connection_id,
+            target_kind=run.target_kind,
+            target=run.target,
+            state=run.state(now=datetime.now(UTC)),
+            started_at=run.started_at,
+            started_by=run.started_by,
+            finished_at=run.finished_at,
+            error=run.error,
+            artifacts=run.artifacts,
+            nodes=run.nodes,
+            edges=run.edges,
+        )
+
+
+class FeatureScopeRow(AtlasModel):
+    """One row of a feature list: the scope's identity plus how much of it is
+    still work.
+
+    A separate envelope from the `FeatureScope` projection dataclass because the
+    two answer different questions -- that one is identity, this one is identity
+    *and* state as of now. Composed rather than flattened so the counts stay
+    recognisably derived, and so adding a fourth number later touches one place.
+    """
+
+    id: uuid.UUID
+    title: str
+    runs: list[IngestionRunPayload]
+    product_id: uuid.UUID | None
+    counts: ScopeCounts
 
 
 class FeatureScopeDetail(AtlasModel):
@@ -174,14 +336,59 @@ def current_session(principal: PrincipalDep) -> SignInResponse:
 # --- read ---------------------------------------------------------------------
 
 
-@router.get("/feature-scopes", response_model=list[FeatureScope])
+@router.get("/products", response_model=list[Product])
+def list_products(
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> list[Product]:
+    """Every product in the caller's workspace, in creation order.
+
+    Feature scopes carry their own `product_id`, so grouping the rail happens on
+    the client -- consistent with node ordering and the progress meter, which are
+    presentation decisions the API deliberately does not make.
+    """
+    projection = load_projection(session, workspace_id=principal.workspace_id)
+    return list(projection.products.values())
+
+
+@router.post("/products", response_model=Product, status_code=status.HTTP_201_CREATED)
+def create_product(
+    body: CreateProductRequest,
+    session: SessionDep,
+    principal: WriterDep,
+) -> Product:
+    """Open a new product. The id is minted in `storage/`, never taken from the
+    request -- same reason `add_node` builds its Node from fields."""
+    product_id, _ = products.create_product(
+        session, workspace_id=principal.workspace_id, name=body.name, actor=principal.actor
+    )
+    return Product(id=product_id, name=body.name)
+
+
+@router.get("/feature-scopes", response_model=list[FeatureScopeRow])
 def list_feature_scopes(
     session: SessionDep,
     principal: PrincipalDep,
-) -> list[FeatureScope]:
-    """The left rail. Ordered by ingestion, oldest first -- the log's own order."""
+) -> list[FeatureScopeRow]:
+    """The left rail. Ordered by ingestion, oldest first -- the log's own order.
+
+    Each row carries its own work-left counts. The alternative -- letting the
+    client fetch every scope's full detail and count nodes itself -- means
+    shipping every claim and excerpt of every feature to the browser to render
+    a number in a sidebar, and it puts the definition of "unreviewed" in the
+    frontend where three screens would each get their own copy of it.
+    """
     projection = load_projection(session, workspace_id=principal.workspace_id)
-    return list(projection.feature_scopes.values())
+    return [
+        FeatureScopeRow(
+            id=scope.id,
+            title=scope.title,
+            runs=list(scope.runs),
+            product_id=scope.product_id,
+            counts=projection.counts_for(scope.id),
+        )
+        for scope in projection.feature_scopes.values()
+    ]
 
 
 @router.get("/feature-scopes/{feature_scope_id}", response_model=FeatureScopeDetail)
@@ -200,6 +407,281 @@ def get_feature_scope(
         feature_scope=projection.feature_scopes.get(feature_scope_id),
         nodes=list(projection.nodes.values()),
         edges=list(projection.edges.values()),
+    )
+
+
+# --- sources (slice 2B) --------------------------------------------------------
+
+
+def _require_product(session: Session, principal: Principal, product_id: uuid.UUID) -> None:
+    """404 unless the caller's own workspace has this product.
+
+    Existence, not domain logic -- the same shape as `_require_feature_scope`.
+    A product is a projection, so there is no row to constrain against, which
+    makes this check the thing standing between a typo'd id and a connection
+    filed under a product that does not exist.
+    """
+    projection = load_projection(session, workspace_id=principal.workspace_id)
+    if product_id not in projection.products:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"no product {product_id}")
+
+
+def _normalize_host(host: str) -> str:
+    """A bare hostname, however it was typed.
+
+    People paste `https://acme.atlassian.net/` because that is what the address
+    bar shows. Normalizing **once, here, before the value is stored** is what
+    keeps the connect check and the later run agreeing: an earlier cut stripped
+    the scheme only when building the credential, so the check passed against
+    `acme.atlassian.net` while the row kept `https://acme.atlassian.net` — and
+    the next run built `https://https://acme.atlassian.net`. Found live, because
+    a stored value and a derived one only disagree once there is a stored one.
+    """
+    return host.strip().removeprefix("https://").removeprefix("http://").rstrip("/")
+
+
+def _credential_from(body: ConnectSourceRequest, host: str) -> Credential:
+    """Turn a connect request into the credential its connector expects.
+
+    GitHub authenticates a token; Jira authenticates email + token. Refusing the
+    mismatched pairing here means a half-filled connection is a 422 at the door
+    rather than a run that fails an hour later with an auth error.
+    """
+    if body.source_type is SourceType.GITHUB_PR:
+        return GitHubCredential(token=body.secret)
+    if not (body.email or "").strip():
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Jira needs the email address the API token belongs to",
+        )
+    try:
+        return JiraCredential(
+            base_url=f"https://{host}",
+            email=body.email or "",
+            api_token=body.secret,
+        )
+    except TargetError as unsupported:
+        # An SSRF control, surfaced as a form error: the host becomes the base
+        # URL of an outbound request carrying this credential.
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(unsupported)) from None
+
+
+@router.get("/products/{product_id}/connections", response_model=list[ConnectionView])
+def list_connections(
+    product_id: uuid.UUID,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> list[ConnectionView]:
+    """The Sources screen. Returns `ConnectionView`, which cannot carry a secret."""
+    return [
+        ConnectionView.of(connection)
+        for connection in connections.list_connections(
+            session, workspace_id=principal.workspace_id, product_id=product_id
+        )
+    ]
+
+
+@router.post(
+    "/products/{product_id}/connections",
+    response_model=ConnectionCreated,
+    status_code=status.HTTP_201_CREATED,
+)
+def connect_source(
+    product_id: uuid.UUID,
+    body: ConnectSourceRequest,
+    session: SessionDep,
+    principal: WriterDep,
+    settings: SettingsDep,
+) -> ConnectionCreated:
+    """Verify a credential against the scope it claims, then store it encrypted.
+
+    The verification is not decoration. A credential that cannot see its own
+    scope is rejected *here*, where the PM is still looking at the form and can
+    fix it -- rather than at the first run, where the failure reads as "Atlas is
+    broken". It also produces the access summary the flow spec asks for, so
+    least privilege is demonstrated rather than asserted.
+
+    One round trip, not two: a "preview then save" pair would mean the browser
+    holding the token across two requests, which is worse than checking it once
+    on the way in.
+    """
+    _require_product(session, principal, product_id)
+    host = _normalize_host(body.host)
+    if not host:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "host must not be blank")
+    credential = _credential_from(body, host)
+    try:
+        access = check_access(credential, scope=body.scope)
+    except TargetError as bad:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(bad)) from None
+    except Exception:
+        # Deliberately not `str(exc)`: a connector error can quote the request it
+        # made, and that request carried the credential.
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"That credential cannot read {body.scope} on {host}. "
+            "Check the token, the scope, and that the account has access.",
+        ) from None
+
+    connection = connections.create_connection(
+        session,
+        workspace_id=principal.workspace_id,
+        product_id=product_id,
+        source_type=body.source_type,
+        account=(body.email or "").strip() or "token",
+        host=host,
+        scope=body.scope,
+        secret=body.secret,
+        actor=principal.actor,
+        key=settings.secret_key,
+    )
+    return ConnectionCreated(
+        connection=ConnectionView.of(connection),
+        access_label=access.label,
+        access_detail=access.detail,
+    )
+
+
+@router.delete("/connections/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)
+def revoke_connection(
+    connection_id: uuid.UUID,
+    session: SessionDep,
+    principal: WriterDep,
+) -> None:
+    """Revocation is a real delete -- the ciphertext stops existing. The event
+    log keeps the record that it happened, which is the part that should."""
+    if not connections.revoke_connection(
+        session,
+        workspace_id=principal.workspace_id,
+        connection_id=connection_id,
+        actor=principal.actor,
+    ):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"no connection {connection_id}")
+
+
+# --- runs (slice 2B) -----------------------------------------------------------
+
+
+@router.get("/products/{product_id}/runs", response_model=list[RunView])
+def list_runs(
+    product_id: uuid.UUID,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> list[RunView]:
+    """Run history for one product, oldest first -- the log's own order."""
+    projection = load_projection(session, workspace_id=principal.workspace_id)
+    return [RunView.of(run) for run in projection.for_product(product_id).runs.values()]
+
+
+@router.get("/runs/{run_id}", response_model=RunView)
+def get_run(
+    run_id: uuid.UUID,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> RunView:
+    """What the client polls after a 202. State is derived, never stored."""
+    projection = load_projection(session, workspace_id=principal.workspace_id)
+    run = projection.runs.get(run_id)
+    if run is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"no run {run_id}")
+    return RunView.of(run)
+
+
+@router.post(
+    "/products/{product_id}/runs",
+    response_model=RunView,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def start_ingestion(
+    product_id: uuid.UUID,
+    body: StartRunRequest,
+    background: BackgroundTasks,
+    session: SessionDep,
+    principal: WriterDep,
+    settings: SettingsDep,
+    session_factory: SessionFactoryDep,
+) -> RunView:
+    """Accept an ingestion job and return before it finishes.
+
+    202, not 200: the run is *accepted*, and the id in the response is what the
+    client polls. The `ingestion_run_started` event is written inside this
+    request, so the job is already in the history the moment the response goes
+    out -- and a run that dies on its first network call has still left a trace.
+
+    The credential is decrypted here, at the composition root, and handed to
+    `pipeline` as an argument. Nothing in `pipeline/` or `ingestion/` knows where
+    it came from, and the API process holds no ambient source credential of its
+    own.
+    """
+    _require_product(session, principal, product_id)
+    connection = connections.get_connection(
+        session, workspace_id=principal.workspace_id, connection_id=body.connection_id
+    )
+    if connection is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"no connection {body.connection_id}")
+
+    try:
+        secret = connections.unseal(connection.secret_ciphertext, settings.secret_key)
+    except SecretError as broken:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(broken)) from None
+    try:
+        credential: Credential = (
+            GitHubCredential(token=secret)
+            if connection.source_type is SourceType.GITHUB_PR
+            else JiraCredential(
+                base_url=f"https://{connection.host}", email=connection.account, api_token=secret
+            )
+        )
+    except TargetError as unsupported:
+        # A row written before the host allowlist existed, or edited underneath
+        # us. Refuse rather than send the credential somewhere unvetted.
+        raise HTTPException(status.HTTP_409_CONFLICT, str(unsupported)) from None
+
+    request = RunRequest(
+        workspace_id=principal.workspace_id,
+        actor=principal.actor,
+        target_kind=body.target_kind,
+        target=body.target,
+        feature_scope_id=body.feature_scope_id or uuid.uuid4(),
+        product_id=product_id,
+        connection_id=connection.id,
+        limit=max(1, min(body.limit, MAX_LIMIT)),
+    )
+    # Opened here rather than reusing the request's session, and the reason is a
+    # defect found only by running this live: FastAPI holds a `yield`
+    # dependency's exit stack open until **after** background tasks finish, so
+    # the request session's commit landed at the *end* of the run. The start
+    # event was therefore invisible for the run's whole duration and
+    # `GET /runs/{id}` -- the endpoint the UI polls -- returned 404 until the
+    # moment it returned "succeeded". Every test passed: SQLite with a
+    # `StaticPool` shares one connection, so uncommitted rows are visible to the
+    # next read and the isolation this depends on does not exist there.
+    #
+    # Its own transaction makes the id durable before the 202 is written, which
+    # is the property the whole poll-a-202 design rests on.
+    try:
+        with workspace_session(session_factory, principal.workspace_id) as own:
+            run_id = start_run(own, request)
+    except TargetError as bad:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(bad)) from None
+
+    background.add_task(
+        execute_run,
+        session_factory,
+        run_id=run_id,
+        request=request,
+        credential=credential,
+    )
+    return RunView(
+        id=run_id,
+        feature_scope_id=request.feature_scope_id,
+        product_id=product_id,
+        connection_id=connection.id,
+        target_kind=request.target_kind,
+        target=request.target,
+        state=RunState.RUNNING,
+        started_at=datetime.now(UTC),
+        started_by=principal.actor,
     )
 
 

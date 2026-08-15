@@ -15,8 +15,8 @@ Two things here carry real risk and so are tested hardest:
 
 from __future__ import annotations
 
-import asyncio
 import uuid
+from typing import Any
 
 import httpx
 import pytest
@@ -25,6 +25,7 @@ from atlas.extraction import prompts, tools
 from atlas.extraction.agent import ExtractionError, build_result
 from atlas.ingestion.jira import JiraClient
 from atlas.models.schema import RelationType, SourceType
+from tests.asyncio_support import run_await
 
 WORKSPACE_ID = uuid.uuid4()
 FEATURE_SCOPE_ID = uuid.uuid4()
@@ -40,6 +41,22 @@ def make_jira_client() -> JiraClient:
 
 
 # --- the GitHub prompt is frozen ------------------------------------------------
+#
+# **Re-baselined 2026-08-15, deliberately.** The 2026-08-14 Jira quality run found
+# the agent emitting a `goal` that restated a `requirement`/`decision` it had
+# already emitted -- once off the *identical* excerpt -- so a reviewer would have
+# to rule twice on one idea and could confirm one copy while rejecting the other.
+# The fix is rule 5 ("ONE CLAIM, ONE NODE") plus a sharper goal/requirement
+# distinction in the type guide, and both belong in the *shared* prompt: the
+# defect is a property of the extraction task, not of Jira.
+#
+# That means this constant no longer describes the prompt Phase 0's evals were
+# gathered against, and pretending otherwise by exempting the change would make
+# the guard decorative. The baseline moves, and the evidence moves with it: the
+# golden set was re-recorded and re-graded in the same change
+# (`docs/research/2026-08-15-deduplication-prompt-run.md`). The guard's job is
+# unchanged -- it fails the moment the prompt drifts from the version the
+# recorded evidence describes.
 
 GITHUB_SYSTEM_PROMPT_AS_VALIDATED = """\
 You are Atlas, an extraction agent. You read the raw content of a GitHub pull \
@@ -48,11 +65,11 @@ provenance-linked knowledge elements (Nodes) and the relationships between them 
 (Edges). You never invent information.
 
 Node types:
-- goal: an intended outcome or objective
+- goal: the outcome the work is meant to achieve -- why it is being done
 - problem: a pain point or motivating issue
 - evidence: a concrete observation supporting a claim
 - decision: a choice that was made
-- requirement: something the solution must do
+- requirement: something the solution must do -- what it must do
 - constraint: a limit the solution must respect
 - architecture_note: a technical design detail
 - open_question: an unresolved question
@@ -73,7 +90,14 @@ issue, a commit sha, or another PR, use the available tools \
 before extracting from it. Use at most a handful of tool calls.
 4. Flag conflicts, don't resolve them. If two sources disagree on the same \
 point, emit both Nodes and a `conflicts_with` Edge between them.
-5. Finish with exactly one call to `emit_extraction`, passing every Node and \
+5. ONE CLAIM, ONE NODE. Never emit two Nodes that assert the same thing in \
+different words, and never emit two Nodes from the same excerpt unless they \
+genuinely say different things. A sentence often states an outcome *and* what \
+must be built to reach it -- pick the single type that fits it best and emit it \
+once. A `goal` that restates a `requirement` or `decision` you have already \
+emitted is a duplicate, not a second claim, and it forces a reviewer to rule \
+twice on one idea.
+6. Finish with exactly one call to `emit_extraction`, passing every Node and \
 Edge. Give each Node a short local `ref` (e.g. "n1") and wire Edges by \
 `from_ref`/`to_ref`. Do not write anything to any system -- extraction is \
 read-only.
@@ -101,7 +125,7 @@ def test_jira_system_prompt_names_its_own_source_and_tools() -> None:
 # --- the Jira seed prompt -------------------------------------------------------
 
 
-def _issue(**overrides: object):
+def _issue(**overrides: object) -> Any:
     from atlas.ingestion.jira import IssueLink, JiraComment, JiraIssue
 
     defaults: dict[str, object] = {
@@ -286,7 +310,7 @@ def test_jira_fetch_tool_surfaces_an_error_instead_of_raising() -> None:
     )
     specs = {s.name: s for s in tools.build_jira_extraction_tools(client, "GATE")}
 
-    result = asyncio.run(specs["fetch_linked_issue"].handler({"key": "GATE-43"}))
+    result = run_await(specs["fetch_linked_issue"].handler({"key": "GATE-43"}))
 
     assert result["is_error"] is True
     assert "403" in result["content"][0]["text"]
@@ -307,7 +331,7 @@ def test_jira_search_tool_is_scoped_to_its_project() -> None:
     )
     specs = {s.name: s for s in tools.build_jira_extraction_tools(client, "GATE")}
 
-    asyncio.run(specs["search_project"].handler({"query": "rate limiting"}))
+    run_await(specs["search_project"].handler({"query": "rate limiting"}))
 
     assert seen["jql"].startswith('project = "GATE"')
     assert "rate limiting" in seen["jql"]

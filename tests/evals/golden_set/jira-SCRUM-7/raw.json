@@ -1,0 +1,20 @@
+{
+ "issue": {
+  "comments": [],
+  "created_at": "2026-08-13T22:47:15.358000+05:30",
+  "description": "We will add a --maxdepth command line option so a search can be limited to a set number of directory levels below where the search begins.\nThis replaces the .rgignore workaround for the depth use case. It does not replace .rgignore for excluding specific paths -- that stays as it is.",
+  "issue_type": "Task",
+  "key": "SCRUM-7",
+  "labels": [
+   "maxdepth"
+  ],
+  "links": [],
+  "parent_key": "SCRUM-6",
+  "reporter": "Rohit Gupta",
+  "status": "Idea",
+  "summary": "Ship a --maxdepth flag",
+  "url": "https://rohitg291103.atlassian.net/browse/SCRUM-7"
+ },
+ "issue_key": "SCRUM-7",
+ "site": "https://rohitg291103.atlassian.net/"
+}

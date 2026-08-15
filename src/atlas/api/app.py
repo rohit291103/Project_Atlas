@@ -22,7 +22,13 @@ __all__ = ["app", "create_app"]
 #: The Vite dev server. In production the SPA is served from this same origin, so
 #: no CORS entry is needed there -- and none is granted, since a wildcard origin
 #: cannot be combined with credentialed requests anyway.
-DEV_ORIGINS = ("http://localhost:5173", "http://127.0.0.1:5173")
+#:
+#: Both 5173 and 5174 are listed because Vite silently falls back to the next
+#: free port when 5173 is taken, and the resulting failure is a CORS error in the
+#: browser console that looks nothing like "you are on the wrong port".
+DEV_ORIGINS = tuple(
+    f"http://{host}:{port}" for host in ("localhost", "127.0.0.1") for port in (5173, 5174)
+)
 
 
 def create_app() -> FastAPI:

@@ -1,0 +1,20 @@
+{
+ "issue": {
+  "comments": [],
+  "created_at": "2026-08-13T22:47:19.438000+05:30",
+  "description": "Hard requirement for the release: when --maxdepth is not supplied, traversal depth must remain unlimited and there must be no measurable performance regression on the default search path.\nSign-off from the performance owner is required before this ships. A flag nobody passes must cost nothing.",
+  "issue_type": "Task",
+  "key": "SCRUM-9",
+  "labels": [
+   "maxdepth"
+  ],
+  "links": [],
+  "parent_key": "SCRUM-6",
+  "reporter": "Rohit Gupta",
+  "status": "Idea",
+  "summary": "No regression when --maxdepth is not passed",
+  "url": "https://rohitg291103.atlassian.net/browse/SCRUM-9"
+ },
+ "issue_key": "SCRUM-9",
+ "site": "https://rohitg291103.atlassian.net/"
+}

@@ -1,25 +1,24 @@
-"""Typer entrypoint -- Phase 0's stand-in for the confirmation UI (CLAUDE.md).
+"""Typer entrypoint -- the engineer-facing read/debug path (CLAUDE.md).
 
-Two commands wire the four modules into the end-to-end loop:
+  atlas ingest --repo owner/name --pr N       GitHub -> agent -> event log
+  atlas ingest-jira --issue/--epic/--label    Jira, into a new or existing scope
+  atlas product-create / product-assign       the product a feature is filed under
+  atlas review --feature-scope <id>           replay the log, print the draft
 
-  atlas ingest --repo owner/name --pr N
-      GitHub (read-only) -> extraction agent -> validated Node/Edge -> append_event
-      Prints a fresh feature_scope_id to review against.
-
-  atlas review --feature-scope <id>
-      load_projection replays the event log -> Rich console report of the draft
-      Nodes (grouped by type, with confidence + status + literal source excerpt).
+**This module holds no orchestration.** As of slice 2B the sequence "parse a
+target -> build a read-only client -> run the agent -> write validated events"
+lives in `atlas/pipeline.py`, because the API's ingest endpoint runs the
+identical sequence and two copies of it would drift. The commands here read
+credentials out of the environment, hand `pipeline` a `RunRequest`, and render
+the result -- that is all. `tests/test_cli.py` has a test that fails if
+orchestration comes back to this file.
 
 Everything the agent produces has already passed the `build_result` schema gate
-before it reaches `record_extraction`, so nothing unvalidated is ever written
-(CLAUDE.md's one rule with zero exceptions). The reusable pieces --
-`_parse_repo`, `record_extraction`, `render_projection` -- are factored out of
-the command bodies so they're testable without a live API key or database.
+before it reaches the event log (CLAUDE.md's one rule with zero exceptions).
 """
 
 from __future__ import annotations
 
-import asyncio
 import os
 import uuid
 
@@ -28,24 +27,23 @@ from dotenv import load_dotenv
 from rich.console import Console, Group, RenderableType
 from rich.table import Table
 from rich.text import Text
-from sqlalchemy.orm import Session
 
 from atlas.config import DEFAULT_WORKSPACE_ID, JiraSettings, Settings
-from atlas.extraction.agent import (
-    ExtractionError,
-    ExtractionResult,
-    extract_from_jira_issue,
-    extract_from_pull_request,
+from atlas.models.schema import RunState, RunTargetKind
+from atlas.pipeline import (
+    GitHubCredential,
+    JiraCredential,
+    RunOutcome,
+    RunRequest,
+    TargetError,
+    run_ingestion,
 )
-from atlas.ingestion.github import GitHubClient, GitHubError
-from atlas.ingestion.jira import JiraClient, JiraError
-from atlas.models.schema import EventType, IngestionRunPayload
 from atlas.storage.db import get_engine, get_sessionmaker
+from atlas.storage.products import assign_feature_scope, create_product
 from atlas.storage.projections import Projection, load_projection
 from atlas.storage.rbac import workspace_session
-from atlas.storage.tables import append_event
 
-app = typer.Typer(help="Project Atlas -- Phase 0 extraction CLI.")
+app = typer.Typer(help="Project Atlas -- extraction CLI and debug read path.")
 console = Console()
 
 
@@ -70,49 +68,6 @@ def _require_db_url() -> str:
         console.print("[red]SUPABASE_DB_URL is not set (add it to .env).[/red]")
         raise typer.Exit(1)
     return url
-
-
-def record_extraction(
-    session: Session,
-    result: ExtractionResult,
-    *,
-    workspace_id: uuid.UUID,
-    ingestion_run: IngestionRunPayload,
-) -> None:
-    """Write an extraction result to the event log as append-only events.
-
-    Nodes and edges are already validated `Node`/`Edge` models; storing their
-    `model_dump(mode="json")` is the exact shape `load_projection` replays back.
-    `append_event` is the sole write path -- no table is ever mutated directly.
-
-    The `ingestion_run` event goes first, so replaying the log in order names the
-    feature scope before the nodes that belong to it appear. It is required, not
-    optional: a run that wrote nodes under a scope nobody can name is the gap
-    slice 1A' exists to close.
-    """
-    append_event(
-        session,
-        event_type=EventType.INGESTION_RUN,
-        payload=ingestion_run.model_dump(mode="json"),
-        actor="system",
-        workspace_id=workspace_id,
-    )
-    for node in result.nodes:
-        append_event(
-            session,
-            event_type=EventType.NODE_CREATED,
-            payload=node.model_dump(mode="json"),
-            actor="system",
-            workspace_id=workspace_id,
-        )
-    for edge in result.edges:
-        append_event(
-            session,
-            event_type=EventType.EDGE_CREATED,
-            payload=edge.model_dump(mode="json"),
-            actor="system",
-            workspace_id=workspace_id,
-        )
 
 
 def _short_id(node_id: uuid.UUID) -> str:
@@ -189,8 +144,28 @@ def render_projection(projection: Projection) -> RenderableType:
     return Group(*sections, edges)
 
 
+def _report(request: RunRequest, outcome: RunOutcome) -> None:
+    """Print a run's result. The CLI's whole job after `pipeline` returns."""
+    if outcome.state is not RunState.SUCCEEDED:
+        console.print(f"[red]Ingestion failed: {outcome.error}[/red]")
+        raise typer.Exit(1)
+    console.print(
+        f"[green]Pulled {outcome.artifacts} artifact(s): "
+        f"{outcome.nodes} node(s), {outcome.edges} edge(s).[/green]"
+    )
+    console.print(
+        f"Review with: [bold]atlas review --feature-scope {request.feature_scope_id}[/bold]"
+    )
+
+
 @app.command()
-def ingest(repo: str, pr: int) -> None:
+def ingest(
+    repo: str,
+    pr: int,
+    feature_scope: str = typer.Option(
+        None, help="Add to an existing feature scope instead of opening a new one."
+    ),
+) -> None:
     """Ingest one GitHub PR, extract knowledge, and store it as events."""
     load_dotenv()
     try:
@@ -200,56 +175,20 @@ def ingest(repo: str, pr: int) -> None:
         raise typer.Exit(1) from missing
 
     owner, name = _parse_repo(repo)
-    feature_scope_id = uuid.uuid4()
-
-    client = GitHubClient(settings.github_token)
-    try:
-        run, result = asyncio.run(
-            extract_from_pull_request(
-                client=client,
-                owner=owner,
-                repo=name,
-                number=pr,
-                workspace_id=DEFAULT_WORKSPACE_ID,
-                feature_scope_id=feature_scope_id,
-            )
-        )
-    except (GitHubError, ExtractionError) as exc:
-        console.print(f"[red]Extraction failed: {exc}[/red]")
-        raise typer.Exit(1) from exc
-    finally:
-        client.close()
-
-    session_factory = get_sessionmaker(get_engine(settings.supabase_db_url))
-    with workspace_session(session_factory, DEFAULT_WORKSPACE_ID) as session:
-        record_extraction(session, result, workspace_id=DEFAULT_WORKSPACE_ID, ingestion_run=run)
-
-    console.print(
-        f"[green]Extracted {len(result.nodes)} node(s) and {len(result.edges)} edge(s).[/green]"
+    request = RunRequest(
+        workspace_id=DEFAULT_WORKSPACE_ID,
+        actor="cli",
+        target_kind=RunTargetKind.GITHUB_PR,
+        target=f"{owner}/{name}#{pr}",
+        feature_scope_id=_parse_scope(feature_scope) if feature_scope else uuid.uuid4(),
     )
-    console.print(f"Feature scope: [bold]{run.external_id} · {run.title}[/bold]")
-    console.print(f"Review with: [bold]atlas review --feature-scope {feature_scope_id}[/bold]")
-
-
-def resolve_jira_keys(
-    client: JiraClient, *, issue: str | None, epic: str | None, label: str | None, limit: int
-) -> list[str]:
-    """Turn `--issue` / `--epic` / `--label` into the issue keys to ingest.
-
-    Scoped ingestion (TRD Sec4.2): a scope is pulled *deliberately* -- one issue,
-    one epic's children, or one label -- never by crawling a Jira site. The
-    `limit` is a hard ceiling, so a mistyped label can't start an unbounded run.
-    GitHub needs no equivalent because `atlas ingest` is already per-PR.
-    """
-    if issue:
-        return [issue]
-    if epic:
-        jql = f'parent = "{epic}" ORDER BY created ASC'
-    elif label:
-        jql = f'labels = "{label}" ORDER BY created ASC'
-    else:
-        raise typer.BadParameter("pass exactly one of --issue, --epic or --label")
-    return [found.key for found in client.search_issues(jql, limit=limit)]
+    session_factory = get_sessionmaker(get_engine(settings.supabase_db_url))
+    _report(
+        request,
+        run_ingestion(
+            session_factory, request=request, credential=GitHubCredential(settings.github_token)
+        ),
+    )
 
 
 @app.command("ingest-jira")
@@ -265,7 +204,7 @@ def ingest_jira(
     """Ingest Jira issues into a feature scope (new, or one that already exists).
 
     Passing `--feature-scope` is what makes a feature *cross-source*: the run is
-    handed the claims GitHub already produced, so the agent can flag a
+    handed the claims the other source already produced, so the agent can flag a
     contradiction between them (TRD Sec5.2) instead of the two sources sitting
     side by side, each unaware of the other.
     """
@@ -279,51 +218,82 @@ def ingest_jira(
 
     if sum(bool(option) for option in (issue, epic, label)) != 1:
         raise typer.BadParameter("pass exactly one of --issue, --epic or --label")
-    scope_id = _parse_scope(feature_scope) if feature_scope else uuid.uuid4()
+    kind, target = (
+        (RunTargetKind.JIRA_ISSUE, issue)
+        if issue
+        else (RunTargetKind.JIRA_EPIC, epic)
+        if epic
+        else (RunTargetKind.JIRA_LABEL, label)
+    )
 
+    request = RunRequest(
+        workspace_id=DEFAULT_WORKSPACE_ID,
+        actor="cli",
+        target_kind=kind,
+        target=target,
+        feature_scope_id=_parse_scope(feature_scope) if feature_scope else uuid.uuid4(),
+        limit=limit,
+    )
     session_factory = get_sessionmaker(get_engine(database_url))
-    client = JiraClient(base_url=jira.base_url, email=jira.email, api_token=jira.api_token)
     try:
-        keys = resolve_jira_keys(client, issue=issue, epic=epic, label=label, limit=limit)
-        if not keys:
-            console.print("[yellow]No matching Jira issues.[/yellow]")
-            raise typer.Exit(1)
-        for key in keys:
-            # Re-read per issue: an issue ingested earlier in this same loop is
-            # itself context the next one can conflict with.
-            with workspace_session(session_factory, DEFAULT_WORKSPACE_ID) as session:
-                known = list(
-                    load_projection(
-                        session, workspace_id=DEFAULT_WORKSPACE_ID, feature_scope_id=scope_id
-                    ).nodes.values()
-                )
-            run, result = asyncio.run(
-                extract_from_jira_issue(
-                    client=client,
-                    key=key,
-                    workspace_id=DEFAULT_WORKSPACE_ID,
-                    feature_scope_id=scope_id,
-                    known_nodes=known,
-                )
-            )
-            with workspace_session(session_factory, DEFAULT_WORKSPACE_ID) as session:
-                record_extraction(
-                    session, result, workspace_id=DEFAULT_WORKSPACE_ID, ingestion_run=run
-                )
-            cross = sum(
-                1 for edge in result.edges if edge.to_node_id in {node.id for node in known}
-            )
-            console.print(
-                f"[green]{key}: {len(result.nodes)} node(s), {len(result.edges)} edge(s)"
-                f"{f', {cross} cross-source' if cross else ''}.[/green]"
-            )
-    except (JiraError, ExtractionError) as exc:
-        console.print(f"[red]Ingestion failed: {exc}[/red]")
-        raise typer.Exit(1) from exc
-    finally:
-        client.close()
+        outcome = run_ingestion(
+            session_factory,
+            request=request,
+            credential=JiraCredential(
+                base_url=jira.base_url, email=jira.email, api_token=jira.api_token
+            ),
+        )
+    except TargetError as bad:
+        raise typer.BadParameter(str(bad)) from bad
+    _report(request, outcome)
 
-    console.print(f"Review with: [bold]atlas review --feature-scope {scope_id}[/bold]")
+
+@app.command("product-create")
+def product_create(name: str) -> None:
+    """Open a product -- the container a PM's features and connections live in."""
+    load_dotenv()
+    session_factory = get_sessionmaker(get_engine(_require_db_url()))
+    with workspace_session(session_factory, DEFAULT_WORKSPACE_ID) as session:
+        product_id, _ = create_product(
+            session, workspace_id=DEFAULT_WORKSPACE_ID, name=name, actor="cli"
+        )
+    console.print(f"[green]Created product[/green] [bold]{name}[/bold] · {product_id}")
+
+
+@app.command("product-assign")
+def product_assign(feature_scope: str, product: str) -> None:
+    """File an existing feature scope under a product.
+
+    This is the path for the scopes ingested before products existed: it appends
+    one event, and never rewrites the `ingestion_run` that opened the scope.
+    """
+    load_dotenv()
+    scope_id = _parse_scope(feature_scope)
+    try:
+        product_id = uuid.UUID(product)
+    except ValueError as exc:
+        raise typer.BadParameter(f"{product!r} is not a UUID") from exc
+
+    session_factory = get_sessionmaker(get_engine(_require_db_url()))
+    with workspace_session(session_factory, DEFAULT_WORKSPACE_ID) as session:
+        projection = load_projection(session, workspace_id=DEFAULT_WORKSPACE_ID)
+        if product_id not in projection.products:
+            console.print(f"[red]No product {product_id} in this workspace.[/red]")
+            raise typer.Exit(1)
+        if scope_id not in projection.feature_scopes:
+            console.print(f"[red]No feature scope {scope_id} in this workspace.[/red]")
+            raise typer.Exit(1)
+        assign_feature_scope(
+            session,
+            workspace_id=DEFAULT_WORKSPACE_ID,
+            feature_scope_id=scope_id,
+            product_id=product_id,
+            actor="cli",
+        )
+    console.print(
+        f"[green]Filed[/green] {projection.feature_scopes[scope_id].title} "
+        f"under [bold]{projection.products[product_id].name}[/bold]"
+    )
 
 
 @app.command()

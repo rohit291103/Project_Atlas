@@ -1,0 +1,20 @@
+{
+ "issue": {
+  "comments": [],
+  "created_at": "2026-08-13T22:47:16.213000+05:30",
+  "description": "Decision from product review on 4 August: --maxdepth counts levels from the user's current working directory, not from the search starting points passed on the command line.\nThis means --maxdepth 0 should still return matches in files sitting directly inside the current directory. Users reason about where they are, not about what they happened to type as arguments.\nThe help text and documentation must say \"current directory\" throughout. We are explicitly not matching GNU find here -- consistency with a 1990s tool is worth less than matching what our users expect.",
+  "issue_type": "Task",
+  "key": "SCRUM-8",
+  "labels": [
+   "maxdepth"
+  ],
+  "links": [],
+  "parent_key": "SCRUM-6",
+  "reporter": "Rohit Gupta",
+  "status": "Idea",
+  "summary": "--maxdepth counts from the current working directory",
+  "url": "https://rohitg291103.atlassian.net/browse/SCRUM-8"
+ },
+ "issue_key": "SCRUM-8",
+ "site": "https://rohitg291103.atlassian.net/"
+}

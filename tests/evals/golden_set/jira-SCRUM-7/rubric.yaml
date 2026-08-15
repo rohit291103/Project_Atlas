@@ -1,0 +1,24 @@
+# Minimal Tier-1 expectations for SCRUM-7 ("Ship a --maxdepth flag").
+# A conservative FLOOR, not the full expected output. Provenance verification is
+# per-node and lives in test_golden_set.py, not here.
+#
+# CAVEAT, and it is not a small one: this ticket was WRITTEN BY THE BUILD TEAM as
+# a fixture (scripts in the scratchpad; see docs/research/2026-08-13-jira-live-run.md).
+# The `writing-evals` skill warns that synthetic examples are cleaner than reality
+# and quietly inflate scores. Treat a pass here as "extraction did not regress",
+# never as "extraction works on real Jira". jira-SCRUM-1 is the partial antidote:
+# untouched Atlassian template content nobody wrote to be extractable.
+issue: SCRUM-7
+source: SCRUM-7 (seeded fixture)
+
+required_node_types: # >=1 node of each type must be present
+  - requirement # the flag itself: limit a search to N directory levels
+
+must_mention: # >=1 node whose content contains each (case-insensitive substring)
+  - maxdepth
+  - rgignore # the scope boundary: replaces .rgignore for depth, NOT for paths
+
+notes: |
+  The interesting claim is the *negative* one -- "does not replace .rgignore for
+  excluding specific paths". A summary-only extraction would restate the title
+  and miss it, which is why `rgignore` is in the floor.

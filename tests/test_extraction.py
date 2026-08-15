@@ -39,6 +39,7 @@ from atlas.extraction.agent import (
     run_extraction,
 )
 from atlas.ingestion.github import GitHubClient
+from tests.asyncio_support import run_await
 
 WORKSPACE_ID = uuid.UUID(int=0)
 FEATURE_SCOPE_ID = uuid.uuid4()
@@ -307,7 +308,7 @@ def test_fetch_linked_issue_tool_returns_formatted_issue() -> None:
 
     client = _github_client(handler)
     specs = {s.name: s for s in tools.build_extraction_tools(client, "acme", "gateway")}
-    out = asyncio.run(specs["fetch_linked_issue"].handler({"number": 17}))
+    out = run_await(specs["fetch_linked_issue"].handler({"number": 17}))
 
     text = out["content"][0]["text"]
     assert "Issue #17" in text
@@ -321,7 +322,7 @@ def test_fetch_tool_reports_github_error_without_raising() -> None:
 
     client = _github_client(handler)
     specs = {s.name: s for s in tools.build_extraction_tools(client, "acme", "gateway")}
-    out = asyncio.run(specs["fetch_commit"].handler({"sha": "deadbeef"}))
+    out = run_await(specs["fetch_commit"].handler({"sha": "deadbeef"}))
 
     assert out["is_error"] is True
     assert "404" in out["content"][0]["text"]
@@ -336,7 +337,7 @@ def test_fetch_tool_surfaces_transport_error_as_is_error() -> None:
 
     client = _github_client(handler)
     specs = {s.name: s for s in tools.build_extraction_tools(client, "acme", "gateway")}
-    out = asyncio.run(specs["fetch_linked_issue"].handler({"number": 17}))
+    out = run_await(specs["fetch_linked_issue"].handler({"number": 17}))
 
     assert out["is_error"] is True
     assert "connection refused" in out["content"][0]["text"]
@@ -349,12 +350,14 @@ def test_permission_gate_caps_reads_allows_emit_denies_builtins() -> None:
     gate = _make_permission_gate(2)
 
     async def run() -> tuple[list[str], str, str]:
+        # `behavior` is a Literal, so the tuple has to be widened to str for the
+        # declared return type to hold.
         reads = [
-            (await gate("mcp__atlas__fetch_commit", {}, None)).behavior  # type: ignore[arg-type]
+            str((await gate("mcp__atlas__fetch_commit", {}, None)).behavior)  # type: ignore[arg-type]
             for _ in range(3)
         ]
-        emit = (await gate("mcp__atlas__emit_extraction", {}, None)).behavior  # type: ignore[arg-type]
-        builtin = (await gate("Bash", {}, None)).behavior  # type: ignore[arg-type]
+        emit = str((await gate("mcp__atlas__emit_extraction", {}, None)).behavior)  # type: ignore[arg-type]
+        builtin = str((await gate("Bash", {}, None)).behavior)  # type: ignore[arg-type]
         return reads, emit, builtin
 
     reads, emit, builtin = asyncio.run(run())
@@ -397,8 +400,8 @@ def test_make_agent_call_streams_prompt_and_shares_gate_across_calls(
     try:
         agent_call = _make_agent_call(client, "acme", "gateway", model="m", max_tool_calls=8)
         # Invoke the closure twice, exactly as run_extraction's initial + retry paths do.
-        asyncio.run(agent_call("first prompt"))
-        asyncio.run(agent_call("second prompt"))
+        run_await(agent_call("first prompt"))
+        run_await(agent_call("second prompt"))
     finally:
         client.close()
 

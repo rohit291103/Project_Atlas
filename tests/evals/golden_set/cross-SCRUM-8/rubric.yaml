@@ -1,0 +1,30 @@
+# Cross-source conflict detection — the behaviour with the most product value and,
+# until this fixture, no Tier-1 coverage at all.
+#
+# The five conflicts found on 2026-08-13 (docs/research/2026-08-13-jira-live-run.md)
+# were judged by eye and never written down, so nothing would have noticed a
+# prompt change that quietly stopped finding them. This fixture ingests SCRUM-8
+# into a scope already holding the claims recorded from ripgrep PR #111 — the
+# same feature, described twice — and grades what comes back.
+#
+# The floors are deliberately below what the recording achieved (3 conflicts).
+# A floor set *at* the observed number grades the sample rather than the
+# behaviour, and would fail on a run that found two genuine conflicts instead of
+# three. What must not happen is finding none, or inventing an endpoint.
+
+required_node_types:
+  - decision
+
+must_mention:
+  - maxdepth
+
+# At least this many `conflicts_with` edges must point at a claim the *other*
+# source produced. One is the difference between "the cross-source path works"
+# and "the second source was ingested next to the first, each unaware".
+min_cross_source_conflicts: 2
+
+# Every edge endpoint outside this extraction must be an id that was actually
+# offered to the run. `agent.build_result` already refuses anything else, so a
+# violation here means the gate regressed — a fabricated relationship is
+# indistinguishable from a real one, which is why it is checked twice.
+edges_only_reach_offered_nodes: true

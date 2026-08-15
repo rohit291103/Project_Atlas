@@ -133,6 +133,43 @@ class Role(StrEnum):
         return self is not Role.VIEWER
 
 
+class RunTargetKind(StrEnum):
+    """How a run's `target` string should be read.
+
+    Scoped ingestion (TRD Sec4.2) is *deliberate*: a run names one PR, one issue,
+    one epic's children or one label -- never "everything in this project". The
+    kind is what the API validates against, so the UI cannot ask for a crawl by
+    sending a target the CLI would have refused.
+    """
+
+    GITHUB_PR = "github_pr"
+    JIRA_ISSUE = "jira_issue"
+    JIRA_EPIC = "jira_epic"
+    JIRA_LABEL = "jira_label"
+
+    @property
+    def source_type(self) -> SourceType:
+        return SourceType.GITHUB_PR if self is RunTargetKind.GITHUB_PR else SourceType.JIRA_TICKET
+
+
+class RunState(StrEnum):
+    """A run's derived state -- never stored, always replayed.
+
+    `INTERRUPTED` is the honest one. Ingestion started from the UI runs in the API
+    process (no task queue -- an explicit CLAUDE.md Non-Goal), so a process that
+    dies mid-run leaves a start event with no terminal event, which is
+    indistinguishable from a run that is merely slow. Rather than report that as
+    "running" forever, a start older than `INTERRUPTED_AFTER` with no terminal
+    event is reported as interrupted: fail-visible, the same instinct that makes
+    an unscoped query return zero rows instead of an error.
+    """
+
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    INTERRUPTED = "interrupted"
+
+
 class EventType(StrEnum):
     """Matches TRD Sec3.1 Event.event_type. storage/tables.py imports this."""
 
@@ -143,6 +180,26 @@ class EventType(StrEnum):
     EDGE_CREATED = "edge_created"
     SPEC_EXPORTED = "spec_exported"
     INGESTION_RUN = "ingestion_run"
+    # The product layer. A product is what a PM actually works on -- one has its
+    # own GitHub org and its own Jira site, with no overlap between them -- and
+    # like feature-scope identity it lives in the log as a projection rather than
+    # in a table (`docs/architecture/product-model-and-frontend-rebuild-v1.md`).
+    PRODUCT_CREATED = "product_created"
+    PRODUCT_RENAMED = "product_renamed"
+    FEATURE_SCOPE_ASSIGNED = "feature_scope_assigned"
+    # The run lifecycle (slice 2B). Ingestion triggered from the UI runs
+    # in-process and returns before it finishes, so "is it still going?" has to
+    # be answerable from the log rather than from the request that started it.
+    # These three bracket the existing `ingestion_run`, which keeps its meaning
+    # exactly: one artifact was pulled and extracted. A run over an epic emits
+    # several of those and exactly one `ingestion_run_finished`.
+    INGESTION_RUN_STARTED = "ingestion_run_started"
+    INGESTION_RUN_FINISHED = "ingestion_run_finished"
+    INGESTION_RUN_FAILED = "ingestion_run_failed"
+    # Connection lifecycle. The secret never appears in the log -- only the fact
+    # that a source was connected or revoked, and by whom (TRD Sec9).
+    CONNECTION_CREATED = "connection_created"
+    CONNECTION_REVOKED = "connection_revoked"
 
 
 # --- entities ------------------------------------------------------------------
@@ -314,6 +371,118 @@ class IngestionRunPayload(AtlasModel):
     #: slice 1A' planned for: events written before slice 1D carry no manifest and
     #: still replay cleanly, and no backfill invents calls that were never made.
     tool_calls: list[ToolCallRecord] = Field(default_factory=list)
+    #: Which product this run files the feature under. Optional for the same
+    #: reason `tool_calls` is: every run already in the live log predates the
+    #: product layer, and such a run must replay as *unassigned* rather than
+    #: crashing or being handed a fabricated product. It is a default, not a
+    #: ruling -- an explicit `feature_scope_assigned` event outranks it either
+    #: way round (see `storage/projections.py`).
+    product_id: uuid.UUID | None = None
+    #: The UI-triggered run this artifact was pulled by, when there was one.
+    #: Optional because every `ingestion_run` written before slice 2B -- and
+    #: every one the CLI writes without a job around it -- has no such id. It is
+    #: what lets the Sources screen say "this run produced these two features"
+    #: instead of listing a run with nothing to show for it.
+    run_id: uuid.UUID | None = None
+
+
+class RunStartedPayload(AtlasModel):
+    """Payload of an `ingestion_run_started` Event -- a job was accepted.
+
+    Written *before* any network call, so a run that dies on its first request
+    still leaves a trace. `target` is the literal thing the PM asked for
+    (`acme/web#42`, `SCRUM-6`), kept verbatim so the Sources screen shows back
+    what was requested rather than a normalized restatement of it.
+
+    `connection_id` names the credential used. It is nullable because the CLI
+    runs from environment credentials and has no connection row -- and a CLI run
+    must appear in the same history rather than being invisible.
+    """
+
+    run_id: uuid.UUID
+    feature_scope_id: uuid.UUID
+    product_id: uuid.UUID | None = None
+    connection_id: uuid.UUID | None = None
+    target_kind: RunTargetKind
+    target: NonBlankStr
+
+
+class RunFinishedPayload(AtlasModel):
+    """Payload of an `ingestion_run_finished` Event -- the terminal success.
+
+    Deliberately separate from `ingestion_run`, which the original plan proposed
+    as the success terminal. One UI action can pull an epic's children, and each
+    child is its own `ingestion_run` -- so treating the first of those as "done"
+    would report a run finished while it was still working.
+
+    Node and edge counts are stated here because nothing else can recover them: a
+    Node carries its feature scope, not the job that produced it. The *artifact*
+    count deliberately is **not** stated -- the projection counts the
+    `ingestion_run` events that actually landed, so the number the Sources screen
+    shows is what happened rather than what the writer believed happened.
+    """
+
+    run_id: uuid.UUID
+    nodes: int = Field(ge=0)
+    edges: int = Field(ge=0)
+
+
+class RunFailedPayload(AtlasModel):
+    """Payload of an `ingestion_run_failed` Event -- the terminal failure.
+
+    `error` is the connector's or the agent's own message, truncated by the
+    writer, never a stack trace: a failed run is something a PM reads. It is
+    *never* built by formatting an exception that could have a credential in it
+    -- see `pipeline.py`, which is the only writer.
+    """
+
+    run_id: uuid.UUID
+    error: NonBlankStr
+
+
+class ConnectionPayload(AtlasModel):
+    """Payload of a `connection_created` / `connection_revoked` Event.
+
+    The audit record for a source being connected or cut off. **It carries no
+    secret and no field that could hold one** -- the ciphertext lives in the
+    `connection` table, which is deletable precisely because revocation must
+    actually remove a credential rather than leave it readable forever in an
+    append-only log (`docs/architecture/product-model-and-frontend-rebuild-v1.md`
+    Sec4.2).
+    """
+
+    connection_id: uuid.UUID
+    product_id: uuid.UUID
+    source_type: SourceType
+    account: NonBlankStr
+    host: NonBlankStr
+    scope: NonBlankStr
+
+
+class ProductPayload(AtlasModel):
+    """Payload of a `product_created` / `product_renamed` Event.
+
+    Both events carry the same shape, so a rename is a restatement of the whole
+    identity rather than a diff -- there is nothing else a product currently is.
+    Connections and features point *at* a product; the product itself is a name.
+    """
+
+    product_id: uuid.UUID
+    name: NonBlankStr
+
+
+class FeatureScopeAssignedPayload(AtlasModel):
+    """Payload of a `feature_scope_assigned` Event -- filing a feature under a
+    product as a deliberate act.
+
+    This exists because the log is append-only. The four feature scopes already
+    in the live database were ingested before products existed, and the honest
+    way to give them a home is to append one event each, never to rewrite the
+    `ingestion_run` events that opened them.
+    """
+
+    feature_scope_id: uuid.UUID
+    product_id: uuid.UUID
 
 
 class Event(AtlasModel):

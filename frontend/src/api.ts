@@ -21,7 +21,12 @@ export type Edge = Populated<components["schemas"]["Edge"], "id">;
 export type Node = Populated<components["schemas"]["Node"], "id" | "updated_at"> & {
   source_refs: SourceRef[];
 };
-export type FeatureScope = components["schemas"]["FeatureScope"];
+/* The rail and the dashboard read rows, not bare identities: a row is the
+   scope plus how much of it is still work. `FeatureScope` remains the identity
+   shape returned inside a detail payload. */
+export type FeatureScope = components["schemas"]["FeatureScopeRow"];
+export type ScopeCounts = components["schemas"]["ScopeCounts"];
+export type Product = components["schemas"]["Product"];
 export type FeatureScopeDetail = Omit<
   components["schemas"]["FeatureScopeDetail"],
   "nodes" | "edges"
@@ -30,6 +35,12 @@ export type NodeType = components["schemas"]["NodeType"];
 export type NodeStatus = components["schemas"]["NodeStatus"];
 export type Role = components["schemas"]["Role"];
 export type Session = components["schemas"]["SignInResponse"];
+export type Connection = components["schemas"]["ConnectionView"];
+export type ConnectionCreated = components["schemas"]["ConnectionCreated"];
+export type Run = components["schemas"]["RunView"];
+export type RunState = components["schemas"]["RunState"];
+export type RunTargetKind = components["schemas"]["RunTargetKind"];
+export type SourceType = components["schemas"]["SourceType"];
 
 /** A viewer may read the extracted draft but not rule on it (TRD §9). The UI
  * hides what the API would refuse — an affordance that always 403s is worse
@@ -76,14 +87,47 @@ async function errorMessage(response: Response): Promise<string> {
 const post = <T,>(path: string, body?: unknown) =>
   request<T>(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
 
+/** What the connect form collects. `secret` only ever travels *outbound* — no
+ * response type in this file has a field it could come back in, which is the
+ * client-side half of the rule `ConnectionView` enforces on the server. */
+export type ConnectSource = {
+  source_type: SourceType;
+  host: string;
+  scope: string;
+  secret: string;
+  email?: string;
+};
+
 export const api = {
   currentSession: () => request<Session>("/session"),
   signIn: (passphrase: string, name: string) =>
     post<Session>("/session", { passphrase, name }),
   signOut: () => request<void>("/session", { method: "DELETE" }),
 
+  products: () => request<Product[]>("/products"),
+  createProduct: (name: string) => post<Product>("/products", { name }),
+
   featureScopes: () => request<FeatureScope[]>("/feature-scopes"),
   featureScope: (id: string) => request<FeatureScopeDetail>(`/feature-scopes/${id}`),
+
+  connections: (productId: string) => request<Connection[]>(`/products/${productId}/connections`),
+  connectSource: (productId: string, body: ConnectSource) =>
+    post<ConnectionCreated>(`/products/${productId}/connections`, body),
+  revokeConnection: (connectionId: string) =>
+    request<void>(`/connections/${connectionId}`, { method: "DELETE" }),
+
+  runs: (productId: string) => request<Run[]>(`/products/${productId}/runs`),
+  run: (runId: string) => request<Run>(`/runs/${runId}`),
+  startRun: (
+    productId: string,
+    body: {
+      connection_id: string;
+      target_kind: RunTargetKind;
+      target: string;
+      feature_scope_id?: string;
+      limit?: number;
+    },
+  ) => post<Run>(`/products/${productId}/runs`, body),
 
   confirm: (nodeId: string) => post<Node>(`/nodes/${nodeId}/confirm`),
   reject: (nodeId: string) => post<Node>(`/nodes/${nodeId}/reject`),

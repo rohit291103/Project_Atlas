@@ -17,14 +17,15 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from typing import Any
 
 from atlas.extraction.agent import _make_permission_gate
 from atlas.models.schema import IngestionRunPayload, SourceType, ToolCallRecord
 
 
-def _decide(gate, tool: str, arguments: dict[str, object]) -> str:
+def _decide(gate: Any, tool: str, arguments: dict[str, object]) -> str:
     async def run() -> str:
-        result = await gate(tool, arguments, None)  # type: ignore[arg-type]
+        result = await gate(tool, arguments, None)
         return str(result.behavior)
 
     return asyncio.run(run())

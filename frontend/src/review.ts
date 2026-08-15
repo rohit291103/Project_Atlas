@@ -7,7 +7,7 @@
  * (docs/decisions/2026-08-11-api-frontend-module-boundary.md §5).
  */
 
-import type { Edge, FeatureScopeDetail, Node, NodeType, SourceRef } from "./api";
+import type { Edge, FeatureScope, FeatureScopeDetail, Node, NodeType, SourceRef } from "./api";
 
 /** Fixed section order: how a reader reconstructs a feature (flow spec §3.2). */
 export const SECTION_ORDER: NodeType[] = [
@@ -83,17 +83,46 @@ export function crossesSource(node: Node, other: Node): boolean {
   return [...sourcesOf(other)].every((source) => !mine.has(source));
 }
 
-export type Section = { type: NodeType; nodes: Node[] };
+/** The four groups that replaced nine section headers.
+ *
+ * The old build rendered one header per `NodeType`, straight off the storage
+ * enum — "rejected alternative", "architecture note" and all. That is the schema
+ * shown to a PM, and nine buckets is more than anyone holds while reading. These
+ * four are the same why→what→how editorial order the flow spec fixed (§3.2),
+ * collapsed to categories a person already thinks in; the precise type survives
+ * as a tag on the claim, so nothing is lost from the record.
+ *
+ * `open_question` earns its own group rather than sitting under "how": what is
+ * still undecided is the thing a PM most needs pulled out of the pile.
+ */
+export type GroupKey = "why" | "what" | "how" | "open";
+
+export const GROUPS: { key: GroupKey; label: string; types: NodeType[] }[] = [
+  { key: "why", label: "Why this exists", types: ["goal", "problem"] },
+  { key: "what", label: "What it must do", types: ["requirement", "constraint"] },
+  {
+    key: "how",
+    label: "How it was decided",
+    types: ["decision", "rejected_alternative", "architecture_note", "evidence"],
+  },
+  { key: "open", label: "Unresolved", types: ["open_question"] },
+];
+
+export type Section = { key: GroupKey; label: string; nodes: Node[] };
 
 const isReviewed = (node: Node) => node.status !== "unconfirmed";
 
-/** Group into sections, dropping empty types; unconfirmed first within each. */
+/** Within a group, keep the fixed type order, then unconfirmed first. */
+const rank = (node: Node) => SECTION_ORDER.indexOf(node.type as NodeType);
+
+/** Group into the four sections, dropping empty ones; unconfirmed first. */
 export function toSections(nodes: Node[]): Section[] {
-  return SECTION_ORDER.map((type) => ({
-    type,
+  return GROUPS.map(({ key, label, types }) => ({
+    key,
+    label,
     nodes: nodes
-      .filter((node) => node.type === type)
-      .sort((a, b) => Number(isReviewed(a)) - Number(isReviewed(b))),
+      .filter((node) => types.includes(node.type as NodeType))
+      .sort((a, b) => Number(isReviewed(a)) - Number(isReviewed(b)) || rank(a) - rank(b)),
   })).filter((section) => section.nodes.length > 0);
 }
 
@@ -121,6 +150,72 @@ export function conflictMap(detail: FeatureScopeDetail): Map<string, Node[]> {
     link(edge.to_node_id, edge.from_node_id);
   }
   return conflicts;
+}
+
+export type ConflictPair = { id: string; a: Node; b: Node; crossSource: boolean };
+
+/** Each `conflicts_with` edge as one pair, counted once.
+ *
+ * `conflictMap` intentionally reports both endpoints so either card can show a
+ * banner. That is right for the review screen and wrong for the conflicts
+ * screen, where it would list every disagreement twice — five conflicts became
+ * ten amber lines in the old build, which is most of why they read as noise
+ * rather than as the product's headline capability.
+ */
+export function conflictPairs(detail: FeatureScopeDetail): ConflictPair[] {
+  const byId = new Map(detail.nodes.map((node) => [node.id, node]));
+  const pairs: ConflictPair[] = [];
+  for (const edge of detail.edges) {
+    if (edge.relation_type !== "conflicts_with") continue;
+    const a = byId.get(edge.from_node_id);
+    const b = byId.get(edge.to_node_id);
+    if (!a || !b) continue;
+    pairs.push({ id: edge.id, a, b, crossSource: crossesSource(a, b) });
+  }
+  // A cross-source disagreement is the one no single tool could have shown you,
+  // so it leads.
+  return pairs.sort((x, y) => Number(y.crossSource) - Number(x.crossSource));
+}
+
+/** Work still owed across a set of features.
+ *
+ * One helper because three surfaces read the same figures — the rail's per-row
+ * badge, the `Conflicts (n)` nav entry, and the product home's worklist — and
+ * three private copies is how they start disagreeing with each other.
+ *
+ * The counts themselves come from the API (`FeatureScopeRow.counts`), so
+ * "unreviewed" is defined once, in `storage/projections.py`, rather than
+ * re-derived per component.
+ */
+export type WorkSummary = { features: number; total: number; unreviewed: number; conflicts: number };
+
+export function summarize(scopes: FeatureScope[]): WorkSummary {
+  return scopes.reduce<WorkSummary>(
+    (sum, scope) => ({
+      features: sum.features + 1,
+      total: sum.total + scope.counts.total,
+      unreviewed: sum.unreviewed + scope.counts.unreviewed,
+      conflicts: sum.conflicts + scope.counts.conflicts,
+    }),
+    { features: 0, total: 0, unreviewed: 0, conflicts: 0 },
+  );
+}
+
+/** Features that still want a person, most urgent first.
+ *
+ * A disagreement outranks a backlog: an unreviewed claim is work, but a
+ * conflict is a decision nobody has made and the one thing no single source
+ * tool could have surfaced. Within each band, more outstanding work first.
+ */
+export function needsRuling(scopes: FeatureScope[]): FeatureScope[] {
+  return scopes
+    .filter((scope) => scope.counts.unreviewed > 0 || scope.counts.conflicts > 0)
+    .sort(
+      (a, b) =>
+        Number(b.counts.conflicts > 0) - Number(a.counts.conflicts > 0) ||
+        b.counts.conflicts - a.counts.conflicts ||
+        b.counts.unreviewed - a.counts.unreviewed,
+    );
 }
 
 /** Non-conflict relationships, rendered as inline text refs — there is no graph
