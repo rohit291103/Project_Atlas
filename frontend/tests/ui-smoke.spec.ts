@@ -97,11 +97,35 @@ test("the rail shows one product's features, not every product's", async ({ page
   // The product's own screens live above its features, Conflicts among them —
   // it was previously reachable only by typing the URL. Matched loosely because
   // Conflicts carries a live count badge inside the same element.
+  //
+  // Order follows the loop the product runs — connect, then review — rather
+  // than the order the screens happened to be built in.
   await expect(page.locator(".rail__nav-item")).toHaveText([
     /^Overview$/,
-    /^Conflicts\d*$/,
     /^Sources$/,
+    /^Conflicts\d*$/,
   ]);
+  // ...and the groups are labelled with the same verbs the landing page and the
+  // sign-in panel use, so the product speaks one vocabulary.
+  await expect(page.locator(".rail__group-label")).toHaveText(["Connect", "Review", "Features"]);
+});
+
+test("the rail filter narrows the feature list and ⌘K reaches it", async ({ page }) => {
+  await signIn(page, EDITOR);
+  await page.waitForSelector(".rail__item");
+  const before = await page.locator(".rail__item").count();
+
+  // The shortcut has to land on the input, not merely be swallowed — that is the
+  // whole reason it is bound to something real instead of an unbuilt palette.
+  await page.keyboard.press("ControlOrMeta+k");
+  await expect(page.locator(".rail__search input")).toBeFocused();
+
+  await page.keyboard.type("zzzqqq");
+  await expect(page.locator(".rail__item")).toHaveCount(0);
+  await expect(page.locator(".rail__hint")).toContainText("No feature matches");
+
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".rail__item")).toHaveCount(before);
 });
 
 test("the product you left is the product you come back to", async ({ page }) => {
@@ -143,7 +167,9 @@ test("the rail, the nav and the dashboard all report the same work left", async 
 
   // Conflicts is counted as disagreements, so the nav badge and the dashboard
   // summary line must be the same figure.
-  const navBadge = page.locator(".rail__nav-item", { hasText: "Conflicts" }).locator(".rail__badge");
+  const navBadge = page
+    .locator(".rail__nav-item", { hasText: "Conflicts" })
+    .locator(".rail__badge");
   if (await navBadge.count()) {
     const navCount = Number((await navBadge.innerText()).trim());
     const sub = await page.locator(".page-sub").innerText();
@@ -352,9 +378,7 @@ test("the theme control offers a real light mode, not only the OS reading", asyn
 
   // The reviewer arrives from Jira and Confluence, both light. Their OS
   // preference is not the same thing as their preference for this app.
-  const background = await page.evaluate(
-    () => getComputedStyle(document.body).backgroundColor,
-  );
+  const background = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
   expect(background).toBe("rgb(250, 250, 251)");
 });
 
@@ -377,7 +401,7 @@ test("the front door explains the product before asking for a credential", async
   await expect(page.locator(".hero__title")).toBeVisible();
   // The three promises that govern what happens after sign-in are on the page
   // someone reads *before* handing over a token, not in a settings screen after.
-  await expect(page.getByText("It never writes back.")).toBeVisible();
+  await expect(page.getByText("Never writes back.")).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -421,19 +445,55 @@ test("the hero demo shows every claim with its source excerpt, and yields when d
   await claims.nth(1).click();
   await expect(demo.locator(".ld-flag")).toBeVisible();
 
-  // A click hands control to the reader, permanently.
-  await expect(demo.locator(".ld-frame__live")).toHaveText("paused");
+  // A click hands control to the reader, and it stays handed over.
+  const badge = demo.locator(".ld-frame__live");
+  await expect(badge).toHaveText("▸ resume");
   const held = await demo.locator(".ld-claim").innerText();
   await page.waitForTimeout(4000);
   await expect(demo.locator(".ld-claim")).toHaveText(held);
+
+  // ...but not irreversibly. The badge is the way back, which is the whole
+  // reason it is a button: a reader who paused to read one claim should not
+  // have to reload the page to see the loop run again.
+  await badge.click();
+  await expect(badge).toHaveText("auto-playing");
+});
+
+/* The tab strip is the demo's manual control. It exists because an
+ * auto-advancing panel offers a reader nothing that looks clickable, so the
+ * two things asserted here are exactly the two that make it useful: a tab
+ * selects the claim it names, and the strip tracks whatever is on the stage —
+ * including while autoplay is the one moving it.
+ */
+test("the hero demo's tabs select claims, and follow autoplay when it is driving", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const tabs = page.locator(".ld-tab");
+  await expect(tabs).toHaveCount(4);
+  await expect(tabs).toHaveText(["Requirement", "Decision", "Constraint", "Open question"]);
+
+  // Autoplay owns the strip until someone touches it: the active tab is
+  // whichever claim the timer has reached, not a fixed first tab.
+  await expect(page.locator(".ld-tab.is-active")).toHaveCount(1);
+
+  // The fourth claim is the open question, and it is the one furthest from
+  // where autoplay starts — picking it proves the tab drove the stage rather
+  // than the timer happening to land there.
+  await tabs.nth(3).click();
+  await expect(page.locator(".ld-claim")).toContainText("--pre-glob be repeated");
+  await expect(tabs.nth(3)).toHaveClass(/is-active/);
+  await expect(tabs.nth(3)).toHaveAttribute("aria-selected", "true");
 });
 
 test("buttons on the landing page are not underlined links", async ({ page }) => {
   // `.action` is worn by both <button> and <a>; without an explicit
   // `text-decoration: none` the anchor form renders as an underlined button.
+  // The landing page's primary is `.action--brand` (the gradient variant) —
+  // `.action--primary` stays the in-product one.
   await page.goto("/");
   const decoration = await page
-    .locator(".hero__actions .action--primary")
+    .locator(".hero__actions .action--brand")
     .evaluate((element) => getComputedStyle(element).textDecorationLine);
 
   expect(decoration).toBe("none");

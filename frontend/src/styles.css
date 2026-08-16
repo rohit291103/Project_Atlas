@@ -104,7 +104,27 @@
   --space-5: 24px;
   --space-6: 32px;
 
-  --rail-width: 216px;
+  /* Brand identity — chrome only.
+   *
+   * Used by the marketing page, the sign-in surface, the boot screen and the
+   * rail's mark/labels/active rule. Never by a claim, a status, a confidence
+   * pip or a conflict banner: those families own the content area and their
+   * colours are load-bearing (design-system-baseline-v1 §2.3–2.5).
+   *
+   * The ramp's third stop is `--accent` itself — the product's real interaction
+   * colour — so the gradient resolves into the palette rather than sitting
+   * beside it. When the deferred brandkit pass lands, `--brand-1` and
+   * `--brand-2` are the whole swap. */
+  --brand-1: #ff4d9d;
+  --brand-2: #a855f7;
+  --brand-3: var(--accent);
+  --brand-ink: #ffffff;
+  --brand-ramp: linear-gradient(104deg, var(--brand-1), var(--brand-2) 54%, var(--brand-3));
+  --brand-glow: color-mix(in srgb, var(--brand-2) 30%, transparent);
+  --brand-wash: color-mix(in srgb, var(--brand-1) 10%, transparent);
+  --brand-edge: color-mix(in srgb, var(--brand-2) 42%, transparent);
+
+  --rail-width: 232px;
   --queue-width: 300px;
   --evidence-width: 360px;
   --motion: 130ms cubic-bezier(0.2, 0.6, 0.3, 1);
@@ -142,6 +162,12 @@
     --paper-text: #3a3327;
     --paper-dim: #79705d;
     --paper-mark: rgba(224, 163, 60, 0.3);
+
+  --brand-1: #d81b7e;
+  --brand-2: #7c2fd4;
+  --brand-glow: color-mix(in srgb, var(--brand-2) 14%, transparent);
+  --brand-wash: color-mix(in srgb, var(--brand-1) 5%, transparent);
+  --brand-edge: color-mix(in srgb, var(--brand-2) 30%, transparent);
   }
 }
 
@@ -176,6 +202,12 @@
   --paper-text: #3a3327;
   --paper-dim: #79705d;
   --paper-mark: rgba(224, 163, 60, 0.3);
+
+  --brand-1: #d81b7e;
+  --brand-2: #7c2fd4;
+  --brand-glow: color-mix(in srgb, var(--brand-2) 14%, transparent);
+  --brand-wash: color-mix(in srgb, var(--brand-1) 5%, transparent);
+  --brand-edge: color-mix(in srgb, var(--brand-2) 30%, transparent);
 }
 
 *,
@@ -585,17 +617,68 @@ kbd {
   background: var(--border);
 }
 
-/* In-product navigation: the screens that belong to the active product, above
-   its feature list because they are about the product rather than about any
-   one feature. Conflicts earns a slot here — it was previously reachable only
-   by URL, which for the product's headline capability is a place to hide it. */
-.rail__nav {
+/* A filter over the feature list, sitting where a dashboard's search goes.
+   Deliberately not a command palette (design-system-baseline-v1 §8 defers that
+   to v1.x) — ⌘K focuses this input, which is a shortcut that lands somewhere
+   real rather than one that opens a surface we have not built. */
+.rail__search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: var(--space-2) 6px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  transition: border-color var(--motion);
+}
+.rail__search:focus-within {
+  border-color: var(--border-lit);
+}
+.rail__search-icon {
+  flex: none;
+  color: var(--text-faint);
+  font-size: var(--text-base);
+  line-height: 1;
+}
+.rail__search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  padding: 7px 0;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+.rail__search input:focus-visible {
+  outline: none;
+}
+.rail__search input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+}
+.rail__search kbd {
+  flex: none;
+}
+
+/* In-product navigation, grouped by the loop the product runs — connect, then
+   review — rather than as one flat list of screens. The group labels are the
+   same verbs the landing page and the sign-in panel use, so the product has one
+   vocabulary rather than a marketing one and an internal one. */
+.rail__group {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  padding-bottom: var(--space-2);
-  margin-bottom: var(--space-1);
-  border-bottom: 1px solid var(--border);
+  margin-top: var(--space-4);
+}
+.rail__group-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  padding: 0 var(--space-2) 6px;
 }
 .rail__nav-item {
   padding: 5px var(--space-2);
@@ -610,9 +693,9 @@ kbd {
   color: var(--text);
 }
 .rail__nav-item.is-active {
-  background: var(--accent-soft);
+  background: var(--raised);
   color: var(--text);
-  box-shadow: inset 2px 0 0 var(--accent);
+  box-shadow: inset 2px 0 0 var(--brand-2);
 }
 /* Work-left badges. The rail's job changed with these: it was a directory of
    feature names and it is now a queue you can navigate by how much is owed. */
@@ -650,6 +733,7 @@ kbd {
   font-size: var(--text-xs);
   line-height: 1.55;
   color: var(--text-faint);
+  list-style: none;
 }
 
 .rail__scroll {
@@ -689,6 +773,9 @@ kbd {
 .rail__label-action {
   flex: none;
   opacity: 0.75;
+}
+.rail__group:last-of-type {
+  margin-bottom: 0;
 }
 .rail__list {
   list-style: none;
@@ -741,14 +828,113 @@ kbd {
   color: var(--conflict);
   font-size: var(--text-xs);
 }
+.rail__work {
+  border-top: 1px solid var(--border);
+  padding: var(--space-3);
+  display: grid;
+  gap: 6px;
+}
+.rail__work-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.rail__work-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+}
+.rail__work-row b {
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+/* The meter reports *reviewed*, which is a status fact — so it takes the status
+   family's colour, not the brand's. Brand is chrome; it never encodes state. */
+.rail__work-row b.is-conflict {
+  color: var(--conflict);
+}
+.rail__work-row b.is-clear {
+  color: var(--status-confirmed);
+}
+.rail__work-meter {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  overflow: hidden;
+}
+.rail__work-meter span {
+  display: block;
+  height: 100%;
+  background: var(--status-confirmed);
+  transition: width var(--motion);
+}
+
 .rail__foot {
   border-top: 1px solid var(--border);
   padding: var(--space-3);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-2);
   font-size: var(--text-xs);
   color: var(--text-faint);
+}
+.rail__user {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.rail__avatar {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--brand-ramp);
+  color: var(--brand-ink);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+.rail__user-who {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  line-height: 1.25;
+}
+.rail__user-who b {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rail__user-who small {
+  font-size: var(--text-micro);
+  color: var(--text-faint);
+}
+.rail__icon-button {
+  flex: none;
+  border: 0;
+  background: none;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  color: var(--text-faint);
+  font: inherit;
+  font-size: var(--text-base);
+  cursor: pointer;
+  transition: color var(--motion), background var(--motion);
+}
+.rail__icon-button:hover {
+  color: var(--text);
+  background: var(--raised);
 }
 .rail__foot-row {
   display: flex;
@@ -1285,19 +1471,54 @@ kbd {
 
 /* --- landing page ---------------------------------------------------------
  *
- * The public half. It uses the app's own tokens rather than a separate
- * marketing palette on purpose: the pitch and the product should look like one
- * piece of software, which is itself part of the argument being made.
+ * The public half, restyled 2026-08-16.
  *
- * Everything here is `max-width` + `clamp()` rather than fixed columns, so the
- * page reads on a phone without a second set of breakpoints per section.
+ * It still builds out of the app's own tokens — the demos on this page are the
+ * product's real DOM and must track its palette through all three themes. What
+ * it adds on top is a **landing-scoped brand identity**: the gradient ramp,
+ * glows and display type below are declared on `.landing` and are therefore
+ * unreachable from any screen behind the sign-in wall. The review screen's
+ * colour budget still belongs entirely to status and conflict; nothing here
+ * spends it.
+ *
+ * The ramp runs magenta → violet → `--accent`. That last stop is not a fourth
+ * brand colour, it is the exact blue the primary button in the product already
+ * is — so the marketing gesture resolves into the real interaction colour
+ * instead of promising a differently-coloured application. When the deferred
+ * brandkit pass lands (design-system-baseline-v1 §9), swapping `--brand-1` and
+ * `--brand-2` here is the whole job.
+ *
+ * Layout throughout is `max-width` + `clamp()` rather than fixed columns, so
+ * the page reads on a phone without a second set of breakpoints per section.
+ * The one exception is the loop diagram, which is a circle and genuinely needs
+ * to become a list below 900px.
  */
 
 .landing {
+  position: relative;
+  isolation: isolate;
   min-height: 100%;
   overflow-y: auto;
   background: var(--ground);
 }
+
+/* The ambient light. Two soft off-screen sources — magenta up the left,
+   violet-into-blue down the right — bleeding into the top of the page and
+   fading out before the first section boundary, so the fold has depth and
+   everything below it stays flat and readable. */
+.landing::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: min(1100px, 120vh);
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(58% 42% at 12% 0%, var(--brand-wash), transparent 68%),
+    radial-gradient(52% 46% at 88% 4%, var(--brand-glow), transparent 66%),
+    radial-gradient(90% 60% at 50% 0%, color-mix(in srgb, var(--brand-2) 8%, transparent), transparent 72%);
+}
+
 .landing__nav {
   position: sticky;
   top: 0;
@@ -1310,21 +1531,38 @@ kbd {
   border-bottom: 1px solid var(--border);
   /* A translucent bar over scrolling text needs a blur or the text shows
      through as noise; the fallback is the solid ground colour. */
-  background: color-mix(in srgb, var(--ground) 86%, transparent);
-  backdrop-filter: blur(10px);
+  background: color-mix(in srgb, var(--ground) 82%, transparent);
+  backdrop-filter: blur(14px);
 }
 /* Every in-page anchor target has to clear the sticky bar above it, or the
    jump lands with the section's first line tucked under the blur. */
 .landing [id] {
-  scroll-margin-top: 74px;
+  scroll-margin-top: 82px;
+}
+/* The bar is split rather than pushed apart: brand and section links form one
+   left-hand group, the ways in sit on the right. Marketing navs read at a
+   larger size than app chrome — the app's 13px is for a dense screen someone
+   works in, this is a line a stranger scans once at arm's length — so the links
+   run at 16px in near-full-strength ink, not the muted `--text-dim` the rest of
+   the design system uses for secondary text. */
+.landing__nav-left,
+.landing__nav-right {
+  display: flex;
+  align-items: center;
+}
+.landing__nav-left {
+  gap: clamp(20px, 3vw, 44px);
+}
+.landing__nav-right {
+  gap: clamp(var(--space-3), 1.6vw, 20px);
 }
 .landing__brand {
   display: inline-flex;
   align-items: center;
   gap: 9px;
-  font-size: var(--text-lg);
+  font-size: 20px;
   font-weight: 600;
-  letter-spacing: -0.015em;
+  letter-spacing: -0.02em;
   /* Same reason as `.rail__brand`: it is an <a>, and without this it renders in
      the browser's default link blue — the one thing on screen off-palette. */
   color: var(--text);
@@ -1333,99 +1571,425 @@ kbd {
 .landing__nav-links {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
-  font-size: var(--text-sm);
+  gap: clamp(var(--space-4), 2.2vw, 30px);
 }
 .landing__nav-links a {
-  color: var(--text-dim);
+  color: color-mix(in srgb, var(--text) 88%, transparent);
   text-decoration: none;
+  font-size: 16px;
+  font-weight: var(--weight-normal);
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  transition: color var(--motion);
 }
 .landing__nav-links a:hover {
   color: var(--text);
 }
-.landing__nav-links .action--primary,
-.landing__nav-links .action--primary:hover {
-  color: var(--accent-ink);
+.landing__theme {
+  text-decoration: none;
+  font-size: var(--text-lg);
+  color: color-mix(in srgb, var(--text) 88%, transparent);
 }
-@media (max-width: 720px) {
-  .landing__nav-links a[href^="#"] {
+.landing__nav-right .action {
+  font-size: var(--text-base);
+  padding: 9px 18px;
+}
+.landing__nav-right .action--brand,
+.landing__nav-right .action--brand:hover {
+  color: var(--brand-ink);
+}
+@media (max-width: 860px) {
+  .landing__nav-links {
     display: none;
   }
 }
 
-.hero {
-  max-width: 940px;
-  margin: 0 auto;
-  /* Both vertical paddings are deliberately tight. The running demo sits
-     directly under the hero and is the point of the page, so it should crowd
-     the fold rather than wait politely below a gap — on a 1440×900 laptop the
-     budget above it is what decides whether the Confirm row and the progress
-     meter render at all, and those are the two things that explain the
-     product. Measured, not guessed: see the scroll-margin note below. */
-  padding: clamp(36px, 5vw, 68px) clamp(var(--space-4), 5vw, 56px) clamp(20px, 2.4vw, 30px);
-  text-align: center;
+/* --- landing primitives ---------------------------------------------------
+ *
+ * Four things every section on this page is built from: the brand button, the
+ * section chip, the display headline and its subhead. They exist so the page
+ * has one voice rather than six sections each inventing their own heading size.
+ */
+
+.action--brand {
+  background: var(--brand-ramp);
+  border-color: transparent;
+  color: var(--brand-ink);
+  font-weight: 550;
+  box-shadow: 0 8px 26px -12px var(--brand-glow);
 }
-.hero__eyebrow {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text-faint);
-  margin: 0 0 var(--space-4);
+.action--brand:hover {
+  border-color: transparent;
+  filter: brightness(1.09);
 }
-.hero__title {
-  font-size: clamp(34px, 6vw, 62px);
-  line-height: 1.06;
-  letter-spacing: -0.035em;
-  font-weight: 600;
-  margin: 0 0 var(--space-4);
+.action--lg {
+  padding: 12px 24px;
+  font-size: var(--text-base);
+  border-radius: 8px;
+}
+
+.landing .pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--border-lit);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  backdrop-filter: blur(6px);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-dim);
+}
+
+.landing .display {
+  font-size: clamp(28px, 4.6vw, 50px);
+  line-height: 1.08;
+  letter-spacing: -0.032em;
+  font-weight: 550;
+  margin: clamp(var(--space-4), 2.4vw, 26px) 0 0;
   text-wrap: balance;
 }
-.hero__title-dim {
-  color: var(--text-faint);
+.landing .display--left {
+  text-align: left;
+}
+.landing .display__sub {
+  max-width: 660px;
+  margin: var(--space-4) auto 0;
+  color: var(--text-dim);
+  font-size: clamp(15px, 1.5vw, 18px);
+  line-height: 1.62;
+}
+.landing .display--left + .display__sub,
+.landing .conflict-demo .display__sub {
+  margin-inline: 0;
+}
+.landing .display__sub code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+/* --- hero ------------------------------------------------------------------
+ *
+ * Centred, and given real vertical room: the headline is the only thing on
+ * this screen and it is allowed to be. The demo no longer has to crowd the fold
+ * to be seen — it has its own titled section immediately below, which is a
+ * better home for it than a footnote under the hero.
+ */
+
+.hero {
+  position: relative;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 clamp(var(--space-4), 5vw, 56px) clamp(40px, 6vw, 72px);
+  text-align: center;
+}
+
+/* One frame. Everything from the eyebrow to the terminal is sized to the
+   viewport minus the sticky bar and centred inside it, so the fold ends on the
+   CLI rather than cutting it in half — the vertical room that used to go into
+   padding now goes into the headline's line length instead. Content taller
+   than the viewport (a short laptop, large text settings) simply overflows and
+   scrolls; `min-height` never clips it. */
+.hero__fold {
+  min-height: calc(100svh - 68px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(32px, 5vh, 64px) 0 clamp(24px, 4vh, 44px);
+}
+.hero__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 clamp(var(--space-4), 2.6vw, 28px);
+  padding: 6px 14px 6px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--border-lit);
+  background: color-mix(in srgb, var(--surface) 60%, transparent);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.hero__eyebrow-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--brand-ramp);
+  flex: none;
+}
+/* The size is bounded by the *line*, not by taste: each clause is one unbroken
+   line, so the type has to shrink with the viewport or it would overhang. The
+   `5.6vw` term is what keeps the longer clause inside the padded column (it
+   measures ~14.7em, so the fit holds with room to spare at every width down to
+   the wrap breakpoint); the 64px cap stops it running away on a wide monitor. */
+.hero__title {
+  font-size: clamp(30px, 5.6vw, 64px);
+  line-height: 1.08;
+  letter-spacing: -0.036em;
+  font-weight: 550;
+  margin: 0;
+}
+.hero__title-line {
+  display: block;
+  white-space: nowrap;
+}
+/* The second clause carries the ramp. One gradient headline per page — the
+   trust card at the bottom reuses this class for its own second clause and
+   that is the entire budget. */
+.hero__title-grad {
+  display: block;
+  background: var(--brand-ramp);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+/* Below this the one-line rule stops paying: holding it would drive the
+   headline down to a size nobody reads. Wrapping wins on a phone. */
+@media (max-width: 700px) {
+  .hero__title {
+    font-size: clamp(30px, 8vw, 40px);
+    text-wrap: balance;
+  }
+  .hero__title-line {
+    white-space: normal;
+  }
 }
 .hero__lede {
   max-width: 640px;
-  margin: 0 auto var(--space-5);
+  margin: clamp(var(--space-4), 2.2vh, 24px) auto 0;
   color: var(--text-dim);
-  font-size: clamp(15px, 1.6vw, 18px);
-  line-height: 1.62;
+  font-size: clamp(16px, 1.6vw, 19px);
+  line-height: 1.6;
 }
 .hero__actions {
   display: flex;
   gap: var(--space-3);
   justify-content: center;
   flex-wrap: wrap;
-}
-.hero__actions .action {
-  padding: 10px 20px;
-  font-size: var(--text-base);
-}
-.hero__foot {
-  margin: var(--space-5) 0 0;
-  font-size: var(--text-sm);
-  color: var(--text-faint);
+  margin-top: clamp(var(--space-5), 3.2vh, 34px);
 }
 
-.section__title {
-  font-size: clamp(22px, 3vw, 30px);
-  letter-spacing: -0.025em;
-  font-weight: 600;
-  margin: 0 0 var(--space-5);
-  text-wrap: balance;
+/* The engineer's door, beside the PM's. Both are real. */
+.hero__term {
+  margin: clamp(28px, 4.6vh, 52px) auto 0;
+  width: 100%;
+  max-width: 540px;
 }
+.hero__term-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: var(--space-3);
+}
+.hero__term-box {
+  display: grid;
+  gap: 6px;
+  text-align: left;
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--sunken) 80%, transparent);
+}
+.hero__term-box code {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text);
+  white-space: nowrap;
+  overflow-x: auto;
+}
+.hero__term-box code.is-dim {
+  color: var(--text-faint);
+}
+.hero__term-prompt {
+  color: var(--brand-1);
+  margin-right: 8px;
+}
+
+/* Where the logo wall goes on every other site. Ours lists sources rather than
+   customers, and says out loud which four of the six do not exist yet. */
+.hero__sources {
+  margin-top: clamp(40px, 5.5vw, 64px);
+  /* The track is wider than the page by design; the section, not the body, is
+     what clips it. */
+  overflow: hidden;
+}
+.hero__sources-label {
+  display: block;
+  font-size: var(--text-base);
+  color: var(--text-faint);
+  margin-bottom: clamp(var(--space-4), 2.4vw, 28px);
+}
+
+/* --- the moving source strip ---
+ *
+ * Two identical copies of the list ride one track; the animation translates it
+ * by exactly -50%, at which point copy two sits where copy one started and the
+ * reset is invisible. This is why the copies must be identical and the track
+ * must not wrap — any asymmetry shows up as a jump once every cycle.
+ *
+ * It pauses on hover (a name you are trying to read should hold still) and does
+ * not run at all under `prefers-reduced-motion`, where it falls back to a
+ * centred, wrapped row — the same six sources, just not in motion.
+ */
+.marquee {
+  position: relative;
+  /* Full-bleed: the strip should run off both edges of the screen, not stop at
+     the hero's text column, or it reads as a table rather than a feed. */
+  width: 100vw;
+  margin-inline: calc(50% - 50vw);
+  /* Fading the ends is what sells "this continues" — a hard cut at the viewport
+     edge looks like a rendering bug. */
+  mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+}
+.marquee__track {
+  display: flex;
+  width: max-content;
+  animation: marquee 38s linear infinite;
+}
+.marquee:hover .marquee__track {
+  animation-play-state: paused;
+}
+@keyframes marquee {
+  to {
+    transform: translateX(-50%);
+  }
+}
+.marquee ul {
+  list-style: none;
+  margin: 0;
+  /* Vertical padding because the section clips to this row: without it the
+     logos sit flush against the clip edge and read as cropped. */
+  padding: 6px clamp(24px, 3vw, 40px) 6px 0;
+  display: flex;
+  align-items: center;
+  gap: clamp(24px, 3vw, 40px);
+  flex: none;
+}
+.marquee li {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-size: clamp(19px, 1.9vw, 24px);
+  font-weight: var(--weight-medium);
+  letter-spacing: -0.018em;
+  white-space: nowrap;
+}
+.ld-mark {
+  width: 1.15em;
+  height: 1.15em;
+  flex: none;
+}
+.marquee li.is-live {
+  color: var(--text-dim);
+}
+.marquee li.is-planned {
+  color: var(--text-faint);
+  opacity: 0.6;
+}
+.marquee em {
+  font-style: normal;
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-normal);
+  letter-spacing: 0.06em;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .marquee {
+    width: auto;
+    margin-inline: 0;
+    mask-image: none;
+    -webkit-mask-image: none;
+  }
+  .marquee__track {
+    animation: none;
+    width: auto;
+    justify-content: center;
+  }
+  .marquee__track ul:last-child {
+    display: none;
+  }
+  .marquee ul {
+    flex-wrap: wrap;
+    justify-content: center;
+    padding-right: 0;
+    row-gap: var(--space-3);
+  }
+}
+
+/* --- showcase: the demo, promoted ----------------------------------------- */
+
+/* Wider than the rest of the page's sections on purpose: this is the one place
+   a stranger is asked to read a three-column product screen, and the queue and
+   evidence columns are what make it legible as the real thing rather than a
+   mockup. Every 100px here goes to the claim in the middle. */
+.showcase {
+  position: relative;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: clamp(48px, 7vw, 104px) clamp(var(--space-4), 4vw, 44px);
+  text-align: center;
+}
+.showcase__frame {
+  position: relative;
+  margin-top: clamp(28px, 4vw, 52px);
+}
+.showcase__frame::before {
+  content: "";
+  position: absolute;
+  inset: 6% 4% -4%;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(60% 55% at 50% 45%, var(--brand-glow), transparent 72%);
+  filter: blur(58px);
+  opacity: 0.75;
+  pointer-events: none;
+}
+/* The one-pixel gradient rim, brightest at the top edge. Two backgrounds
+   clipped to different boxes rather than a padded wrapper — the wrapper trick
+   stopped working the day the tab strip moved inside this container, since it
+   would have ringed the tabs too. */
+.showcase__frame .ld-frame {
+  border-radius: 14px;
+  border-color: transparent;
+  background:
+    linear-gradient(var(--surface), var(--surface)) padding-box,
+    linear-gradient(175deg, var(--brand-edge), color-mix(in srgb, var(--border) 90%, transparent) 42%)
+      border-box;
+}
+.showcase__note {
+  margin: var(--space-4) auto 0;
+  max-width: 620px;
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+}
+
+/* --- problem strip --------------------------------------------------------- */
 
 .strip {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 0;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  max-width: 1280px;
+  margin: 0 auto;
   border-block: 1px solid var(--border);
-  background: var(--sunken);
 }
 .strip__item {
   display: flex;
   gap: var(--space-3);
-  padding: var(--space-5) clamp(var(--space-4), 3vw, var(--space-6));
+  padding: clamp(var(--space-5), 3.4vw, 40px) clamp(var(--space-4), 3vw, var(--space-6));
   border-right: 1px solid var(--border);
 }
 .strip__item:last-child {
@@ -1434,7 +1998,8 @@ kbd {
 .strip__n {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
-  color: var(--text-faint);
+  font-weight: var(--weight-medium);
+  color: var(--brand-1);
   padding-top: 3px;
 }
 .strip__item h3 {
@@ -1449,32 +2014,205 @@ kbd {
   line-height: 1.6;
 }
 
-.how,
-.conflict-demo,
-.principles,
-.closer {
+/* --- the loop diagram ------------------------------------------------------
+ *
+ * Ring geometry: r=30 in the SVG's 0–100 viewBox, and the four node cards sit
+ * at the same radius expressed as percentages of a square container (50% ± 30%).
+ * That is the whole trick — the ring and the cards stay locked together at any
+ * width with no measurement, and the circumference below (2π·30 ≈ 188.5) is the
+ * only magic number, used to run one lit segment round the track.
+ */
+
+.loop {
   max-width: 1080px;
   margin: 0 auto;
-  padding: clamp(56px, 8vw, 96px) clamp(var(--space-4), 5vw, 56px);
-}
-/* The three acts. Copy beside the screen it describes, alternating sides, so
-   each claim is read next to its own evidence — the same argument the product
-   makes about claims and excerpts, applied to the page itself. */
-.how__title {
+  padding: clamp(48px, 7vw, 96px) clamp(var(--space-4), 5vw, 56px) clamp(32px, 4vw, 56px);
   text-align: center;
-  margin-bottom: clamp(var(--space-5), 5vw, 56px);
+}
+.loop__diagram {
+  position: relative;
+  width: 100%;
+  max-width: 700px;
+  aspect-ratio: 1 / 1;
+  margin: clamp(32px, 5vw, 64px) auto 0;
+}
+.loop__ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.loop__track {
+  fill: none;
+  stroke: url(#atlas-loop-line);
+  stroke-width: 0.45;
+  opacity: 0.3;
+}
+.loop__spark {
+  fill: none;
+  stroke: url(#atlas-loop-line);
+  stroke-width: 0.8;
+  stroke-linecap: round;
+  stroke-dasharray: 34 154.5;
+  animation: loop-run 11s linear infinite;
+}
+@keyframes loop-run {
+  to {
+    stroke-dashoffset: -188.5;
+  }
+}
+.loop__arrow {
+  fill: var(--brand-2);
+  opacity: 0.5;
+}
+.loop__hub {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  gap: 2px;
+  width: min(220px, 30%);
+}
+.loop__hub-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.loop__hub strong {
+  font-size: clamp(17px, 2.2vw, 24px);
+  font-weight: 550;
+  letter-spacing: -0.02em;
+  background: var(--brand-ramp);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.loop__hub-note {
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+.loop__stops {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.loop__stop {
+  position: absolute;
+  width: min(220px, 32%);
+  transform: translate(-50%, -50%);
+  text-align: left;
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(6px);
+}
+.loop__stop--connect {
+  left: 50%;
+  top: 20%;
+}
+.loop__stop--extract {
+  left: 80%;
+  top: 50%;
+}
+.loop__stop--confirm {
+  left: 50%;
+  top: 80%;
+}
+.loop__stop--handoff {
+  left: 20%;
+  top: 50%;
+}
+.loop__n {
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.1em;
+  background: var(--brand-ramp);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.loop__stop h3 {
+  font-size: var(--text-base);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  margin: 4px 0 6px;
+}
+.loop__stop p {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+.loop__return {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  margin: clamp(var(--space-5), 4vw, 44px) auto 0;
+  max-width: 620px;
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+}
+.loop__return-arc {
+  flex: none;
+  width: 28px;
+  height: 1px;
+  background: var(--brand-ramp);
+}
+
+/* Below 900px a circle of four cards is four cards and an invisible circle.
+   The ring, its arrows and the hub are dropped and the stops become a rail —
+   the ordering survives, which is the only thing the diagram was carrying. */
+@media (max-width: 900px) {
+  .loop__diagram {
+    aspect-ratio: auto;
+    max-width: 520px;
+  }
+  .loop__ring,
+  .loop__hub {
+    display: none;
+  }
+  .loop__stops {
+    display: grid;
+    gap: var(--space-3);
+    padding-left: var(--space-4);
+    border-left: 2px solid var(--brand-edge);
+  }
+  .loop__stop {
+    position: static;
+    transform: none;
+    width: auto;
+  }
+}
+
+/* --- the three acts --------------------------------------------------------
+ *
+ * Copy beside the screen it describes, alternating sides, so each claim is read
+ * next to its own evidence — the same argument the product makes about claims
+ * and excerpts, applied to the page itself. Separated by whitespace rather than
+ * rules now: at this scale a hairline between acts reads as a table.
+ */
+
+.how {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: clamp(48px, 7vw, 104px) clamp(var(--space-4), 5vw, 56px);
+  text-align: center;
 }
 .act {
   display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
-  gap: clamp(var(--space-5), 5vw, 64px);
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  gap: clamp(var(--space-5), 5vw, 80px);
   align-items: center;
-  padding-block: clamp(var(--space-5), 5vw, 56px);
-  border-top: 1px solid var(--border);
-}
-.act:first-of-type {
-  border-top: 0;
-  padding-top: 0;
+  padding-block: clamp(var(--space-6), 6vw, 88px);
+  text-align: left;
 }
 .act--flip .act__copy {
   order: 2;
@@ -1488,17 +2226,18 @@ kbd {
 }
 .act__step {
   font-family: var(--font-mono);
-  font-size: var(--text-micro);
+  font-size: var(--text-xs);
   font-weight: var(--weight-medium);
-  letter-spacing: 0.14em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--brand-1);
 }
 .act__copy h3 {
-  font-size: clamp(19px, 2.2vw, 25px);
-  font-weight: 600;
-  letter-spacing: -0.022em;
-  margin: var(--space-3) 0 var(--space-3);
+  font-size: clamp(22px, 2.9vw, 34px);
+  font-weight: 550;
+  letter-spacing: -0.028em;
+  line-height: 1.14;
+  margin: var(--space-3) 0 var(--space-4);
   text-wrap: balance;
 }
 .act__copy p {
@@ -1510,15 +2249,56 @@ kbd {
 .act__note {
   margin: var(--space-4) 0 0 !important;
   padding-left: var(--space-3);
-  border-left: 2px solid var(--border-lit);
+  border-left: 2px solid var(--brand-edge);
   color: var(--text-faint) !important;
   font-size: var(--text-sm) !important;
 }
+/* Each demo panel gets a light source behind it and one offset ghost card
+   underneath, which is what stops a single flat rectangle from reading as a
+   screenshot pasted into a column. Both are pseudo-elements — the demo
+   components stay untouched, because they are shared with the app. */
+.act__demo {
+  position: relative;
+}
+.act__demo::before {
+  content: "";
+  position: absolute;
+  inset: -8% -6%;
+  z-index: -2;
+  border-radius: 50%;
+  background: radial-gradient(58% 54% at 50% 50%, var(--brand-glow), transparent 72%);
+  filter: blur(54px);
+  opacity: 0.7;
+  pointer-events: none;
+}
+.act__demo::after {
+  content: "";
+  position: absolute;
+  inset: 18px -18px -18px 18px;
+  z-index: -1;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  pointer-events: none;
+}
+.act--flip .act__demo::after {
+  inset: 18px 18px -18px -18px;
+}
+@media (max-width: 900px) {
+  .act__demo::after {
+    display: none;
+  }
+}
+
+/* --- cross-source conflict ------------------------------------------------- */
 
 .conflict-demo {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: clamp(48px, 7vw, 104px) clamp(var(--space-4), 5vw, 56px);
   display: grid;
   grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
-  gap: clamp(var(--space-5), 5vw, 64px);
+  gap: clamp(var(--space-5), 5vw, 72px);
   align-items: center;
 }
 @media (max-width: 900px) {
@@ -1526,11 +2306,14 @@ kbd {
     grid-template-columns: 1fr;
   }
 }
+.landing .conflict-demo__copy .display {
+  margin-top: var(--space-3);
+}
 .conflict-demo__copy p {
   color: var(--text-dim);
   font-size: var(--text-base);
   line-height: 1.65;
-  margin: 0 0 var(--space-3);
+  margin: var(--space-4) 0 0;
 }
 .conflict-demo__note {
   color: var(--text-faint) !important;
@@ -1607,45 +2390,96 @@ kbd {
   color: var(--paper-text);
 }
 
-.principles {
-  border-top: 1px solid var(--border);
+/* --- the refusals ---------------------------------------------------------- */
+
+.trust {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: clamp(48px, 7vw, 104px) clamp(var(--space-4), 5vw, 56px);
 }
-.principles__list {
+.trust__card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+  padding: clamp(var(--space-5), 5vw, 72px) clamp(var(--space-4), 4vw, 56px);
+  text-align: center;
+}
+/* A single lit hairline across the top edge — the card's only decoration, and
+   the reason it reads as deliberate rather than as a leftover container. */
+.trust__card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--brand-1), var(--brand-2), var(--brand-3), transparent);
+}
+.landing .trust__card .display {
+  margin-top: 0;
+}
+.trust__list {
   list-style: none;
-  margin: 0;
+  margin: clamp(var(--space-5), 4vw, 48px) auto 0;
   padding: 0;
+  max-width: 880px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: var(--space-4);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-5) clamp(var(--space-5), 4vw, 48px);
+  text-align: left;
 }
-.principles__list li {
-  padding: var(--space-4);
-  border-left: 2px solid var(--border-lit);
+@media (max-width: 720px) {
+  .trust__list {
+    grid-template-columns: 1fr;
+  }
+}
+.trust__list li {
+  padding-left: var(--space-4);
+  border-left: 2px solid var(--brand-edge);
   color: var(--text-dim);
   font-size: var(--text-sm);
   line-height: 1.62;
 }
-.principles__list strong {
+.trust__list strong {
   color: var(--text);
   font-weight: 600;
 }
 
+/* --- closer ---------------------------------------------------------------- */
+
 .closer {
+  position: relative;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: clamp(48px, 7vw, 96px) clamp(var(--space-4), 5vw, 56px) clamp(64px, 9vw, 120px);
   text-align: center;
-  border-top: 1px solid var(--border);
+}
+.closer::before {
+  content: "";
+  position: absolute;
+  inset: 12% 15% 4%;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(55% 55% at 50% 50%, var(--brand-glow), transparent 70%);
+  filter: blur(70px);
+  opacity: 0.8;
+  pointer-events: none;
 }
 .closer h2 {
-  font-size: clamp(24px, 3.4vw, 36px);
-  letter-spacing: -0.03em;
-  font-weight: 600;
-  margin: 0 0 var(--space-3);
+  font-size: clamp(28px, 4.6vw, 50px);
+  letter-spacing: -0.034em;
+  line-height: 1.08;
+  font-weight: 550;
+  margin: 0 0 var(--space-4);
 }
 .closer p {
   color: var(--text-dim);
-  margin: 0 0 var(--space-5);
+  font-size: clamp(15px, 1.5vw, 18px);
+  margin: 0 auto var(--space-5);
+  max-width: 560px;
 }
 .closer__foot {
-  margin: var(--space-5) 0 0 !important;
+  margin: clamp(var(--space-5), 3.4vw, 40px) auto 0 !important;
   font-size: var(--text-sm);
   color: var(--text-faint) !important;
 }
@@ -1654,7 +2488,7 @@ kbd {
   justify-content: space-between;
   gap: var(--space-4);
   flex-wrap: wrap;
-  padding: var(--space-4) clamp(var(--space-4), 5vw, 56px);
+  padding: var(--space-5) clamp(var(--space-4), 5vw, 56px);
   border-top: 1px solid var(--border);
   color: var(--text-faint);
   font-size: var(--text-xs);
@@ -1782,23 +2616,59 @@ kbd {
  *    a status colour — the same constraint the real review screen works under.
  */
 
-.stage-wrap {
-  max-width: 1180px;
-  margin: 0 auto;
-  padding: 0 clamp(var(--space-4), 5vw, 56px) clamp(48px, 7vw, 80px);
+/* --- the demo's tab strip ---
+ *
+ * Four tabs, one per claim, above the window. They exist because an
+ * auto-advancing panel gives a reader nothing to click: the queue inside the
+ * frame was always clickable, but "clickable" that nobody discovers is the same
+ * as absent. The active tab is underlined against a full-width hairline, which
+ * is also how the reader can tell auto-play is moving — the underline walks
+ * across the four while it runs.
+ */
+.ld-tabs {
+  display: flex;
+  justify-content: center;
+  gap: clamp(4px, 2vw, 28px);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: clamp(20px, 2.6vw, 32px);
 }
-.stage-wrap__note {
-  margin: var(--space-4) auto 0;
-  max-width: 720px;
-  text-align: center;
+.ld-tab {
+  appearance: none;
+  background: none;
+  border: 0;
+  /* The 2px underline is a bottom border on the button itself, offset over the
+     strip's hairline, so the active mark sits exactly on the rule rather than
+     a pixel above or below it. */
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  padding: 0 clamp(8px, 1.6vw, 22px) 14px;
+  flex: 1 1 0;
+  max-width: 260px;
+  font: inherit;
+  font-size: clamp(13px, 1.15vw, 16px);
+  font-weight: var(--weight-medium);
+  letter-spacing: -0.01em;
   color: var(--text-faint);
-  font-size: var(--text-sm);
-  line-height: 1.6;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    color var(--motion),
+    border-color var(--motion);
 }
-.stage-wrap__note code {
-  font-family: var(--font-mono);
-  font-size: 0.92em;
+.ld-tab:hover {
   color: var(--text-dim);
+}
+.ld-tab.is-active {
+  color: var(--text);
+  border-bottom-color: var(--brand-2);
+}
+/* Reuses the `.ld-tag--*` glyphs so a tab and the badge on the claim it opens
+   are marked with the same shape. Only the ::before content is wanted here, so
+   the tag's own box styling is deliberately not applied. */
+.ld-tab__glyph::before {
+  margin-right: 8px;
+  color: inherit;
+  opacity: 0.75;
 }
 
 /* The window. A soft outer glow rather than a drop shadow, so it reads as
@@ -1841,17 +2711,184 @@ kbd {
   color: var(--text);
   font-weight: 600;
 }
+/* A button, not a label: once the reader has taken over, this is how they hand
+   the wheel back. It stays visually a status badge because that is what it is
+   most of the time. */
 .ld-frame__live {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
   font-family: var(--font-mono);
   font-size: var(--text-micro);
   font-weight: var(--weight-medium);
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  transition: color var(--motion);
+}
+.ld-frame__live:hover {
+  color: var(--text-dim);
 }
 @media (max-width: 720px) {
   .ld-frame__live {
     display: none;
   }
+}
+
+/* --- the application around the review screen ---
+ *
+ * The demo used to be the three review panes and nothing else, which is honest
+ * but reads as a widget. Wrapping them in the product's own left rail is what
+ * turns it into a screenshot: a stranger can see that the claim on screen sits
+ * inside a feature, inside a product, inside a workspace with work left in it.
+ *
+ * Fixed height plus a fade at the bottom edge, deliberately: the app is taller
+ * than the box, and cutting it mid-rail says "there is more of this" far more
+ * economically than shrinking everything until it fits. The fade is a mask on
+ * the whole grid rather than an overlay per column, because the rail, the queue
+ * and the stage are three different background colours and one overlay colour
+ * could only ever match one of them.
+ */
+.ld-app {
+  display: grid;
+  grid-template-columns: 212px minmax(0, 1fr);
+  /* `min-height`, never `height`. A fixed height looked right at 1440 and
+     clipped the shortcut hint clean off at 1280, where the narrower claim
+     column wraps to three lines — the frame has to be able to grow with its
+     own content. The clamp sets the floor that makes it a tall screenshot; the
+     content sets the ceiling. */
+  min-height: clamp(500px, 56vh, 600px);
+  overflow: hidden;
+  /* A long fade, not a hairline one. The review screen is genuinely sparse —
+     one claim, one quote — so a tall frame leaves a band at the bottom that no
+     amount of scaling fills honestly. A 130px dissolve turns that band from
+     "the page didn't finish loading" into "the screenshot continues below",
+     which is the truth: the application does keep going down there. What the
+     fade eats is the rail's work meter and the queue's counter, both of which
+     sit at the foot of their columns and both of which say something already
+     said above. */
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 130px), transparent);
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 130px), transparent);
+}
+@media (max-width: 1000px) {
+  /* The rail is the first thing to go: it is context, and context is what you
+     drop when there is no room for the subject. */
+  .ld-app {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+    mask-image: none;
+    -webkit-mask-image: none;
+  }
+  .ld-rail {
+    display: none;
+  }
+}
+
+.ld-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: var(--space-3) 10px;
+  border-right: 1px solid var(--border);
+  background: var(--sunken);
+  font-size: var(--text-sm);
+  color: var(--text-dim);
+}
+.ld-rail__brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 10px;
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text);
+}
+.ld-rail__product,
+.ld-rail__filter,
+.ld-rail__nav,
+.ld-rail__feat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.ld-rail__product {
+  justify-content: space-between;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: var(--weight-medium);
+  margin-bottom: 6px;
+}
+.ld-rail__product i {
+  font-style: normal;
+  color: var(--text-faint);
+}
+.ld-rail__filter {
+  border: 1px solid var(--border);
+  color: var(--text-faint);
+  margin-bottom: 10px;
+}
+.ld-rail__filter kbd {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+.ld-rail__label {
+  padding: 12px 9px 4px;
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.ld-rail__feat.is-active {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--text);
+  font-weight: var(--weight-medium);
+}
+.ld-rail__nav em,
+.ld-rail__feat em {
+  margin-left: auto;
+  font-style: normal;
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-faint) 20%, transparent);
+  color: var(--text-dim);
+}
+.ld-rail__nav em.is-conflict,
+.ld-rail__feat em.is-conflict {
+  background: color-mix(in srgb, var(--conflict) 22%, transparent);
+  color: var(--conflict);
+}
+.ld-rail__work {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: var(--space-4);
+}
+.ld-rail__work-row {
+  padding-inline: 9px;
+  font-size: var(--text-sm);
+}
+.ld-rail__work-row b {
+  color: var(--text);
+  font-weight: 600;
+}
+.ld-rail__work .ld-meter {
+  margin-inline: 9px;
 }
 
 /* No min-height. The three panes are grid siblings, so the row is already as
@@ -1862,6 +2899,16 @@ kbd {
 .ld-review {
   display: grid;
   grid-template-columns: 216px minmax(0, 1fr) 300px;
+}
+/* The side columns only get wider once there is width to spare. Widening them
+   unconditionally cost the *middle* column ~70px, which is the one place the
+   claim itself is set — at 1024 that pushed the headline to three lines and
+   wrapped the action row onto two. The extra room is a gift from a big monitor,
+   not a change to the layout's priorities. */
+@media (min-width: 1200px) {
+  .ld-review {
+    grid-template-columns: 248px minmax(0, 1fr) 344px;
+  }
 }
 @media (max-width: 1000px) {
   .ld-review {
@@ -2016,14 +3063,106 @@ kbd {
   gap: var(--space-3);
   flex-wrap: wrap;
 }
-/* `margin-block: auto` is what splits the leftover height above and below the
-   claim rather than dumping all of it under the edges line. On the conflict
-   claim — the tallest state — there is no leftover and this does nothing. */
+/* `margin-block: auto` used to split the leftover height above and below the
+   claim, which was right when "leftover" meant forty pixels. Inside the tall
+   `.ld-app` frame it means two hundred, and centring that opened a hole above
+   the claim, a hole below it, and pushed the action row down into the fade at
+   the bottom edge — burying the three buttons the whole demo exists to show.
+   Content is anchored to the top instead, and all the slack collects in one
+   band at the bottom, which is exactly where the crop already is. */
 .ld-stage__body {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  margin-block: auto;
+  margin-block: var(--space-5) 0;
+}
+/* Anywhere the frame is *not* fixed-height (the stacked mobile layout), there
+   is no slack to place and the original centring is still the better rule. */
+@media (max-width: 1000px) {
+  .ld-stage__body {
+    margin-block: auto;
+  }
+}
+.ld-app .ld-actions {
+  margin-top: var(--space-5);
+}
+
+/* Inside the tall frame the review screen is *scaled up*, not stretched. The
+   first attempt gave the frame 200 more pixels and left them empty, which
+   reads as a half-loaded page rather than a bigger screenshot; the claim, the
+   quote and the queue rows carry that height instead, which is also the thing
+   a stranger squinting at a product shot actually wants — larger text. */
+.ld-app .ld-stage {
+  padding: clamp(var(--space-5), 3vw, 40px);
+}
+/* Everything below only applies where the crop does — above 1000px, where the
+   rail is on screen and `.ld-app` is masked. Below it the panes stack, there
+   is no fade to clear and no sibling column to match, so reserved space and
+   bottom padding would be nothing but dead air on the narrowest screens. */
+@media (min-width: 1001px) {
+  /* The tall bottom padding is what guarantees the claim column's content
+     always ends above the fade, whatever the claim wraps to: if this column is
+     the tallest one it sets the box height, and it sets it 170px past its own
+     last line. A layout invariant, not a magic number — it must stay larger
+     than the mask's fade band. */
+  .ld-app .ld-stage {
+    padding-bottom: 170px;
+  }
+}
+.ld-app .ld-claim {
+  font-size: clamp(19px, 2.3vw, 27px);
+}
+.ld-app .ld-quote {
+  font-size: var(--text-sm);
+}
+/* Space for the conflict banner is reserved on every claim, not just the one
+   that has it. Without this the frame grew ~100px the moment auto-play reached
+   the contradiction and shrank again on the next claim — the whole page below
+   it jumping twice per cycle. Reserving the room costs one quiet gap on three
+   claims and buys a frame that never moves. */
+@media (min-width: 1361px) {
+  .ld-app .ld-stage__body {
+    min-height: 210px;
+  }
+}
+/* The reserve has to grow as the column narrows, because the thing being
+   reserved for — the conflict banner and the claim above it — is what wraps to
+   more lines there. These numbers were measured, not guessed: each is the
+   tallest claim's height minus the shortest one's at that breakpoint. */
+@media (min-width: 1201px) and (max-width: 1360px) {
+  .ld-app .ld-stage__body {
+    min-height: 320px;
+  }
+}
+@media (min-width: 1001px) and (max-width: 1200px) {
+  .ld-app .ld-stage__body {
+    min-height: 370px;
+  }
+}
+.ld-app .ld-qitem {
+  padding: 10px var(--space-2);
+}
+.ld-app .ld-qitem__text {
+  font-size: var(--text-base);
+}
+/* Follows the action row rather than being pushed to the foot of the column:
+   the foot of the column is under the crop. */
+.ld-stage__keys {
+  margin: var(--space-4) 0 0;
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  color: var(--text-faint);
+}
+.ld-stage__keys kbd {
+  font-family: var(--font-mono);
+  padding: 1px 5px;
+  margin: 0 4px 0 12px;
+  border-radius: 3px;
+  background: var(--sunken);
+  border: 1px solid var(--border);
+}
+.ld-stage__keys kbd:first-child {
+  margin-left: 0;
 }
 .ld-stage__from {
   font-family: var(--font-mono);
@@ -2259,8 +3398,11 @@ kbd {
   font-size: var(--text-xs);
   color: var(--accent);
 }
+/* Follows the quote rather than sinking to the bottom of the column: in the
+   tall frame the bottom of the column is under the crop, and this sentence is
+   the product's central promise — not something to fade out. */
 .ld-ev__note {
-  margin: auto 0 0;
+  margin: 0;
   padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--border);
   font-size: var(--text-micro);
@@ -2272,21 +3414,14 @@ kbd {
 /* --- before / after -------------------------------------------------------- */
 
 .turn {
-  max-width: 1180px;
+  max-width: 1240px;
   margin: 0 auto;
-  padding: clamp(48px, 7vw, 88px) clamp(var(--space-4), 5vw, 56px);
-  border-top: 1px solid var(--border);
+  padding: clamp(48px, 7vw, 104px) clamp(var(--space-4), 5vw, 56px);
 }
 .turn__intro {
-  max-width: 680px;
-  margin: 0 auto clamp(var(--space-5), 4vw, 48px);
+  max-width: 720px;
+  margin: 0 auto clamp(var(--space-5), 4.5vw, 56px);
   text-align: center;
-}
-.turn__intro p {
-  margin: 0;
-  color: var(--text-dim);
-  font-size: var(--text-base);
-  line-height: 1.62;
 }
 .ld-transform {
   display: grid;
@@ -2679,52 +3814,300 @@ kbd {
   }
 }
 
-/* --- entry (sign in) ------------------------------------------------------- */
+/* --- boot ------------------------------------------------------------------
+ *
+ * The session check is a network round-trip, and it used to render as a blank
+ * page. Same travelling-arc language as the landing page's loop diagram, at the
+ * one moment the product has nothing else to show. Circumference is 2π·44 ≈
+ * 276.5, which is where the dash numbers come from.
+ */
 
-.entry {
+.boot {
+  position: relative;
+  isolation: isolate;
   min-height: 100%;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr);
+  place-content: center;
+  justify-items: center;
+  gap: var(--space-5);
   background: var(--ground);
 }
-@media (max-width: 900px) {
-  .entry {
+.boot::before {
+  content: "";
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: min(560px, 80vw);
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(50% 50% at 50% 50%, var(--brand-glow), transparent 70%);
+  filter: blur(60px);
+  opacity: 0.7;
+  pointer-events: none;
+}
+.boot__mark {
+  width: clamp(88px, 11vw, 116px);
+  aspect-ratio: 1;
+}
+.boot__mark svg {
+  width: 100%;
+  height: 100%;
+}
+.boot__track {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 1.6;
+}
+.boot__spark {
+  fill: none;
+  stroke: url(#atlas-boot-line);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-dasharray: 62 214.5;
+  animation: boot-run 1.4s linear infinite;
+}
+@keyframes boot-run {
+  to {
+    stroke-dashoffset: -276.5;
+  }
+}
+.boot__glyph {
+  fill: none;
+  stroke: url(#atlas-boot-line);
+  stroke-width: 2.6;
+}
+.boot__label {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+/* --- entry (sign in) -------------------------------------------------------
+ *
+ * A brand panel that says what the product is, beside a form column doing one
+ * job. The panel is not decoration: it carries the three promises that govern
+ * what happens *after* sign-in, because the moment before someone hands over a
+ * source credential is the moment to state them.
+ */
+
+.entry {
+  position: relative;
+  isolation: isolate;
+  min-height: 100%;
+  overflow-y: auto;
+  background: var(--ground);
+}
+.entry::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: min(700px, 80vh);
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(52% 44% at 14% 0%, var(--brand-wash), transparent 70%),
+    radial-gradient(46% 40% at 86% 6%, var(--brand-glow), transparent 70%);
+}
+.entry__theme {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+  z-index: 2;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-dim);
+  padding: 6px 10px;
+  font: inherit;
+  font-size: var(--text-base);
+  cursor: pointer;
+  transition: color var(--motion), border-color var(--motion);
+}
+.entry__theme:hover {
+  color: var(--text);
+  border-color: var(--border-lit);
+}
+.entry__grid {
+  min-height: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.88fr);
+  gap: clamp(var(--space-5), 4vw, 56px);
+  align-items: center;
+  padding: clamp(var(--space-4), 2.5vw, 32px);
+}
+/* Below 940px the panel is the first thing to go: the form is the job, and a
+   960px-tall brand panel above it is three scrolls of preamble on a phone. The
+   promises it carries are also on the landing page, one tap away. */
+@media (max-width: 940px) {
+  .entry__grid {
     grid-template-columns: 1fr;
   }
-  .entry__promise-side {
+  .entry__panel {
     display: none;
   }
 }
-.entry__form-side {
+
+.entry__panel {
+  position: relative;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
-  padding: clamp(var(--space-5), 5vw, 64px);
-  overflow-y: auto;
+  min-height: min(740px, 84vh);
+  padding: clamp(var(--space-5), 2.6vw, 40px);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background:
+    radial-gradient(64% 46% at 6% 0%, var(--brand-wash), transparent 72%),
+    radial-gradient(56% 42% at 100% 100%, var(--brand-glow), transparent 74%),
+    var(--sunken);
+}
+/* A single lit hairline along the top edge — the panel's only decoration, and
+   the same gesture the landing page's trust card uses. */
+.entry__panel::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--brand-1), var(--brand-2), transparent);
+}
+.entry__panel-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  align-self: flex-start;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--text);
+  text-decoration: none;
+}
+.entry__panel-body {
+  margin: auto 0;
+  padding-block: var(--space-6);
+}
+.entry__panel-title {
+  font-size: clamp(28px, 3.4vw, 44px);
+  line-height: 1.08;
+  letter-spacing: -0.034em;
+  font-weight: 550;
+  margin: 0;
+  text-wrap: balance;
+}
+.entry__panel-sub {
+  margin: var(--space-4) 0 0;
+  max-width: 46ch;
+  color: var(--text-dim);
+  font-size: clamp(15px, 1.3vw, 17px);
+  line-height: 1.6;
+}
+.entry__promises {
+  list-style: none;
+  margin: clamp(var(--space-5), 3vw, 44px) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: 46ch;
+}
+.entry__promises li {
+  display: flex;
+  gap: var(--space-3);
+}
+.entry__promise-mark {
+  width: 7px;
+  height: 7px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: var(--brand-ramp);
+  flex: none;
+}
+.entry__promises h2 {
+  font-size: var(--text-base);
+  font-weight: 600;
+  margin: 0 0 3px;
+}
+.entry__promises p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+}
+/* Where a logo wall would go. Sources, not customers — and the unbuilt ones say
+   so, the same rule the landing page runs on. */
+.entry__sources {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+.entry__sources-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.entry__sources ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+.entry__sources li.is-live {
+  color: var(--text-dim);
+}
+.entry__sources li.is-planned {
+  color: var(--text-faint);
+  opacity: 0.55;
+}
+.entry__sources li.is-planned::after {
+  content: " · soon";
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+}
+
+.entry__form-side {
+  display: grid;
+  align-content: center;
+  padding: clamp(var(--space-5), 4vw, 56px) clamp(var(--space-4), 3vw, 40px);
 }
 .entry__card {
   width: min(400px, 100%);
-  margin: auto 0;
+  margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
 }
 .entry__card h1 {
-  font-size: var(--text-xl);
-  letter-spacing: -0.025em;
-  font-weight: 600;
+  font-size: clamp(24px, 2.4vw, 30px);
+  letter-spacing: -0.028em;
+  font-weight: 550;
   margin: 0;
 }
 .entry__lede {
   color: var(--text-dim);
-  font-size: var(--text-sm);
-  line-height: 1.6;
-  margin: 0 0 var(--space-2);
+  font-size: var(--text-base);
+  line-height: 1.55;
+  margin: 0 0 var(--space-3);
 }
 .entry label {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 6px;
   font-size: var(--text-xs);
   font-family: var(--font-mono);
   letter-spacing: 0.09em;
@@ -2740,15 +4123,24 @@ kbd {
   text-transform: none;
   letter-spacing: normal;
   font-size: var(--text-base);
-  padding: 9px 12px;
+  padding: 11px 13px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-lit);
   background: var(--surface);
   color: var(--text);
+  transition: border-color var(--motion);
+}
+.entry input:hover {
+  border-color: var(--text-faint);
 }
 .entry input:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--brand-2);
   outline-offset: 1px;
+}
+.entry__submit {
+  justify-content: center;
+  width: 100%;
+  margin-top: var(--space-2);
 }
 .entry__note,
 .entry__foot {
@@ -2761,44 +4153,19 @@ kbd {
   padding-top: var(--space-3);
   border-top: 1px solid var(--border);
 }
-.entry__promise-side {
-  border-left: 1px solid var(--border);
-  background: var(--sunken);
-  padding: clamp(var(--space-5), 5vw, 64px);
-  display: grid;
-  align-content: center;
-}
-.entry__promises {
-  list-style: none;
+.entry__switch {
   margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-6);
-  max-width: 400px;
-}
-.entry__promises li {
-  display: flex;
-  gap: var(--space-3);
-}
-.entry__promise-mark {
-  width: 7px;
-  height: 7px;
-  margin-top: 7px;
-  border-radius: 50%;
-  background: var(--accent);
-  flex: none;
-}
-.entry__promises h2 {
-  font-size: var(--text-base);
-  font-weight: 600;
-  margin: 0 0 5px;
-}
-.entry__promises p {
-  margin: 0;
-  color: var(--text-dim);
   font-size: var(--text-sm);
-  line-height: 1.6;
+  color: var(--text-faint);
+}
+.entry__switch a {
+  color: var(--brand-1);
+  text-decoration: none;
+  font-weight: var(--weight-medium);
+}
+.entry__switch a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 /* --- sources & runs -------------------------------------------------------- */

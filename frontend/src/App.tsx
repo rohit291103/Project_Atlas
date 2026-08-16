@@ -23,6 +23,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, api } from "./api";
 import type { FeatureScope, Product, Role } from "./api";
+import { Loading } from "./components/Loading";
 import { ProductSwitcher } from "./components/ProductSwitcher";
 import { landingProductId, rememberProduct } from "./lastProduct";
 import { ConflictsPage } from "./pages/ConflictsPage";
@@ -54,7 +55,29 @@ export function App() {
   const [scopes, setScopes] = useState<FeatureScope[]>([]);
   const [railError, setRailError] = useState<string | null>(null);
 
+  /* A filter over the active product's features — deliberately not a command
+     palette. The design baseline defers ⌘K-as-command-surface to v1.x
+     (design-system-baseline-v1 §6.9, §8); this is the much smaller thing the
+     rail actually needed once a product holds more features than fit on screen.
+     ⌘K focuses it because that is the chord every reviewer's hands already
+     reach for, and a shortcut that lands somewhere sensible beats one that
+     opens a surface we haven't built. */
+  const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+
   const isPublic = PUBLIC_ROUTES.has(route.name);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        searchRef.current?.focus();
+        searchRef.current?.select();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   /* Set only by a fresh sign-in. Without it, *every* visit to /app would bounce
      into a product and "All products" would be a screen you could never reach —
@@ -163,7 +186,7 @@ export function App() {
     return unfiled.length ? [...known, { product: UNFILED, features: unfiled }] : known;
   }, [products, scopes]);
 
-  if (checking) return <div className="entry" />;
+  if (checking) return <Loading />;
 
   if (route.name === "home") {
     return <LandingPage navigate={navigate} signedInAs={actor} />;
@@ -184,6 +207,16 @@ export function App() {
   // The rail below shows exactly one product's features. Anything cross-product
   // is a deliberate trip to "All products", never the default view.
   const activeShelf = shelves.find((shelf) => shelf.product.id === activeProductId) ?? null;
+
+  const needle = query.trim().toLowerCase();
+  const features = activeShelf?.features ?? [];
+  const visibleFeatures = needle
+    ? features.filter((scope) => scope.title.toLowerCase().includes(needle))
+    : features;
+  const work = summarize(features);
+  // The unfiled bucket is not a real product: no sources to connect, no
+  // conflicts screen, and no work meter that means anything.
+  const isRealProduct = activeShelf !== null && activeShelf.product.id !== UNASSIGNED;
 
   return (
     <div className="shell">
@@ -206,10 +239,32 @@ export function App() {
           />
         )}
 
+        {/* A filter, not a command palette — see the note on `query` above. It
+            only appears once there is a feature list for it to act on. */}
+        {activeShelf && features.length > 0 && (
+          <div className="rail__search">
+            <span className="rail__search-icon" aria-hidden>
+              ⌕
+            </span>
+            <input
+              ref={searchRef}
+              type="search"
+              value={query}
+              placeholder="Filter features"
+              aria-label="Filter features"
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") setQuery("");
+              }}
+            />
+            <kbd aria-hidden>⌘K</kbd>
+          </div>
+        )}
+
         <div className="rail__scroll">
           {railError && <div className="notice notice--error">{railError}</div>}
           {!railError && shelves.length === 0 && (
-            <p className="rail__foot">No products yet. Create one to give your features a home.</p>
+            <p className="rail__hint">No products yet. Create one to give your features a home.</p>
           )}
 
           {/* On "All products" the rail deliberately holds no feature list —
@@ -221,46 +276,70 @@ export function App() {
 
           {activeShelf && (
             <>
-              <div className="rail__nav">
-                {(
-                  [
-                    ["Overview", { name: "product", productId: activeShelf.product.id }, 0],
-                    [
-                      "Conflicts",
-                      { name: "conflicts", productId: activeShelf.product.id },
-                      summarize(activeShelf.features).conflicts,
-                    ],
-                    ["Sources", { name: "sources", productId: activeShelf.product.id }, 0],
-                  ] as [string, Route, number][]
-                )
-                  // The unfiled bucket is not a real product: it has no sources
-                  // to connect and no conflicts screen to open.
-                  .filter(([label]) => activeShelf.product.id !== UNASSIGNED || label === "Overview")
-                  .map(([label, target, count]) => (
-                    <a
-                      key={label}
-                      className={`rail__nav-item${route.name === target.name ? " is-active" : ""}`}
-                      aria-current={route.name === target.name ? "page" : undefined}
-                      {...linkProps(target, navigate)}
-                    >
-                      {label}
-                      {/* Counted as disagreements, not as claims-in-a-disagreement,
-                          so this agrees with the screen it opens. */}
-                      {count > 0 && <span className="rail__badge rail__badge--conflict">{count}</span>}
-                    </a>
-                  ))}
-              </div>
+              {/* Grouped by the loop the product actually runs — connect, then
+                  review — rather than as one flat list of three screens. The
+                  groups are the same two verbs the landing page and the sign-in
+                  panel name, so the vocabulary is one vocabulary. There is
+                  deliberately no third "Extract" group: extraction is triggered
+                  from Sources and has no screen of its own, and a nav heading
+                  over nothing is a promise of a screen that doesn't exist. */}
+              <a
+                className={`rail__nav-item${route.name === "product" ? " is-active" : ""}`}
+                aria-current={route.name === "product" ? "page" : undefined}
+                {...linkProps({ name: "product", productId: activeShelf.product.id }, navigate)}
+              >
+                Overview
+              </a>
 
-              <div className="rail__label">
-                <span>Features</span>
+              {isRealProduct && (
+                <div className="rail__group">
+                  <span className="rail__group-label">Connect</span>
+                  <a
+                    className={`rail__nav-item${route.name === "sources" ? " is-active" : ""}`}
+                    aria-current={route.name === "sources" ? "page" : undefined}
+                    {...linkProps({ name: "sources", productId: activeShelf.product.id }, navigate)}
+                  >
+                    Sources
+                  </a>
+                </div>
+              )}
+
+              {isRealProduct && (
+                <div className="rail__group">
+                  <span className="rail__group-label">Review</span>
+                  <a
+                    className={`rail__nav-item${route.name === "conflicts" ? " is-active" : ""}`}
+                    aria-current={route.name === "conflicts" ? "page" : undefined}
+                    {...linkProps(
+                      { name: "conflicts", productId: activeShelf.product.id },
+                      navigate,
+                    )}
+                  >
+                    Conflicts
+                    {/* Counted as disagreements, not as claims-in-a-disagreement,
+                        so this agrees with the screen it opens. */}
+                    {work.conflicts > 0 && (
+                      <span className="rail__badge rail__badge--conflict">{work.conflicts}</span>
+                    )}
+                  </a>
+                </div>
+              )}
+
+              <div className="rail__group">
+                <span className="rail__group-label">Features</span>
               </div>
               <ul className="rail__list">
-                {activeShelf.features.length === 0 && (
-                  <li className="rail__item" style={{ color: "var(--text-faint)" }}>
-                    <span className="rail__item-title">Nothing ingested yet</span>
+                {features.length === 0 && (
+                  <li className="rail__hint" role="presentation">
+                    Nothing ingested yet.
                   </li>
                 )}
-                {activeShelf.features.map((scope) => {
+                {features.length > 0 && visibleFeatures.length === 0 && (
+                  <li className="rail__hint" role="presentation">
+                    No feature matches “{query.trim()}”.
+                  </li>
+                )}
+                {visibleFeatures.map((scope) => {
                   const target: Route = {
                     name: "feature",
                     productId: activeShelf.product.id,
@@ -315,14 +394,51 @@ export function App() {
           )}
         </div>
 
+        {/* What is owed, where a SaaS dashboard puts its usage meter. Same
+            placement, but the number a PM opens this app to find: how much of
+            this product still needs a person. Every figure comes from
+            `ScopeCounts` on the projection — the same source the badges and the
+            Conflicts screen read, so the rail can never disagree with the screen
+            it opens. */}
+        {isRealProduct && work.total > 0 && (
+          <div className="rail__work">
+            <span className="rail__work-label">Work left</span>
+            <div className="rail__work-row">
+              <span>Reviewed</span>
+              <b>
+                {work.total - work.unreviewed} / {work.total}
+              </b>
+            </div>
+            <div className="rail__work-meter">
+              <span
+                style={{
+                  width: `${Math.round(((work.total - work.unreviewed) / work.total) * 100)}%`,
+                }}
+              />
+            </div>
+            <div className="rail__work-row">
+              <span>Conflicts</span>
+              {work.conflicts > 0 ? (
+                <b className="is-conflict">{work.conflicts} unresolved</b>
+              ) : (
+                <b className="is-clear">none</b>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="rail__foot">
-          <div className="rail__foot-row">
-            <span>
-              {actor} · {role}
+          <div className="rail__user">
+            <span className="rail__avatar" aria-hidden>
+              {actor.trim().charAt(0).toUpperCase() || "?"}
+            </span>
+            <span className="rail__user-who">
+              <b title={actor}>{actor}</b>
+              <small>{role}</small>
             </span>
             <button
               type="button"
-              className="link-button"
+              className="rail__icon-button"
               onClick={cycleTheme}
               title={THEME_LABELS[theme]}
               aria-label={THEME_LABELS[theme]}

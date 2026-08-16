@@ -91,6 +91,19 @@ const CLAIMS: Claim[] = [
 
 const STEP_MS = 3400;
 const PRESS_AT = 2900;
+/* How long a reader who clicked a claim is left alone before the loop resumes.
+   Long enough to read the longest excerpt in the set twice over, which is the
+   only thing this number has to be right about. */
+const IDLE_MS = 9000;
+
+/* The rail is the rest of the application, drawn so the demo reads as a
+   screenshot of Atlas rather than of one panel inside it. Both features are
+   real rows from the ripgrep validation set — the same discipline as the
+   claims: nothing on this page is a screenshot of software that doesn't run. */
+const RAIL_FEATURES: { title: string; claims: number; conflicts?: number }[] = [
+  { title: "Preprocessor flag", claims: 4, conflicts: 1 },
+  { title: "Max depth option", claims: 3 },
+];
 
 function Pips({ level }: { level: 1 | 2 | 3 }) {
   return (
@@ -123,14 +136,32 @@ function MarkedQuote({ excerpt, mark }: { excerpt: string; mark: string }) {
 /* ── the hero demo ───────────────────────────────────────────────────────────
  *
  * Autoplays a confirmation pass and loops. It stops when off-screen, when the
- * reader prefers reduced motion, and permanently once the reader clicks a
- * claim themselves — at that point they are driving, and something that keeps
- * moving under a cursor is a bug, not a demo.
+ * reader prefers reduced motion, and once the reader takes the wheel — at that
+ * point they are driving, and something that keeps moving under a cursor is a
+ * bug, not a demo.
+ *
+ * Taking the wheel used to mean clicking a row in the demo's own queue, which
+ * works but is invisible: nothing about an auto-advancing panel says "you may
+ * touch this". So the four claims are also a tab strip above the frame — the
+ * same affordance a product tour uses, where the tabs both label what you are
+ * about to see and are obviously clickable. Auto-play moves the active tab with
+ * it, so the strip doubles as the progress indicator it would otherwise need.
+ *
+ * A hold is either **timed or sticky**, and the difference is what the reader
+ * meant by it. Clicking a claim means "wait, let me read this one" — so the
+ * loop stops and starts itself again once they have plainly stopped reading
+ * (`IDLE_MS`). Clicking the badge means "stop moving" — so it stays stopped
+ * until they say otherwise. Collapsing the two, in either direction, gets one
+ * of them wrong: a demo that resumes under a cursor is a bug, and a demo that
+ * sits frozen for the next reader because someone clicked once is a waste of
+ * the only thing on the page that moves.
  */
+type Hold = "none" | "timed" | "sticky";
+
 export function ReviewDemo() {
   const [index, setIndex] = useState(0);
   const [pressed, setPressed] = useState(false);
-  const [driving, setDriving] = useState(false);
+  const [hold, setHold] = useState<Hold>("none");
   const [inView, setInView] = useState(false);
   const frame = useRef<HTMLDivElement>(null);
 
@@ -147,7 +178,7 @@ export function ReviewDemo() {
   const calm =
     typeof window !== "undefined" &&
     window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-  const playing = inView && !driving && !calm;
+  const playing = inView && hold === "none" && !calm;
 
   useEffect(() => {
     if (!playing) return;
@@ -162,134 +193,240 @@ export function ReviewDemo() {
     };
   }, [playing, index]);
 
+  /* The countdown back to auto-play. `index` is a dependency so that every
+     further click restarts it — a reader clicking through all four claims is
+     still reading, and should not have the loop start moving mid-sentence. */
+  useEffect(() => {
+    if (hold !== "timed") return;
+    const wake = window.setTimeout(() => setHold("none"), IDLE_MS);
+    return () => window.clearTimeout(wake);
+  }, [hold, index]);
+
   const claim = CLAIMS[index]!;
   const done = index;
   const pct = Math.round((done / CLAIMS.length) * 100);
 
+  /* One place decides what "the reader took over" means, so the tab strip and
+     the in-frame queue can never disagree about it. */
+  const goTo = (i: number) => {
+    setHold("timed");
+    setPressed(false);
+    setIndex(((i % CLAIMS.length) + CLAIMS.length) % CLAIMS.length);
+  };
+
   return (
-    <div className="ld-frame" ref={frame}>
-      <div className="ld-frame__bar">
-        <span className="ld-dots" aria-hidden>
-          <i />
-          <i />
-          <i />
-        </span>
-        <span className="ld-frame__title">
-          Atlas — <b>Preprocessor flag</b> · 4 claims from GitHub + Jira
-        </span>
-        <span className="ld-frame__live">{playing ? "auto-playing" : "paused"}</span>
+    <div className="ld-shell" ref={frame}>
+      <div className="ld-tabs" role="tablist" aria-label="Claims in this feature">
+        {CLAIMS.map((c, i) => (
+          <button
+            key={c.text}
+            type="button"
+            role="tab"
+            aria-selected={i === index}
+            className={`ld-tab${i === index ? " is-active" : ""}`}
+            onClick={() => goTo(i)}
+          >
+            <span className={`ld-tab__glyph ld-tag--${c.type.replace(" ", "-")}`} aria-hidden />
+            {c.type[0]!.toUpperCase() + c.type.slice(1)}
+          </button>
+        ))}
       </div>
 
-      <div className="ld-review">
-        <aside className="ld-queue">
-          <div className="ld-queue__head">Preprocessor flag</div>
-          <ul className="ld-queue__list">
-            {CLAIMS.map((c, i) => (
-              <li key={c.text}>
-                <button
-                  type="button"
-                  className={`ld-qitem${i === index ? " is-active" : ""}${i < done ? " is-done" : ""}`}
-                  onClick={() => {
-                    setDriving(true);
-                    setPressed(false);
-                    setIndex(i);
-                  }}
-                >
-                  <span className="ld-qitem__mark" aria-hidden>
-                    {i < done ? "✓" : "○"}
-                  </span>
-                  <span className="ld-qitem__text">{c.text}</span>
-                  {c.conflict ? (
-                    <span className="ld-qitem__flag" aria-label="conflict">
-                      ⚑
-                    </span>
-                  ) : null}
-                </button>
-              </li>
+      <div className="ld-frame">
+        <div className="ld-frame__bar">
+          <span className="ld-dots" aria-hidden>
+            <i />
+            <i />
+            <i />
+          </span>
+          <span className="ld-frame__title">
+            Atlas — <b>Preprocessor flag</b> · 4 claims from GitHub + Jira
+          </span>
+          {/* The badge is the deliberate control: from playing it stops things
+              for good, from stopped it starts them again now rather than after
+              the countdown. */}
+          <button
+            type="button"
+            className="ld-frame__live"
+            onClick={() => setHold((h) => (h === "none" ? "sticky" : "none"))}
+            title={playing ? "Pause" : "Resume auto-play"}
+          >
+            {playing ? "auto-playing" : calm ? "paused" : "▸ resume"}
+          </button>
+        </div>
+
+        {/* Everything below is one screenshot of the running application: its
+            own left rail, then the review screen inside it. The rail is static
+            by design — it is context for the panes that do move, and a second
+            animated thing here would compete with the claim for the eye. */}
+        <div className="ld-app">
+          <nav className="ld-rail" aria-hidden>
+            <span className="ld-rail__brand">
+              <span className="rail__glyph" />
+              Atlas
+            </span>
+            <span className="ld-rail__product">
+              ripgrep
+              <i>▾</i>
+            </span>
+            <span className="ld-rail__filter">
+              ⌕ Filter features<kbd>⌘K</kbd>
+            </span>
+
+            <span className="ld-rail__label">Connect</span>
+            <span className="ld-rail__nav">Sources</span>
+
+            <span className="ld-rail__label">Review</span>
+            <span className="ld-rail__nav">
+              Conflicts<em className="is-conflict">1</em>
+            </span>
+
+            <span className="ld-rail__label">Features</span>
+            {RAIL_FEATURES.map((f, i) => (
+              <span key={f.title} className={`ld-rail__feat${i === 0 ? " is-active" : ""}`}>
+                {f.title}
+                {f.conflicts ? <em className="is-conflict">{f.conflicts}</em> : <em>{f.claims}</em>}
+              </span>
             ))}
-          </ul>
-          <div className="ld-queue__foot">
-            <div className="ld-meter">
-              <span style={{ width: `${pct}%` }} />
-            </div>
-            <span>
-              {done} of {CLAIMS.length} confirmed
+
+            <span className="ld-rail__work">
+              <span className="ld-rail__label">Work left</span>
+              <span className="ld-rail__work-row">
+                <b>{CLAIMS.length - done}</b> claims to rule on
+              </span>
+              <span className="ld-meter">
+                <span style={{ width: `${pct}%` }} />
+              </span>
             </span>
-          </div>
-        </aside>
+          </nav>
 
-        <section className="ld-stage" key={index}>
-          <div className="ld-stage__meta">
-            <span className={`ld-tag ld-tag--${claim.type.replace(" ", "-")}`}>{claim.type}</span>
-            <Pips level={claim.confidence} />
-            <span className="ld-stage__from">
-              {claim.source} · {claim.ref}
-            </span>
-          </div>
-
-          {/* Claim, its conflict and its edges travel together so the slack
-              left over by a short claim splits above and below them instead of
-              pooling into one hole beneath. The evidence column opposite is
-              taller than this one by construction — it holds a quote — so that
-              slack always exists and only its placement is ours to choose. */}
-          <div className="ld-stage__body">
-            <p className="ld-claim">{claim.text}</p>
-
-            {claim.conflict ? (
-              <div className="ld-flag">
-                <span aria-hidden>⚑</span>
-                <div>
-                  <b>Conflict</b>
-                  <p>
-                    {claim.conflict}. Atlas will not pick a winner — both stay until you decide.
-                  </p>
+          <div className="ld-review">
+            <aside className="ld-queue">
+              <div className="ld-queue__head">Preprocessor flag</div>
+              <ul className="ld-queue__list">
+                {CLAIMS.map((c, i) => (
+                  <li key={c.text}>
+                    <button
+                      type="button"
+                      className={`ld-qitem${i === index ? " is-active" : ""}${i < done ? " is-done" : ""}`}
+                      onClick={() => goTo(i)}
+                    >
+                      <span className="ld-qitem__mark" aria-hidden>
+                        {i < done ? "✓" : "○"}
+                      </span>
+                      <span className="ld-qitem__text">{c.text}</span>
+                      {c.conflict ? (
+                        <span className="ld-qitem__flag" aria-label="conflict">
+                          ⚑
+                        </span>
+                      ) : null}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <div className="ld-queue__foot">
+                <div className="ld-meter">
+                  <span style={{ width: `${pct}%` }} />
                 </div>
+                <span>
+                  {done} of {CLAIMS.length} confirmed
+                </span>
               </div>
-            ) : null}
+            </aside>
 
-            <p className="ld-edges">
-              <span>edges</span>
-              {claim.relates}
-            </p>
-          </div>
+            <section className="ld-stage" key={index}>
+              <div className="ld-stage__meta">
+                <span className={`ld-tag ld-tag--${claim.type.replace(" ", "-")}`}>
+                  {claim.type}
+                </span>
+                <Pips level={claim.confidence} />
+                <span className="ld-stage__from">
+                  {claim.source} · {claim.ref}
+                </span>
+              </div>
 
-          {/* Glyphs and keys are copied from the real review screen
-              (ReviewPage.tsx §actions) rather than invented. A landing page
-              that teaches the wrong shortcut is a small lie the product
-              corrects in the first minute. */}
-          <div className="ld-actions">
-            <span className={`ld-btn ld-btn--primary${pressed ? " is-pressed" : ""}`}>
-              ✓ Confirm <kbd>c</kbd>
-            </span>
-            <span className="ld-btn">
-              ✎ Edit <kbd>e</kbd>
-            </span>
-            <span className="ld-btn">
-              ✕ Reject <kbd>x</kbd>
-            </span>
-            <span className="ld-btn ld-btn--ghost">
-              Add <kbd>a</kbd>
-            </span>
-          </div>
-        </section>
+              {/* Claim, its conflict and its edges travel together so the slack
+                  left over by a short claim splits above and below them instead of
+                  pooling into one hole beneath. The evidence column opposite is
+                  taller than this one by construction — it holds a quote — so that
+                  slack always exists and only its placement is ours to choose. */}
+              <div className="ld-stage__body">
+                <p className="ld-claim">{claim.text}</p>
 
-        <aside className="ld-ev" key={`ev-${index}`}>
-          <div className="ld-ev__head">Where it came from</div>
-          <div className="ld-doc">
-            <div className="ld-doc__head">
-              <span className={`ld-src ld-src--${claim.source.toLowerCase()}`}>{claim.source}</span>
-              <span className="ld-doc__ref">{claim.ref}</span>
-            </div>
-            <blockquote className="ld-quote">
-              <MarkedQuote excerpt={claim.excerpt} mark={claim.mark} />
-            </blockquote>
-            <span className="ld-doc__open">Open in {claim.source} ↗</span>
+                {claim.conflict ? (
+                  <div className="ld-flag">
+                    <span aria-hidden>⚑</span>
+                    <div>
+                      <b>Conflict</b>
+                      <p>
+                        {claim.conflict}. Atlas will not pick a winner — both stay until you decide.
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
+
+                <p className="ld-edges">
+                  <span>edges</span>
+                  {claim.relates}
+                </p>
+              </div>
+
+              {/* Glyphs and keys are copied from the real review screen
+                  (ReviewPage.tsx §actions) rather than invented. A landing page
+                  that teaches the wrong shortcut is a small lie the product
+                  corrects in the first minute. */}
+              <div className="ld-actions">
+                <span className={`ld-btn ld-btn--primary${pressed ? " is-pressed" : ""}`}>
+                  ✓ Confirm <kbd>c</kbd>
+                </span>
+                <span className="ld-btn">
+                  ✎ Edit <kbd>e</kbd>
+                </span>
+                <span className="ld-btn">
+                  ✕ Reject <kbd>x</kbd>
+                </span>
+                <span className="ld-btn ld-btn--ghost">
+                  Add <kbd>a</kbd>
+                </span>
+              </div>
+
+              {/* The real screen's shortcut hint. It earns its place twice: it
+                  is what the application actually shows, and it says out loud
+                  that this is a keyboard surface for someone doing forty of
+                  these in a sitting — which is most of the difference between
+                  a review tool and a form. */}
+              <p className="ld-stage__keys">
+                <kbd>j</kbd>
+                <kbd>k</kbd> move
+                <kbd>c</kbd> confirm
+                <kbd>e</kbd> edit
+                <kbd>x</kbd> reject
+                <kbd>o</kbd> open source
+                <kbd>u</kbd> undo
+              </p>
+            </section>
+
+            <aside className="ld-ev" key={`ev-${index}`}>
+              <div className="ld-ev__head">Where it came from</div>
+              <div className="ld-doc">
+                <div className="ld-doc__head">
+                  <span className={`ld-src ld-src--${claim.source.toLowerCase()}`}>
+                    {claim.source}
+                  </span>
+                  <span className="ld-doc__ref">{claim.ref}</span>
+                </div>
+                <blockquote className="ld-quote">
+                  <MarkedQuote excerpt={claim.excerpt} mark={claim.mark} />
+                </blockquote>
+                <span className="ld-doc__open">Open in {claim.source} ↗</span>
+              </div>
+              <p className="ld-ev__note">
+                Verbatim, never paraphrased. A claim that can't quote its source is rejected before
+                it reaches you.
+              </p>
+            </aside>
           </div>
-          <p className="ld-ev__note">
-            Verbatim, never paraphrased. A claim that can't quote its source is rejected before it
-            reaches you.
-          </p>
-        </aside>
+        </div>
       </div>
     </div>
   );
