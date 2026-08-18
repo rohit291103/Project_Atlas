@@ -40,7 +40,7 @@ const SOURCES: { name: string; live: boolean }[] = [
 const PROMISES: { title: string; body: string }[] = [
   {
     title: "It only ever reads",
-    body: "No comment, no ticket, no status change — in this version or any planned one.",
+    body: "No comment, no ticket, no status change. Not in this version, and not in any planned one.",
   },
   {
     title: "Every claim quotes its source",
@@ -48,7 +48,7 @@ const PROMISES: { title: string; body: string }[] = [
   },
   {
     title: "Nothing is true until you say so",
-    body: "Extraction is a draft. You confirm, edit or reject — and your name stays on the call.",
+    body: "Extraction is a draft. You confirm, edit or reject, and your name stays on the call.",
   },
 ];
 

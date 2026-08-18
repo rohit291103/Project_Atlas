@@ -271,6 +271,31 @@ def parse_target(kind: RunTargetKind, target: str) -> tuple[str, ...]:
     return (cleaned,)
 
 
+def artifact_external_id(kind: RunTargetKind, target: str) -> str | None:
+    """The `external_id` this target would be stored under, or None if it names
+    more than one artifact.
+
+    This is what the re-run block compares against, so it must produce exactly
+    what extraction stamps on the artifact -- `owner/repo#number` for a PR
+    (`extraction/agent.py`) and the upper-cased key for a Jira issue. If the two
+    ever drift, the block silently stops firing rather than failing, which is why
+    `tests/test_pipeline.py` pins both forms.
+
+    An epic or a label returns None: it expands to many artifacts, none of which
+    the target names, so there is nothing to compare. Re-running one still
+    duplicates. That is a known gap in the guard rather than an oversight -- the
+    guard is a stopgap and only real idempotency (Phase 3, with incremental
+    sync) closes it (`docs/decisions/2026-08-19-product-orientation-rerun-safety-and-demo-data.md`).
+    """
+    parts = parse_target(kind, target)
+    if kind is RunTargetKind.GITHUB_PR:
+        owner, repo, number = parts
+        return f"{owner}/{repo}#{number}"
+    if kind is RunTargetKind.JIRA_ISSUE:
+        return parts[0]
+    return None
+
+
 def resolve_jira_keys(
     client: JiraClient, *, kind: RunTargetKind, target: str, limit: int
 ) -> list[str]:

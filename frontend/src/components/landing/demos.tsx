@@ -59,7 +59,7 @@ const CLAIMS: Claim[] = [
     ref: "#1231",
     text: "The preprocessor runs on every file, unmatched by any filter.",
     excerpt:
-      "I think we should just run it on everything and let the user sort it out — a filter is one more flag nobody will remember.",
+      "I think we should just run it on everything and let the user sort it out. A filter is one more flag nobody will remember.",
     mark: "just run it on everything",
     confidence: 2,
     relates: "contradicts → the requirement extracted from SCRUM-14",
@@ -82,8 +82,8 @@ const CLAIMS: Claim[] = [
     ref: "SCRUM-14",
     text: "Can --pre-glob be repeated, or does it take one comma-separated list?",
     excerpt:
-      "Unclear whether we want a repeatable --pre-glob or a comma list here — needs a call before implementation.",
-    mark: "needs a call before implementation",
+      "Unclear whether we want a repeatable --pre-glob or a comma list here. Needs a call before implementation.",
+    mark: "Needs a call before implementation",
     confidence: 2,
     relates: "blocks → the requirement extracted from SCRUM-14",
   },
@@ -240,7 +240,7 @@ export function ReviewDemo() {
             <i />
           </span>
           <span className="ld-frame__title">
-            Atlas — <b>Preprocessor flag</b> · 4 claims from GitHub + Jira
+            Atlas · <b>Preprocessor flag</b> · 4 claims from GitHub + Jira
           </span>
           {/* The badge is the deliberate control: from playing it stops things
               for good, from stopped it starts them again now rather than after
@@ -359,7 +359,7 @@ export function ReviewDemo() {
                     <div>
                       <b>Conflict</b>
                       <p>
-                        {claim.conflict}. Atlas will not pick a winner — both stay until you decide.
+                        {claim.conflict}. Atlas will not pick a winner. Both stay until you decide.
                       </p>
                     </div>
                   </div>
@@ -504,7 +504,7 @@ export function TransformDemo() {
           ))}
         </div>
         <p className="ld-col__foot">
-          Four typed claims, each quoting the line it came from — and the contradiction between two
+          Four typed claims, each quoting the line it came from, plus the contradiction between two
           of them, surfaced rather than silently resolved.
         </p>
       </div>
@@ -566,13 +566,13 @@ export function ExtractDemo() {
           <span>fetched</span> SCRUM-14 · description + 6 comments
         </li>
         <li>
-          <span>emitted</span> requirement <em>— quoting SCRUM-14</em>
+          <span>emitted</span> requirement <em>from SCRUM-14</em>
         </li>
         <li>
-          <span>emitted</span> decision <em>— quoting #1231 review</em>
+          <span>emitted</span> decision <em>from the #1231 review</em>
         </li>
         <li className="is-flag">
-          <span>flagged</span> conflict between the two <em>— not resolved</em>
+          <span>flagged</span> conflict between the two <em>(not resolved)</em>
         </li>
         <li>
           <span>dropped</span> 11 candidates with no quotable source

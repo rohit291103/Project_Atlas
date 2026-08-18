@@ -138,7 +138,7 @@ export function LandingPage({
           </h1>
           <p className="hero__lede">
             Atlas pulls every decision behind one feature out of the pull requests and tickets it's
-            buried in — quoted exactly, confirmed by you.
+            buried in, quoted exactly and confirmed by you.
           </p>
           <div className="hero__actions">
             <a className="action action--brand action--lg" {...linkProps(cta, navigate)}>
@@ -196,18 +196,18 @@ export function LandingPage({
           footnote; it is the strongest thing on the page, so it gets a title,
           a lit frame and the full width. */}
       <section className="showcase" id="demo">
-        <span className="pill">Atlas — the review loop</span>
+        <span className="pill">The review loop</span>
         <h2 className="display">Twenty minutes of reading, already read</h2>
         <p className="display__sub">
           The actual review screen, running. Claims and quotes come from the ripgrep{" "}
-          <code>--pre</code> feature in our validation set — including the GitHub/Jira contradiction
+          <code>--pre</code> feature in our validation set, including the GitHub/Jira contradiction
           the extraction agent really found.
         </p>
         <div className="showcase__frame">
           <ReviewDemo />
         </div>
         <p className="showcase__note">
-          It plays itself — or pick a claim above and drive. Auto-play stops the moment you do, and
+          It plays itself, or pick a claim above and drive. Auto-play stops the moment you do, and
           the badge in the title bar starts it again.
         </p>
       </section>
@@ -238,7 +238,7 @@ export function LandingPage({
           <div>
             <h3>So the work is gathering, not writing</h3>
             <p>
-              Atlas does the gathering and the quoting. You do the deciding — which is the part that
+              Atlas does the gathering and the quoting. You do the deciding, which is the part that
               actually needs judgement.
             </p>
           </div>
@@ -251,7 +251,7 @@ export function LandingPage({
         <span className="pill">Continuous context</span>
         <h2 className="display">Atlas runs the loop your feature context goes round</h2>
         <p className="display__sub">
-          Not an importer you run once. A cycle a feature goes round — and the work that comes out
+          Not an importer you run once. A cycle a feature goes round, and the work that comes out
           of it is what starts the next pass.
         </p>
         <LoopDiagram />
@@ -275,7 +275,7 @@ export function LandingPage({
             </p>
             <p>
               Then name the target: one pull request, one epic, one label. Every pull is deliberate
-              and bounded — Atlas never crawls an org looking for something interesting.
+              and bounded. Atlas never crawls an org looking for something interesting.
             </p>
             <p className="act__note">
               Credentials are encrypted at rest with a key held outside the database, are returned
@@ -292,7 +292,7 @@ export function LandingPage({
             <span className="act__step">Extract</span>
             <h3>Where did this claim actually come from?</h3>
             <p>
-              An agent reads the thread and emits typed claims — goals, requirements, decisions,
+              An agent reads the thread and emits typed claims: goals, requirements, decisions,
               constraints, open questions. Every one carries the literal sentence it came from and a
               link back to it.
             </p>
@@ -301,7 +301,7 @@ export function LandingPage({
               dropped before you ever see them.
             </p>
             <p className="act__note">
-              A claim with no source is structurally impossible here, not merely discouraged — the
+              A claim with no source is structurally impossible here, not merely discouraged. The
               schema has nowhere to put one.
             </p>
           </div>
@@ -320,7 +320,7 @@ export function LandingPage({
               whole loop is keyboard-first.
             </p>
             <p>
-              What comes out the other side isn't an AI summary — it's a set of statements a named
+              What comes out the other side isn't an AI summary. It's a set of statements a named
               person vouched for, each still pointing at the sentence underneath it.
             </p>
             <p className="act__note">
@@ -342,7 +342,7 @@ export function LandingPage({
           <span className="pill">Before / after</span>
           <h2 className="display">One feature. Same facts. Half a morning back.</h2>
           <p className="display__sub">
-            Nothing on the right was invented — every claim is a sentence someone already wrote,
+            Nothing on the right was invented. Every claim is a sentence someone already wrote,
             typed and quoted. The work Atlas removes is the reading, not the deciding.
           </p>
         </div>
@@ -354,7 +354,7 @@ export function LandingPage({
           <span className="act__step">Cross-source</span>
           <h2 className="display display--left">The part no single tool can do</h2>
           <p>
-            One source contradicting another is invisible when you read them one at a time — and it
+            One source contradicting another is invisible when you read them one at a time, and it
             is the most expensive thing to discover late. Atlas ingests a feature's sources into one
             place, so it can hold two claims up against each other and show you both, with both
             quotes.
@@ -427,13 +427,13 @@ export function LandingPage({
           {signedInAs ? "Open Atlas" : "Start with one feature"}
         </a>
         <p className="closer__foot">
-          Read-only into every source. Nothing is written back to GitHub or Jira — not in this
-          version, not in any planned one.
+          Read-only into every source. Nothing is written back to GitHub or Jira, not in this
+          version and not in any planned one.
         </p>
       </section>
 
       <footer className="landing__foot">
-        <span>Atlas — context-to-spec engine</span>
+        <span>Atlas · context-to-spec engine</span>
         <span>Read-only · provenance-linked · human-confirmed</span>
       </footer>
     </div>

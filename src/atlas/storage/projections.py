@@ -64,6 +64,7 @@ from atlas.models.schema import (
     RunStartedPayload,
     RunState,
     RunTargetKind,
+    SourceType,
 )
 from atlas.storage.tables import EventLog
 
@@ -332,6 +333,27 @@ class Projection:
                 and edge.to_node_id in live
             ),
         )
+
+    def scope_holding(self, source_type: SourceType, external_id: str) -> FeatureScope | None:
+        """The feature scope an artifact was already ingested into, if any.
+
+        The pair is the key, not `external_id` alone: an id is only unique
+        *within* its source, which is why `IngestionRunPayload` carries both.
+
+        This exists for the API's re-run block. Re-ingesting an artifact
+        duplicates every claim it produced -- node ids are minted per run and
+        nothing reconciles them -- and the copies are indistinguishable except by
+        id, so a reviewer could confirm one and reject the other
+        (`tests/test_pipeline.py` records the behaviour). Returning the scope
+        rather than a bool lets the refusal say *where* the artifact already is.
+
+        Real idempotency is Phase 3, with incremental sync. This is the guard.
+        """
+        for scope in self.feature_scopes.values():
+            for run in scope.runs:
+                if run.source_type is source_type and run.external_id == external_id:
+                    return scope
+        return None
 
     def for_feature_scope(self, feature_scope_id: uuid.UUID) -> Projection:
         """Narrow to one feature scope -- what `atlas review --feature-scope`

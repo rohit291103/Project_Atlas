@@ -110,7 +110,7 @@ export function ConflictsPage({
       </div>
       <p className="page-sub">
         {entries.length === 0
-          ? "Nothing in this product contradicts anything else — on the evidence gathered so far."
+          ? "Nothing in this product contradicts anything else, on the evidence gathered so far."
           : `${crossSource} of them cross sources, which is the kind no single tool could have shown you. Ruling on one side does not resolve a conflict; both claims stay on the record.`}
       </p>
 

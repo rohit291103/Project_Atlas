@@ -46,7 +46,7 @@ const TARGET_HELP: Record<RunTargetKind, { label: string; placeholder: string; h
   github_pr: {
     label: "Pull request",
     placeholder: "acme/web#42",
-    hint: "One pull request, fully qualified — the repo and the number.",
+    hint: "One pull request, fully qualified: the repo and the number.",
   },
   jira_issue: {
     label: "One issue",
@@ -130,7 +130,7 @@ export function SourcesPage({
         </a>
       </div>
       <p className="page-sub">
-        Atlas reads. It never writes to GitHub or Jira, in this or any later version — and it sees
+        Atlas reads. It never writes to GitHub or Jira, in this or any later version, and it sees
         exactly what the credential you give it already sees, nothing wider.
       </p>
 
@@ -292,7 +292,7 @@ function ConnectForm({
       // Clear the secret from component state the moment it is no longer
       // needed. It is never rendered and never stored here.
       setSecret("");
-      onConnected(`Connected ${created.access_label} — ${created.access_detail}`);
+      onConnected(`Connected ${created.access_label}: ${created.access_detail}`);
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : "Couldn't connect that source.");
     } finally {
@@ -369,7 +369,7 @@ function ConnectForm({
         />
       </label>
       <p className="connect__note">
-        Stored encrypted, and never shown again — you'll only ever see the last four characters.
+        Stored encrypted, and never shown again. You'll only ever see the last four characters.
         Atlas reads with it and never writes, so a read-only token is enough:{" "}
         {isJira ? (
           <a href="https://id.atlassian.com/manage-profile/security/api-tokens" target="_blank" rel="noreferrer">
@@ -380,7 +380,7 @@ function ConnectForm({
             mint a GitHub token
           </a>
         )}
-        . Whatever you give it, Atlas sees exactly what you already see — no more.
+        . Whatever you give it, Atlas sees exactly what you already see, and no more.
       </p>
 
       {error && <div className="notice notice--error">{error}</div>}
@@ -465,7 +465,7 @@ function RunForm({
         <h2>Pull context</h2>
       </div>
       <p className="page-sub">
-        Every pull is deliberate — one pull request, one issue, one epic, one label. Atlas never
+        Every pull is deliberate: one pull request, one issue, one epic, one label. Atlas never
         crawls a repo or a Jira site.
       </p>
 
@@ -644,6 +644,6 @@ function stateLabel(run: Run): string {
     case "failed":
       return "Failed";
     case "interrupted":
-      return "Interrupted — the server restarted mid-run";
+      return "Interrupted: the server restarted mid-run";
   }
 }

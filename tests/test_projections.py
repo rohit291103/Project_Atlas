@@ -806,3 +806,32 @@ def test_a_rejected_claim_stops_counting_as_a_conflict() -> None:
     )
 
     assert projection.counts_for(FEATURE_SCOPE_ID).conflicts == 0
+
+
+# --- the re-run block's lookup (2026-08-19) ------------------------------------
+
+
+def test_an_already_ingested_artifact_names_the_scope_it_landed_in() -> None:
+    """What the API's re-run block reads. Returning the scope rather than a bool
+    lets the refusal say *where* the artifact already is, so a PM can go look at
+    it instead of guessing why they were stopped."""
+    projection = replay([ingestion_run()])
+
+    scope = projection.scope_holding(SourceType.GITHUB_PR, "BurntSushi/ripgrep#111")
+
+    assert scope is not None
+    assert scope.id == FEATURE_SCOPE_ID
+
+
+def test_an_artifact_never_ingested_names_no_scope() -> None:
+    projection = replay([ingestion_run()])
+
+    assert projection.scope_holding(SourceType.GITHUB_PR, "BurntSushi/ripgrep#999") is None
+
+
+def test_the_same_id_under_a_different_source_is_a_different_artifact() -> None:
+    """`external_id` is only unique *within* a source, so the pair is the key --
+    a Jira issue keyed RG-42 and a GitHub PR keyed RG-42 are unrelated."""
+    projection = replay([ingestion_run()])
+
+    assert projection.scope_holding(SourceType.JIRA_TICKET, "BurntSushi/ripgrep#111") is None

@@ -117,7 +117,7 @@ export function ProductsPage({
         )}
       </div>
       <p className="page-sub">
-        Each product has its own sources — its own GitHub org, its own Jira site — and its own
+        Each product keeps its own sources: its own GitHub org, its own Jira site, its own
         features. Nothing crosses between them.
       </p>
 
@@ -158,39 +158,176 @@ export function ProductsPage({
         </div>
       )}
 
+      {/* The portfolio's own figures, in the same tiles the product dashboard
+          uses. The all-products screen is the top of the funnel and said nothing
+          aggregate at all: you had to open each product and add it up yourself. */}
+      {products.length > 0 && <Portfolio products={products} scopes={scopes} />}
+
       <div className="cards">
-        {products.map((product) => {
-          const features = featuresOf(product.id);
-          return (
-            <a
-              key={product.id}
-              className="card-link"
-              {...linkProps({ name: "product", productId: product.id }, navigate)}
-            >
-              <span className="card-link__name">{product.name}</span>
-              <span className="card-link__meta">
-                <span>
-                  {features.length} feature{features.length === 1 ? "" : "s"}
-                </span>
-                <span>{workSummary(features)}</span>
-              </span>
-            </a>
-          );
-        })}
+        {products.map((product) => (
+          <ProductCard
+            key={product.id}
+            name={product.name}
+            features={featuresOf(product.id)}
+            productId={product.id}
+            navigate={navigate}
+          />
+        ))}
         {featuresOf(UNASSIGNED).length > 0 && (
-          <a
-            className="card-link"
-            {...linkProps({ name: "product", productId: UNASSIGNED }, navigate)}
-          >
-            <span className="card-link__name">Not filed yet</span>
-            <span className="card-link__meta">
-              <span>{featuresOf(UNASSIGNED).length} feature(s)</span>
-              <span>ingested before products existed</span>
-            </span>
-          </a>
+          <ProductCard
+            name="Not filed yet"
+            note="ingested before products existed"
+            features={featuresOf(UNASSIGNED)}
+            productId={UNASSIGNED}
+            navigate={navigate}
+          />
         )}
       </div>
     </div>
+  );
+}
+
+/** Which tools a set of features was actually assembled out of.
+ *
+ * Read off the ingestion runs already on each row, deduplicated by badge. "Two
+ * sources connected" is a fact about configuration; this is a fact about the
+ * data, and they stop being the same thing the day a connection exists but has
+ * pulled nothing. */
+function sourcesOf(features: FeatureScope[]): [string, string][] {
+  return [
+    ...new Map(
+      features.flatMap((scope) =>
+        scope.runs.map(
+          (run) => [SOURCE_BADGES[run.source_type], SOURCE_LABELS[run.source_type]] as const,
+        ),
+      ),
+    ),
+  ];
+}
+
+/* Everything, added up, in the same tiles one product's dashboard uses.
+ *
+ * The all-products screen is where a PM who owns several products lands, and it
+ * used to be a title, a sentence and a row of near-identical cards. It never
+ * said how much work was waiting across the whole portfolio, so the only way to
+ * find out was to open each product and add it up by hand. */
+function Portfolio({ products, scopes }: { products: Product[]; scopes: FeatureScope[] }) {
+  const work = summarize(scopes);
+  const contested = scopes.filter((scope) => scope.counts.conflicts > 0).length;
+  const percent = work.total ? Math.round(((work.total - work.unreviewed) / work.total) * 100) : 0;
+
+  return (
+    <div className="stats stats--portfolio">
+      <div className="stat">
+        <span className="stat__label">Products</span>
+        <b className="stat__n">{products.length}</b>
+        <span className="stat__note">
+          {work.features} {work.features === 1 ? "feature" : "features"} between them
+        </span>
+      </div>
+      <div className="stat">
+        <span className="stat__label">Claims extracted</span>
+        <b className="stat__n">{work.total}</b>
+        <span className="stat__note">
+          {work.total === 0 ? "nothing extracted yet" : `${percent}% ruled on`}
+        </span>
+      </div>
+      <div className={`stat${work.unreviewed > 0 ? " stat--open" : " stat--clear"}`}>
+        <span className="stat__label">Needs review</span>
+        <b className="stat__n">{work.unreviewed}</b>
+        <span className="stat__note">
+          {work.unreviewed === 0 ? "every claim ruled on" : "waiting on a person"}
+        </span>
+      </div>
+      <div className={`stat${work.conflicts > 0 ? " stat--conflict" : " stat--clear"}`}>
+        <span className="stat__label">Unresolved conflicts</span>
+        <b className="stat__n">{work.conflicts}</b>
+        <span className="stat__note">
+          {work.conflicts === 0
+            ? "no disagreements"
+            : `across ${contested} ${contested === 1 ? "feature" : "features"}`}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/* One product, as a card that says what is inside it.
+ *
+ * The old card carried the product's name and one line of prose ("4 features ·
+ * 8 conflicts · 26 to review"). Every card said the same shape of thing in the
+ * same grey, so choosing between them meant reading all of them. The figures are
+ * separated and labelled here, the sources are named, and a meter shows how far
+ * in the product already is, so the cards can be *scanned* rather than read.
+ */
+function ProductCard({
+  name,
+  note,
+  features,
+  productId,
+  navigate,
+}: {
+  name: string;
+  note?: string;
+  features: FeatureScope[];
+  productId: string;
+  navigate: (route: Route, replace?: boolean) => void;
+}) {
+  const work = summarize(features);
+  const sources = sourcesOf(features);
+  const percent = work.total ? ((work.total - work.unreviewed) / work.total) * 100 : 0;
+
+  return (
+    <a className="pcard" {...linkProps({ name: "product", productId }, navigate)}>
+      <span className="pcard__top">
+        <span className="pcard__name">{name}</span>
+        <span className="pcard__go" aria-hidden>
+          →
+        </span>
+      </span>
+
+      <span className="pcard__from">
+        {note ??
+          (sources.length > 0 ? (
+            <>
+              <span className="pcard__from-label">assembled from</span>
+              {sources.map(([badge, label]) => (
+                <span className="badge" key={badge} title={label}>
+                  {badge}
+                </span>
+              ))}
+            </>
+          ) : (
+            <span className="pcard__from-label">no source connected yet</span>
+          ))}
+      </span>
+
+      <span className="pcard__figs">
+        <span className="pcard__fig">
+          <b>{work.features}</b>
+          <small>{work.features === 1 ? "feature" : "features"}</small>
+        </span>
+        <span className={`pcard__fig${work.unreviewed > 0 ? " is-open" : ""}`}>
+          <b>{work.unreviewed}</b>
+          <small>to review</small>
+        </span>
+        <span className={`pcard__fig${work.conflicts > 0 ? " is-conflict" : ""}`}>
+          <b>{work.conflicts}</b>
+          <small>{work.conflicts === 1 ? "conflict" : "conflicts"}</small>
+        </span>
+      </span>
+
+      {work.total > 0 && (
+        <span className="pcard__foot">
+          <span className="meter__track">
+            <span className="meter__fill" style={{ width: `${percent}%` }} />
+          </span>
+          <small>
+            {work.total - work.unreviewed} of {work.total} claims reviewed
+          </small>
+        </span>
+      )}
+    </a>
   );
 }
 
@@ -225,19 +362,7 @@ function Dashboard({
   const backlog = features.filter((scope) => scope.counts.unreviewed > 0).length;
   const contested = features.filter((scope) => scope.counts.conflicts > 0).length;
 
-  /* Which tools this product was actually assembled out of, read off the
-     ingestion runs already on each row. "Two sources connected" is a fact about
-     configuration; this is a fact about the data, and they are not the same
-     thing the day a connection exists but has pulled nothing. */
-  const sources = [
-    ...new Map(
-      features.flatMap((scope) =>
-        scope.runs.map(
-          (run) => [SOURCE_BADGES[run.source_type], SOURCE_LABELS[run.source_type]] as const,
-        ),
-      ),
-    ),
-  ];
+  const sources = sourcesOf(features);
 
   return (
     <section className="dash">
@@ -293,7 +418,7 @@ function Dashboard({
               "no disagreements"
             ) : (
               <a className="stat__go" {...linkProps({ name: "conflicts", productId }, navigate)}>
-                in {contested} {contested === 1 ? "feature" : "features"} — rule on them →
+                across {contested} {contested === 1 ? "feature" : "features"} · rule on them →
               </a>
             )}
           </span>
@@ -418,20 +543,10 @@ function summaryLine(features: FeatureScope[]): string {
   if (features.length === 0) return "Nothing has been ingested into this product yet.";
   const { unreviewed, conflicts } = summarize(features);
   if (unreviewed === 0 && conflicts === 0) {
-    return `${features.length} feature${features.length === 1 ? "" : "s"} — every claim reviewed.`;
+    return `${features.length} feature${features.length === 1 ? "" : "s"}, every claim reviewed.`;
   }
   const parts: string[] = [];
   if (conflicts > 0) parts.push(`${conflicts} ${conflicts === 1 ? "conflict" : "conflicts"}`);
   if (unreviewed > 0) parts.push(`${unreviewed} claim${unreviewed === 1 ? "" : "s"} to review`);
   return `${features.length} feature${features.length === 1 ? "" : "s"} · ${parts.join(" · ")}.`;
 }
-
-/* On the all-products screen a card said "assembled from gh + jr", which is
-   true of nearly every card and so distinguishes none of them. What tells a PM
-   which product to open is what it owes them. */
-const workSummary = (features: FeatureScope[]): string => {
-  if (features.length === 0) return "nothing ingested yet";
-  const { unreviewed, conflicts } = summarize(features);
-  if (conflicts > 0) return `${conflicts} ${conflicts === 1 ? "conflict" : "conflicts"} · ${unreviewed} to review`;
-  return unreviewed > 0 ? `${unreviewed} to review` : "all reviewed";
-};

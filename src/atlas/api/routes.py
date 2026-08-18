@@ -82,6 +82,7 @@ from atlas.pipeline import (
     JiraCredential,
     RunRequest,
     TargetError,
+    artifact_external_id,
     check_access,
     execute_run,
     start_run,
@@ -642,6 +643,38 @@ def start_ingestion(
         # A row written before the host allowlist existed, or edited underneath
         # us. Refuse rather than send the credential somewhere unvetted.
         raise HTTPException(status.HTTP_409_CONFLICT, str(unsupported)) from None
+
+    # Refuse a re-run of an artifact already in this workspace. Re-ingesting
+    # duplicates every claim it produced, and the copies are identical except for
+    # their ids, so a reviewer could confirm one and reject the other. A hard
+    # block rather than a warning: the legitimate case (a genuinely updated PR) is
+    # served by ingesting into a *new* scope, while the illegitimate one silently
+    # doubles a reviewer's queue. Removed, not loosened, when Phase 3's
+    # incremental sync makes ingestion actually idempotent
+    # (`docs/decisions/2026-08-19-product-orientation-rerun-safety-and-demo-data.md`).
+    #
+    # An epic or a label yields no id here -- it names many artifacts, none of
+    # them individually -- so those re-runs are not blocked. Known gap, stated in
+    # `artifact_external_id`.
+    try:
+        already = artifact_external_id(body.target_kind, body.target)
+    except TargetError as bad:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(bad)) from None
+    if already is not None:
+        source = (
+            SourceType.GITHUB_PR
+            if body.target_kind is RunTargetKind.GITHUB_PR
+            else SourceType.JIRA_TICKET
+        )
+        held = load_projection(session, workspace_id=principal.workspace_id).scope_holding(
+            source, already
+        )
+        if held is not None:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                f"{already} is already ingested into '{held.title}'. Re-running it would "
+                f"duplicate every claim it produced; ingest into a new feature instead.",
+            )
 
     request = RunRequest(
         workspace_id=principal.workspace_id,

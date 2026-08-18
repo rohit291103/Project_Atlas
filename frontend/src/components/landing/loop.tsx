@@ -33,7 +33,7 @@ const STOPS: Stop[] = [
     key: "connect",
     n: "01",
     title: "Connect",
-    body: "One PR, one epic, one label — named by you, read with your own credential.",
+    body: "One PR, one epic, one label. Named by you, read with your own credential.",
   },
   {
     key: "extract",
@@ -45,7 +45,7 @@ const STOPS: Stop[] = [
     key: "confirm",
     n: "03",
     title: "Confirm",
-    body: "You confirm, edit or reject — one claim at a time, and your name stays on it.",
+    body: "You confirm, edit or reject one claim at a time, and your name stays on it.",
   },
   {
     key: "handoff",
@@ -122,7 +122,7 @@ export function LoopDiagram() {
 
       <p className="loop__return">
         <span className="loop__return-arc" aria-hidden />
-        The work lands as new pull requests and tickets — which is where the next pass starts.
+        The work lands as new pull requests and tickets, which is where the next pass starts.
       </p>
     </>
   );

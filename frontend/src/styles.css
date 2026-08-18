@@ -1077,9 +1077,17 @@ kbd {
   overflow-y: auto;
   height: 100%;
 }
+/* Centred, not left-hugged.
+ *
+ * `max-width` alone pinned every document screen to the left edge of the main
+ * column, so on a wide display the dashboard sat in the left two-thirds with a
+ * third of the window as dead ground beside it. The measure is what the cap is
+ * for; where the measure sits in the window is a separate decision, and centring
+ * is the one that reads as a finished page. */
 .pad {
-  padding: var(--space-5) var(--space-6);
-  max-width: 1100px;
+  padding: var(--space-5) var(--space-6) var(--space-6);
+  max-width: 1180px;
+  margin-inline: auto;
 }
 
 .page-head {
@@ -1105,10 +1113,148 @@ kbd {
 
 /* --- product cards --------------------------------------------------------- */
 
+/* `auto-fit`, not `auto-fill`: with two products `auto-fill` reserved a third
+   empty track and left a card-shaped hole in the row. Empty tracks collapse
+   here, so however many products there are, they fill the width they are
+   given. */
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: var(--space-2);
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--space-3);
+}
+
+/* A product, as a card that says what is inside it.
+ *
+ * The old card was a name over one line of grey prose ("4 features · 8 conflicts
+ * · 26 to review"). Every card said the same shape of thing in the same colour,
+ * so choosing between them meant reading all of them rather than scanning them.
+ * The figures are separated and labelled here, the sources are named, and the
+ * meter shows how far in the product already is. It is built out of the same
+ * parts as the product dashboard and the review bar — `.badge`, `.meter__track`,
+ * the `.stat` label treatment — so the two screens read as one product.
+ */
+.pcard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  transition:
+    border-color var(--motion),
+    background var(--motion),
+    transform var(--motion);
+}
+.pcard:hover {
+  border-color: var(--border-lit);
+  background: var(--raised);
+}
+.pcard__top {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+.pcard__name {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: -0.014em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The arrow only appears on approach. A permanent one on every card is four
+   arrows pointing nowhere in particular; this one says which card you are on. */
+.pcard__go {
+  flex: none;
+  color: var(--text-faint);
+  opacity: 0;
+  transform: translateX(-3px);
+  transition:
+    opacity var(--motion),
+    transform var(--motion),
+    color var(--motion);
+}
+.pcard:hover .pcard__go,
+.pcard:focus-visible .pcard__go {
+  opacity: 1;
+  transform: none;
+  color: var(--accent);
+}
+.pcard__from {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  min-height: 20px;
+}
+.pcard__from-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+/* Three figures on one baseline, each labelled. Colour marks only what is owed:
+   a feature count is never anything but neutral. */
+.pcard__figs {
+  display: flex;
+  gap: var(--space-5);
+  padding-top: var(--space-1);
+}
+.pcard__fig {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.pcard__fig b {
+  font-size: var(--text-xl);
+  font-weight: 550;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.pcard__fig small {
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.pcard__fig.is-open b {
+  color: var(--accent);
+}
+.pcard__fig.is-conflict b {
+  color: var(--conflict);
+}
+.pcard__foot {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.pcard__foot small {
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
+}
+
+/* Across every product rather than inside one, so it wants its own rhythm: it
+   is a summary of the grid below it, not a header for a single screen. */
+.stats--portfolio {
+  margin-bottom: var(--space-5);
 }
 .card-link {
   border: 1px solid var(--border);

@@ -777,7 +777,7 @@ def test_starting_a_run_returns_202_with_something_to_poll(
         json={
             "connection_id": connection_id,
             "target_kind": "github_pr",
-            "target": "acme/gateway#42",
+            "target": "acme/gateway#99",
         },
     )
 
@@ -819,7 +819,7 @@ def test_a_run_against_an_unknown_connection_is_a_404(
         json={
             "connection_id": str(uuid.uuid4()),
             "target_kind": "github_pr",
-            "target": "acme/gateway#42",
+            "target": "acme/gateway#99",
         },
     )
 
@@ -837,7 +837,7 @@ def test_a_viewer_may_not_start_a_run(
         json={
             "connection_id": connection_id,
             "target_kind": "github_pr",
-            "target": "acme/gateway#42",
+            "target": "acme/gateway#99",
         },
     )
 
@@ -875,7 +875,7 @@ def test_a_connection_written_with_a_different_key_fails_loudly(
         json={
             "connection_id": str(stale),
             "target_kind": "github_pr",
-            "target": "acme/gateway#42",
+            "target": "acme/gateway#99",
         },
     )
 
@@ -978,3 +978,63 @@ def test_the_header_cannot_be_used_to_claim_humanness(
     assert [event.actor_kind for event in _events(seeded, EventType.NODE_CONFIRMED)] == [
         ActorKind.AUTOMATED
     ]
+
+
+def test_re_running_an_already_ingested_artifact_is_refused(
+    client: TestClient, with_product: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The guard from 2026-08-19. `acme/gateway#42` is in the seed, so this is a
+    real re-run: it would duplicate every claim that artifact produced, and the
+    copies would be identical except for their ids."""
+    connection_id = _connect(client, with_product, monkeypatch)
+
+    response = client.post(
+        f"/products/{with_product}/runs",
+        json={
+            "connection_id": connection_id,
+            "target_kind": "github_pr",
+            "target": "acme/gateway#42",
+        },
+    )
+
+    assert response.status_code == 409
+    assert "already ingested" in response.json()["detail"]
+
+
+def test_the_refusal_names_the_feature_the_artifact_is_already_in(
+    client: TestClient, with_product: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """So a PM can go look at it rather than guess why they were stopped."""
+    connection_id = _connect(client, with_product, monkeypatch)
+
+    response = client.post(
+        f"/products/{with_product}/runs",
+        json={
+            "connection_id": connection_id,
+            "target_kind": "github_pr",
+            "target": "acme/gateway#42",
+        },
+    )
+
+    assert "Rate-limit the gateway per client IP" in response.json()["detail"]
+
+
+def test_an_epic_is_not_blocked_because_it_names_no_single_artifact(
+    client: TestClient, with_product: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The guard's known gap, asserted so it is a decision rather than a
+    surprise: an epic expands to many artifacts and the target names none of
+    them, so re-running one still duplicates until Phase 3."""
+    connection_id = _connect(client, with_product, monkeypatch)
+    monkeypatch.setattr("atlas.api.routes.execute_run", lambda *a, **k: None)
+
+    response = client.post(
+        f"/products/{with_product}/runs",
+        json={
+            "connection_id": connection_id,
+            "target_kind": "jira_epic",
+            "target": "SCRUM-1",
+        },
+    )
+
+    assert response.status_code == 202

@@ -34,7 +34,7 @@ export function SignIn({
           Atlas
         </div>
         <p className="signin__lede">
-          Everything your team already wrote about a feature, gathered in one place — so you can
+          Everything your team already wrote about a feature, gathered in one place, so you can
           decide what is actually true.
         </p>
 

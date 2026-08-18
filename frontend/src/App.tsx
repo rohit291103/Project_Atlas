@@ -156,7 +156,7 @@ export function App() {
         navigate({ name: "products" }, true);
       } catch (caught) {
         setSignInError(
-          caught instanceof ApiError ? caught.message : "Couldn't sign in — is the API running?",
+          caught instanceof ApiError ? caught.message : "Couldn't sign in. Is the API running?",
         );
       }
     },

@@ -309,7 +309,7 @@ export function ReviewPage({
     } else {
       setNote(
         "Nothing to undo back to: a claim can't return to “to review”. The log only moves " +
-          "forward — confirm, edit or reject it instead.",
+          "forward. Confirm, edit or reject it instead.",
       );
       return;
     }
@@ -764,7 +764,7 @@ export function ReviewPage({
                 </span>
               </>
             ) : (
-              <span>read-only — your role is {role}</span>
+              <span>read-only, your role is {role}</span>
             )}
             <span className="hints__end">
               {/* Says what the key will do, not what it did last time. A hint
@@ -947,7 +947,7 @@ function Versus({
           crossesSource(node, others[0]!) ? (
             <>
               {sourceLabel(node)} and {sourceLabel(others[0]!)} disagree
-              <span className="versus__why">— no single tool could have told you</span>
+              <span className="versus__why">(no single tool could have told you)</span>
             </>
           ) : (
             <>Two claims in {sourceLabel(node)} disagree</>
@@ -956,7 +956,7 @@ function Versus({
           <>
             {others.length} claims contradict this one
             {others.some((other) => crossesSource(node, other)) && (
-              <span className="versus__why">— across tools</span>
+              <span className="versus__why">(across tools)</span>
             )}
           </>
         )}
@@ -1017,7 +1017,7 @@ function Evidence({ node }: { node: Node }) {
           <Doc key={ref.id} ref_={ref} />
         ))}
         <p className="ev__note">
-          Every excerpt is literal text from the source, never a paraphrase — that is what makes a
+          Every excerpt is literal text from the source, never a paraphrase. That is what makes a
           claim checkable rather than merely plausible.
         </p>
       </div>
@@ -1161,7 +1161,7 @@ function InlineEditor({
           Cancel
         </button>
         <span className="composer__hint">
-          The source excerpt stays as it was — editing changes the claim, never its provenance.
+          The source excerpt stays as it was. Editing changes the claim, never its provenance.
         </span>
       </div>
     </div>

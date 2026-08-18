@@ -325,10 +325,14 @@ export function inView(node: Node, view: QueueView, conflicts: Map<string, Node[
   return node.status === "unconfirmed" || conflicts.has(node.id);
 }
 
-/** Three pips for the three extraction confidence levels; an em dash for a
- * manually-added node, which is unscored by design (TRD §6). */
+/** Three pips for the three extraction confidence levels; `n/a` for a
+ * manually-added node, which is unscored by design (TRD §6).
+ *
+ * `n/a` rather than the bare dash this used to return: a lone dash in a data
+ * slot has to be decoded before it can be read as "there is no number here",
+ * and it is the same glyph the prose everywhere else has now stopped using. */
 export function pipsFor(node: Node): string {
-  if (node.confidence_score === null || node.confidence_score === undefined) return "—";
+  if (node.confidence_score === null || node.confidence_score === undefined) return "n/a";
   if (node.confidence_score >= 0.8) return "●●●";
   if (node.confidence_score >= 0.5) return "●●○";
   return "●○○";

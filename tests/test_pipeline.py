@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from atlas.extraction.agent import ExtractionError, ExtractionResult
 from atlas.models.schema import (
     CreatedBy,
+    EventType,
     IngestionRunPayload,
     Node,
     NodeType,
@@ -32,6 +33,7 @@ from atlas.pipeline import (
     RunRequest,
     TargetError,
     UnsupportedHostError,
+    artifact_external_id,
     parse_target,
     run_ingestion,
 )
@@ -325,3 +327,80 @@ def test_the_github_target_regex_cannot_smuggle_jql() -> None:
     for hostile in ['" OR project = "SECRET', 'a" ORDER BY created DESC--', "a b", "a'b"]:
         with pytest.raises(TargetError):
             parse_target(RunTargetKind.JIRA_LABEL, hostile)
+
+
+# --- re-running the same artifact (2026-08-19) ---------------------------------
+#
+# This documents a defect rather than a guarantee. Engineering Philosophy §5
+# ("Re-running ingestion must never duplicate or corrupt existing data") reads as
+# binding from Phase 1 onward, and nothing enforces it: node ids are minted per
+# run and the projection accumulates runs into a scope rather than reconciling
+# them. Real idempotency is Phase 3, with incremental sync, so that node identity
+# is designed once rather than twice.
+#
+# Until then the API refuses the second run outright (see `test_api.py` --
+# a hard block, `docs/decisions/2026-08-19-...` decision 5). These tests sit
+# *below* that block, on `pipeline` itself, so the underlying behaviour has a
+# recorded baseline the Phase 3 fix can be measured against. When idempotency
+# lands, these are the tests that must change, and changing them is the signal
+# that the guarantee became real.
+
+
+def test_re_running_the_same_artifact_duplicates_every_claim(
+    session_factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _stub_github(monkeypatch, lambda **kwargs: (_payload(), _result()))
+
+    run_ingestion(session_factory, request=_request(), credential=GitHubCredential(TOKEN))
+    run_ingestion(session_factory, request=_request(), credential=GitHubCredential(TOKEN))
+
+    assert _types(session_factory).count("node_created") == 2
+
+
+def test_the_duplicate_claims_are_indistinguishable_except_by_id(
+    session_factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Why the block is a block and not a warning: the copies say the same thing,
+    cite the same excerpt and carry the same confidence, so a reviewer has no way
+    to tell which one they already ruled on -- and could confirm one while
+    rejecting the other."""
+    _stub_github(monkeypatch, lambda **kwargs: (_payload(), _result()))
+
+    run_ingestion(session_factory, request=_request(), credential=GitHubCredential(TOKEN))
+    run_ingestion(session_factory, request=_request(), credential=GitHubCredential(TOKEN))
+
+    with session_factory() as session:
+        created = [
+            row.payload
+            for row in session.execute(select(EventLog).order_by(EventLog.sequence)).scalars()
+            if row.event_type is EventType.NODE_CREATED
+        ]
+
+    first, second = created
+    assert first["id"] != second["id"]
+    assert first["content"] == second["content"]
+    assert first["source_refs"][0]["excerpt"] == second["source_refs"][0]["excerpt"]
+
+
+def test_a_single_artifact_target_names_the_id_it_would_be_stored_under() -> None:
+    """What the re-run block compares against. Must match exactly what extraction
+    stamps on the artifact (`agent.py`), or the block silently never fires."""
+    assert artifact_external_id(RunTargetKind.GITHUB_PR, "acme/web#42") == "acme/web#42"
+    assert artifact_external_id(RunTargetKind.GITHUB_PR, " acme/web#42 ") == "acme/web#42"
+    assert artifact_external_id(RunTargetKind.JIRA_ISSUE, " scrum-6 ") == "SCRUM-6"
+
+
+def test_a_malformed_target_names_no_id_because_it_never_parses() -> None:
+    """The block inherits `parse_target`'s strictness rather than softening it --
+    a target too malformed to ingest is also too malformed to compare."""
+    with pytest.raises(TargetError):
+        artifact_external_id(RunTargetKind.GITHUB_PR, "https://github.com/acme/web/pull/42")
+
+
+def test_a_multi_artifact_target_names_no_single_id() -> None:
+    """An epic or a label expands to many artifacts, none of which the target
+    names, so there is nothing to compare and the block does not apply. This is a
+    known gap in the guard, not an oversight -- re-running an epic still
+    duplicates, and only real idempotency (Phase 3) closes it."""
+    assert artifact_external_id(RunTargetKind.JIRA_EPIC, "SCRUM-1") is None
+    assert artifact_external_id(RunTargetKind.JIRA_LABEL, "checkout") is None
