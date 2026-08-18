@@ -238,7 +238,30 @@ body {
   font-family: var(--font-sans);
   font-size: var(--text-base);
   line-height: 1.5;
+  /* Dark is the canonical surface, and light text on a dark ground needs the
+     greyscale renderer or it blooms. Light mode is the opposite case and is
+     handled below — this is not a global. */
   -webkit-font-smoothing: antialiased;
+}
+
+/* Dark-on-light gets the subpixel renderer back.
+ *
+ * `-webkit-font-smoothing: antialiased` was set once, on `body`, for every
+ * theme. On macOS that is the right call against a dark ground and the wrong one
+ * against a light one: it strips ~half a weight step off dark text on white, so
+ * the light theme rendered thin and washed out at every size — most visibly on
+ * the 24px claim, which is the one thing on the screen a reviewer has to read
+ * closely. The weights are unchanged; this just stops light mode from silently
+ * losing a fraction of each of them. */
+:root[data-theme="light"] body {
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) body {
+    -webkit-font-smoothing: auto;
+    -moz-osx-font-smoothing: auto;
+  }
 }
 
 :where(button, a, input, textarea, select, [tabindex]):focus-visible {
@@ -1614,7 +1637,13 @@ body.is-resizing {
   font-size: var(--text-xl);
   line-height: 1.38;
   letter-spacing: -0.014em;
-  font-weight: 450;
+  /* Was `450`, which was the only 450 in this file — every other sans weight in
+     the product is 400, 500, 550 or 600. At 24px that made the one piece of text
+     the screen exists to show the *lightest* sans on it, which is why it read as
+     a different typeface rather than as the hero. It takes the same token the
+     rest of the UI takes; the size is what makes it the hero, not a weight
+     nothing else uses. */
+  font-weight: var(--weight-medium);
   text-wrap: pretty;
   margin: 0;
   /* Capped by measure, not by the pane. The old 36ch cap was chosen to survive a

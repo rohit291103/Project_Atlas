@@ -434,6 +434,37 @@ test("every label on the review screen belongs to one type system", async ({ pag
   await expect(page.locator(".rv__title")).toHaveCount(1);
 });
 
+test("the claim is set in the same weight system as everything around it", async ({ page }) => {
+  await openFirstFeature(page, EDITOR);
+
+  /* `.claim` was `font-weight: 450` — the only 450 in the stylesheet, next to 92
+     uses of 500, 14 of 550, 17 of 600 and 4 of 400. At 24px that made the one
+     piece of text the whole screen exists to show the *lightest* sans on it,
+     which is why it read as a different typeface rather than as the hero. The
+     size is what makes it the hero; the weight belongs to the system. */
+  const weights = await page.evaluate(() => {
+    const seen = new Set<string>();
+    for (const el of document.querySelectorAll("*")) {
+      const ownsText = [...el.childNodes].some(
+        (n) => n.nodeType === Node.TEXT_NODE && n.textContent?.trim(),
+      );
+      if (!ownsText) continue;
+      seen.add(getComputedStyle(el).fontWeight);
+    }
+    return [...seen].sort();
+  });
+  expect(weights).toEqual(["400", "500", "550", "600"]);
+
+  // And light mode gets the subpixel renderer back. `-webkit-font-smoothing:
+  // antialiased` was global, which on macOS strips about half a weight step off
+  // dark-on-light text — the light theme rendered thin at every size.
+  await page.getByRole("button", { name: /theme/i }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  expect(
+    await page.evaluate(() => getComputedStyle(document.body).webkitFontSmoothing),
+  ).toBe("auto");
+});
+
 test("the claim and its evidence are adjacent, and the rulings follow the claim", async ({
   page,
 }) => {
