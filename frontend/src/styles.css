@@ -88,6 +88,11 @@
   --text-base: 15px;
   --text-lg: 18px;
   --text-xl: 24px;
+  /* One step above `--text-xl`, and it exists for exactly one job: the product
+     dashboard's stat figures. A count a PM is meant to take in at a glance is a
+     different thing from a heading, and borrowing the heading size for it made
+     four figures read as four small headings. Never used for prose. */
+  --text-2xl: 30px;
 
   /* Weight as a token, because "small, dim and 400" was the actual failure.
    * Geist is a variable font, so 500 costs nothing to load. Small UI text —
@@ -125,8 +130,12 @@
   --brand-edge: color-mix(in srgb, var(--brand-2) 42%, transparent);
 
   --rail-width: 232px;
-  --queue-width: 300px;
-  --evidence-width: 360px;
+  /* The review screen's queue used to be `--queue-width: 300px` and its evidence
+     column `--evidence-width: 360px` — one guess about claim length, made once
+     for every display the product will ever run on. The queue is now dragged by
+     the reviewer and persisted per browser (`ReviewPage.tsx`), and evidence is a
+     card in a reflowing stack rather than a column, so neither constant has
+     anything left to decide. `--rail-width` stays: the rail is chrome. */
   --motion: 130ms cubic-bezier(0.2, 0.6, 0.3, 1);
 }
 
@@ -625,7 +634,7 @@ kbd {
   display: flex;
   align-items: center;
   gap: 7px;
-  margin: var(--space-2) 6px;
+  margin: 0 6px var(--space-2);
   padding: 0 var(--space-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -661,42 +670,117 @@ kbd {
   flex: none;
 }
 
-/* In-product navigation, grouped by the loop the product runs — connect, then
-   review — rather than as one flat list of screens. The group labels are the
-   same verbs the landing page and the sign-in panel use, so the product has one
-   vocabulary rather than a marketing one and an internal one. */
-.rail__group {
+/* In-product navigation.
+ *
+ * These three destinations used to sit under mono all-caps group headings —
+ * "CONNECT" over `Sources`, "REVIEW" over `Conflicts` — and because every group
+ * held exactly one item, the rail rendered as a single column of alternating
+ * type sizes with no readable parent/child relationship anywhere in it. A
+ * heading over one child is noise a reader has to decode before dismissing, and
+ * an 11px all-caps label sitting one row above a 13px link reads as a sibling of
+ * it, not as its parent.
+ *
+ * So the headings are gone and a leading glyph does the distinguishing instead:
+ * a row with an icon is unmistakably a place you can go. The loop those labels
+ * named — connect, then review — survives in the order. The one heading left in
+ * the rail sits over the feature list, which is the only place here that has a
+ * list for a heading to head.
+ */
+.rail__nav {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  margin-top: var(--space-4);
-}
-.rail__group-label {
-  font-family: var(--font-mono);
-  font-size: var(--text-micro);
-  font-weight: var(--weight-medium);
-  letter-spacing: 0.13em;
-  text-transform: uppercase;
-  color: var(--text-faint);
-  padding: 0 var(--space-2) 6px;
+  padding: var(--space-2) 6px;
+  border-bottom: 1px solid var(--border);
 }
 .rail__nav-item {
-  padding: 5px var(--space-2);
-  border-radius: var(--radius-sm);
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px var(--space-2);
+  border-radius: var(--radius-md);
   color: var(--text-dim);
   text-decoration: none;
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
+  transition:
+    background var(--motion),
+    color var(--motion);
+}
+.rail__nav-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rail__nav-icon {
+  flex: none;
+  color: var(--text-faint);
+  transition: color var(--motion);
 }
 .rail__nav-item:hover {
   background: var(--raised);
   color: var(--text);
 }
+.rail__nav-item:hover .rail__nav-icon {
+  color: var(--text-dim);
+}
+/* Three signals for the active row, not one: the surface lifts, the glyph takes
+   the brand rule's colour, and a bar marks the edge. Colour alone is close to
+   invisible in the light theme's flatter palette, and it is also the one
+   encoding a reader with a colour deficiency doesn't get. */
 .rail__nav-item.is-active {
   background: var(--raised);
   color: var(--text);
-  box-shadow: inset 2px 0 0 var(--brand-2);
+  font-weight: 550;
 }
+.rail__nav-item.is-active .rail__nav-icon {
+  color: var(--brand-2);
+}
+.rail__nav-item.is-active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--brand-2);
+}
+
+/* The feature list's header — the rail's only section label, and the only one
+   that ever had a list under it. It reads as a heading because of what surrounds
+   it (a hairline above, its filter below, no sibling row wearing the same type)
+   rather than by being smaller and fainter than everything else, which is how
+   the old group labels tried and failed to. */
+.rail__section {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-3) 6px;
+}
+.rail__group-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.rail__section-n {
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-faint) 14%, transparent);
+}
+
 /* Work-left badges. The rail's job changed with these: it was a directory of
    feature names and it is now a queue you can navigate by how much is owed. */
 .rail__badge {
@@ -720,13 +804,6 @@ kbd {
   color: var(--status-confirmed);
   font-size: var(--text-xs);
 }
-.rail__nav-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-
 .rail__hint {
   padding: var(--space-3) var(--space-2);
   margin: 0;
@@ -783,6 +860,7 @@ kbd {
   padding: 0;
 }
 .rail__item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 7px;
@@ -794,7 +872,7 @@ kbd {
   background: none;
   border: 0;
   color: var(--text-dim);
-  padding: 5px var(--space-2) 5px 15px;
+  padding: 6px var(--space-2) 9px 10px;
   border-radius: var(--radius-md);
   cursor: pointer;
   text-decoration: none;
@@ -817,6 +895,34 @@ kbd {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* How far into a feature you already are, as a hairline under its row.
+   The badge says how much is left, which is not the same question: "20 to go"
+   means something different on an untouched feature and on one you are nearly
+   through, and the badge alone cannot tell them apart. Kept at low contrast
+   until the row is hovered or open — twenty of these at full strength would be
+   a chart nobody asked for. */
+.rail__item-meter {
+  position: absolute;
+  left: 10px;
+  right: var(--space-2);
+  bottom: 3px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--border);
+  overflow: hidden;
+  opacity: 0.5;
+  transition: opacity var(--motion);
+}
+.rail__item-meter span {
+  display: block;
+  height: 100%;
+  background: var(--status-confirmed);
+}
+.rail__item:hover .rail__item-meter,
+.rail__item--active .rail__item-meter {
+  opacity: 1;
+}
+
 .rail__count {
   font-family: var(--font-mono);
   font-size: var(--text-micro);
@@ -1020,6 +1126,114 @@ kbd {
   color: var(--conflict);
 }
 
+/* --- the product dashboard -------------------------------------------------
+ *
+ * "Overview" used to open a title, a one-line summary, and a list of features —
+ * a directory with a sentence on top. It answered the question a PM asks second
+ * ("which feature do I open?") without ever answering the one they ask first:
+ * *how much is there, and how much of it is mine to do?* Four figures and a
+ * meter answer that in a glance, and the worklist underneath them becomes the
+ * dive-in rather than the whole screen.
+ *
+ * Every number is `ScopeCounts` off the projection — the same datum the rail
+ * badges, the Conflicts nav entry and the review bar read. Nothing here is
+ * derived a second way, which is the failure mode a dashboard invites.
+ */
+.dash {
+  margin-bottom: var(--space-6);
+}
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.stat {
+  display: grid;
+  gap: 7px;
+  align-content: start;
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+/* The same treatment as `.card__title` on the review screen, deliberately. A
+   label over a figure and a label over a card sit at the same level of the
+   hierarchy, and giving them two different looks is precisely how the review
+   screen ended up with three mismatched pane headers. */
+.stat__label {
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.stat__n {
+  font-size: var(--text-2xl);
+  font-weight: 550;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.stat__note {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  color: var(--text-faint);
+}
+/* Colour goes on the figure, never on the tile. A tinted panel reads as an
+   alert, and a backlog is not an alert: a draft awaiting a person is this
+   product's normal resting state (Engineering Philosophy §2). Amber stays
+   reserved for the one thing that really is a decision nobody has made. */
+.stat--open .stat__n {
+  color: var(--accent);
+}
+.stat--conflict {
+  border-color: var(--conflict-line);
+}
+.stat--conflict .stat__n {
+  color: var(--conflict);
+}
+.stat--clear .stat__n {
+  color: var(--status-confirmed);
+}
+.stat__go {
+  color: var(--conflict);
+  text-decoration: none;
+  font-weight: var(--weight-medium);
+}
+.stat__go:hover {
+  text-decoration: underline;
+}
+
+.dash__meter {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.dash__meter-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  font-size: var(--text-sm);
+  color: var(--text-dim);
+}
+.dash__meter-line b {
+  font-weight: 550;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
 .composer {
   display: flex;
   flex-direction: column;
@@ -1054,74 +1268,539 @@ kbd {
   line-height: 1.5;
 }
 
-/* --- review: four zones ---------------------------------------------------- */
+/* --- review: one bar, two panes, a reflowing workspace ---------------------
+ *
+ * This replaces three fixed vertical panes (`queue | stage | evidence`, at
+ * 300px | 1fr | 360px). That layout fixed the density problem it was built for
+ * and introduced three of its own, all of them visible in a screenshot:
+ *
+ *   1. Three panes, three headers, three different treatments. The queue's was
+ *      sans 13/550 in full-strength ink; the other two were 11px mono all-caps
+ *      in the faintest grey on the palette. Three headings at the same y, at the
+ *      same level of the hierarchy, styled as though they came from different
+ *      applications.
+ *   2. A claim capped at 36ch inside a ~950px column, with the action row
+ *      sticky-pinned to the bottom of the viewport — several hundred pixels of
+ *      nothing between the sentence and the buttons that rule on it.
+ *   3. Widths nobody could change: every claim clipped to two lines at exactly
+ *      300px, whether the display was 1280px or 3440px wide.
+ *
+ * The shape now is a title bar, a resizable queue, and a workspace whose cards
+ * *reflow*. Claim and evidence are grid siblings rather than fixed panes, so they
+ * sit abreast when there is room — the adjacency the whole trust model rests on —
+ * and stack when there isn't. Driven by a container query on the workspace, not a
+ * viewport media query, because its width is now something the reviewer sets.
+ */
 
-.zones {
-  display: grid;
-  grid-template-columns: var(--queue-width) minmax(0, 1fr) var(--evidence-width);
+.rv {
+  display: flex;
+  flex-direction: column;
   height: 100%;
   min-height: 0;
 }
-.zone {
-  border-right: 1px solid var(--border);
+
+/* The bar: the screen's one heading, and the only sans heading on it. */
+.rv__bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: 52px;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.rv__collapse {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 27px;
+  height: 27px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition:
+    color var(--motion),
+    background var(--motion),
+    border-color var(--motion);
+}
+.rv__collapse:hover {
+  color: var(--text);
+  background: var(--raised);
+  border-color: var(--border);
+}
+.rv__collapse.is-collapsed {
+  color: var(--accent);
+  border-color: var(--border);
+}
+
+.rv__id {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+.rv__title {
+  margin: 0;
+  min-width: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: -0.014em;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The "assembled from" strip the design baseline speced (§6.6a) and the build
+   never had: the screen whose argument is cross-source assembly never once said
+   what it had been assembled from. */
+.rv__from {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.rv__from-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+/* Progress lives in the bar, not in the queue's foot: it is a fact about the
+   feature, and putting it inside the list made it look like a fact about
+   whichever slice of the list was currently filtered into view. */
+.rv__prog {
+  flex: none;
+  display: grid;
+  gap: 5px;
+  width: 170px;
+}
+.rv__prog-n {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.rv__prog-n b {
+  color: var(--text);
+  font-weight: var(--weight-medium);
+}
+.rv__prog-of {
+  color: var(--text-faint);
+}
+.meter__track {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--sunken);
+  overflow: hidden;
+  display: block;
+}
+.meter__fill {
+  display: block;
+  height: 100%;
+  background: var(--status-confirmed);
+  transition: width var(--motion);
+}
+.meter__track--lg {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border);
+}
+
+/* Amber, as a pill rather than a line of text, because it is the one thing on
+   this bar a reviewer should be able to find without reading it. */
+.queue__conflicts {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  border: 1px solid var(--conflict-line);
+  border-radius: 999px;
+  background: var(--conflict-soft);
+  color: var(--conflict);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: border-color var(--motion);
+}
+.queue__conflicts:hover {
+  border-color: var(--conflict);
+}
+
+/* Two panes and a handle. `--queue-w` comes in inline from React and is
+   persisted per browser, so a width you set once survives navigation. */
+.rv__body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: var(--queue-w, 320px) 5px minmax(0, 1fr);
+}
+.rv__body.is-collapsed {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.rv__queue {
   min-width: 0;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  background: var(--sunken);
 }
-.zone:last-child {
-  border-right: 0;
+
+/* A control, not a border. 5px is what a pointer can actually land on, and the
+   `::after` widens the hit area another 3px each side without widening the line
+   you see. `col-resize` on the body during the drag keeps the cursor from
+   flickering as the pointer outruns the handle. */
+.rv__grip {
+  position: relative;
+  cursor: col-resize;
+  border: 0;
+  background: var(--border);
+  transition: background var(--motion);
 }
-.zone__head {
-  height: 38px;
+.rv__grip::after {
+  content: "";
+  position: absolute;
+  inset: 0 -3px;
+}
+.rv__grip:hover,
+.rv__grip:focus-visible {
+  background: var(--accent);
+  outline: none;
+}
+body.is-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.rv__work {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* The workspace reflows on its *own* width rather than the viewport's, because
+     its width is what the reviewer changes by dragging the handle. A viewport
+     media query would hold the two-column spread while someone squeezed the pane
+     down to 400px — precisely the case container queries exist for. */
+  container-type: inline-size;
+  container-name: work;
+}
+.rv__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-4);
+}
+.rv__stack {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+.rv__col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+@container work (min-width: 880px) {
+  .rv__stack {
+    grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+  }
+}
+@container work (min-width: 1380px) {
+  .rv__scroll {
+    padding: var(--space-5) var(--space-6);
+  }
+  .rv__stack {
+    max-width: 1560px;
+  }
+}
+
+/* --- the card, and its one head treatment ---------------------------------
+ *
+ * The structural half of the fix for the mismatched pane headers. A heading is no
+ * longer something each pane styles for itself — THE CLAIM, WHERE IT CAME FROM,
+ * RELATED and ALSO FROM THIS SOURCE all resolve to `.card__title`, so they
+ * cannot drift apart again by anyone forgetting to match them.
+ */
+.card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  min-width: 0;
+  overflow: hidden;
+}
+.card__head {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 0 var(--space-3);
+  gap: var(--space-2);
+  min-height: 37px;
+  padding: 0 var(--space-4);
   border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--sunken) 55%, transparent);
+}
+.card__title {
   font-family: var(--font-mono);
   font-size: var(--text-micro);
   font-weight: var(--weight-medium);
-  letter-spacing: 0.11em;
+  letter-spacing: 0.13em;
   text-transform: uppercase;
   color: var(--text-faint);
-  flex: none;
-}
-.zone__head-title {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
-  text-transform: none;
-  letter-spacing: 0;
-  font-family: var(--font-sans);
-  font-size: var(--text-sm);
-  color: var(--text);
-  font-weight: 550;
+}
+.card__n {
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-faint) 15%, transparent);
+}
+.card__head-end {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  padding: 5px 0;
+}
+.card__body {
+  padding: var(--space-4);
 }
 
-/* queue */
+/* Quoted source material keeps the one warm surface in the product. It was a
+   full-height column and it is a card now, but the temperature is what made it
+   read as *evidence* rather than as more UI, so the temperature stays. */
+.card--paper {
+  background: var(--paper);
+  border-color: var(--paper-edge);
+}
+.card--paper .card__head {
+  border-bottom-color: var(--paper-edge);
+  background: color-mix(in srgb, var(--paper-edge) 45%, transparent);
+}
+.card--paper .card__title,
+.card--paper .card__n {
+  color: var(--paper-dim);
+}
+.card--paper .card__n {
+  background: color-mix(in srgb, var(--paper-dim) 18%, transparent);
+}
+
+/* --- the claim ------------------------------------------------------------- */
+
+.card--claim .card__body {
+  padding: var(--space-5) var(--space-5) var(--space-4);
+}
+.claim {
+  font-size: var(--text-xl);
+  line-height: 1.38;
+  letter-spacing: -0.014em;
+  font-weight: 450;
+  text-wrap: pretty;
+  margin: 0;
+  /* Capped by measure, not by the pane. The old 36ch cap was chosen to survive a
+     950px column and drew a narrow ribbon down the middle of it instead; 44ch of
+     24px text is a comfortable two-to-three-line claim inside a card that is
+     itself already bounded. */
+  max-width: 44ch;
+  /* Three lines of space whether the claim needs them or not (1.38 line-height
+     × 3). Two things fall out of it. A one-line claim stops rendering as a
+     snippet in a card that has shrunk to fit it, and — the reason it is here —
+     the ruling buttons underneath stay put while you walk the queue with `j`.
+     Sized in `em` rather than `lh` so it holds on any browser that can render
+     the rest of this stylesheet. */
+  min-height: 4.14em;
+}
+.stage__empty {
+  color: var(--text-dim);
+  font-size: var(--text-sm);
+  max-width: 46ch;
+}
+
+/* The three rulings, where the reading ends.
+   They used to be a sticky bar at the foot of the pane with a gradient fading
+   whatever passed behind it — which on a tall display put a few hundred pixels
+   of empty column between a claim and the buttons that rule on it, a hole in the
+   middle of the screen's one job. Part of the card now, so they follow the
+   sentence however long it is. */
+.actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+.hints {
+  border-top: 1px solid var(--border);
+  padding: 9px var(--space-4);
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  color: var(--text-faint);
+  display: flex;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  align-items: center;
+  flex: none;
+  background: var(--surface);
+}
+.hints__end {
+  margin-left: auto;
+}
+
+/* --- the queue ------------------------------------------------------------- */
+
 .queue__scroll {
   overflow-y: auto;
   flex: 1;
-  padding-bottom: var(--space-2);
+  padding-bottom: var(--space-4);
   min-height: 0;
 }
+/* Three segments, always visible, each carrying its own count. A dropdown would
+   have been smaller, but a filter whose state is hidden is how a reader ends up
+   convinced claims have gone missing — and "Needs ruling" is the default, so
+   something *is* always being hidden. */
+.qviews {
+  flex: none;
+  display: flex;
+  gap: 2px;
+  padding: var(--space-2) var(--space-2) var(--space-1);
+  border-bottom: 1px solid var(--border);
+}
+.qview {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-faint);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background var(--motion),
+    color var(--motion);
+}
+.qview:hover {
+  color: var(--text-dim);
+}
+.qview.is-active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.qview__n {
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+
+/* The settled pile, as one line. Finished work should be reachable, not in the
+   way — and saying how much is hidden is what keeps "reachable" honest. */
+.qdone {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text-faint);
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--border);
+  text-align: left;
+  cursor: pointer;
+}
+.qdone:hover {
+  color: var(--text-dim);
+}
+.qdone__show {
+  margin-left: auto;
+  color: var(--accent);
+}
+.qempty {
+  margin: var(--space-5) var(--space-3);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--text-faint);
+}
+
+/* A group and its claims, wrapped together. There is nothing to style here and
+   the element is still load-bearing: `.qgroup` below is `position: sticky`, and
+   a sticky element only travels as far as its own parent. Without this wrapper
+   every group header would stick to the top of the whole list and the last one
+   would sit over claims belonging to a different group. */
+.qsection {
+  display: block;
+}
+
 .qgroup {
   font-family: var(--font-mono);
   font-size: var(--text-micro);
   font-weight: var(--weight-medium);
-  letter-spacing: 0.11em;
+  letter-spacing: 0.13em;
   text-transform: uppercase;
   color: var(--text-faint);
   padding: var(--space-4) var(--space-3) 5px;
   display: flex;
   gap: 6px;
   align-items: baseline;
+  /* Sticky, because the group a claim belongs to is the answer to "why am I
+     being asked this?" and scrolling a long feature used to take it off screen. */
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--sunken);
 }
+.qgroup__label {
+  flex: 1;
+}
+/* Was a bare span straight after the label with a 6px gap, so "How it was
+   decided" + "done" rendered as HOW IT WAS DECIDED DONE — one phrase, reading
+   like a typo. A pill separates the status from the name of the group. */
 .qgroup__n {
-  opacity: 0.7;
+  flex: none;
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-faint) 16%, transparent);
+  color: var(--text-faint);
+}
+.qgroup__n.is-open {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
 }
 .qitem {
   display: grid;
@@ -1136,14 +1815,14 @@ kbd {
   color: var(--text-dim);
   font-weight: var(--weight-medium);
   cursor: pointer;
-  padding: 6px var(--space-3) 6px 10px;
+  padding: 7px var(--space-3) 7px 10px;
   transition:
     background var(--motion),
     color var(--motion),
     border-color var(--motion);
 }
 .qitem:hover {
-  background: var(--sunken);
+  background: var(--surface);
   color: var(--text);
 }
 .qitem--focused {
@@ -1166,13 +1845,17 @@ kbd {
 .qitem--edited .qitem__mark {
   color: var(--status-edited);
 }
+/* Three lines rather than two. The queue is resizable now, so a clamp tuned to
+   a 300px column is no longer the only shape it can take — and two lines cut
+   most real claims mid-clause, which is what made the list look like a wall of
+   truncation rather than a list of sentences. */
 .qitem__text {
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
-  line-height: 1.42;
+  line-height: 1.45;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -1188,72 +1871,123 @@ kbd {
   font-weight: var(--weight-medium);
 }
 
-.queue__foot {
-  border-top: 1px solid var(--border);
-  padding: 9px var(--space-3);
+/* --- a disagreement, shown as two sides ------------------------------------
+ *
+ * This replaces a one-line banner that described the other side in prose with
+ * its claim in quotation marks. That asked a reader to hold two positions from
+ * one sentence, on the screen whose whole argument is that seeing both at once
+ * is the thing no single source tool can give you. Amber, and only amber, is
+ * the conflict colour across the product — nothing else on this screen may use
+ * it, which is what keeps it meaning "a person has to decide this".
+ */
+.versus {
+  padding: var(--space-4);
+  border: 1px solid var(--conflict-line);
+  border-radius: var(--radius-lg);
+  background: var(--conflict-soft);
+}
+.versus__head {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  background: var(--surface);
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--conflict);
+}
+.versus__mark {
   flex: none;
 }
-.meter__track {
-  height: 3px;
-  border-radius: 2px;
-  background: var(--sunken);
-  overflow: hidden;
-  display: block;
-}
-.meter__fill {
-  display: block;
-  height: 100%;
-  background: var(--status-confirmed);
-  transition: width var(--motion);
-}
-.queue__foot-line {
-  display: flex;
-  justify-content: space-between;
-  font-family: var(--font-mono);
-  font-size: var(--text-micro);
-  font-weight: var(--weight-medium);
+.versus__why {
+  font-weight: var(--weight-normal);
   color: var(--text-faint);
-  font-variant-numeric: tabular-nums;
 }
-.queue__conflicts {
-  color: var(--conflict);
-  text-decoration: none;
+/* Stacked by default now: the two sides sit inside one column of a reflowing
+   workspace rather than across a full-width pane, so side-by-side only earns its
+   keep once the workspace itself is wide. Both are on screen either way, which
+   is the promise; abreast is a bonus, not the guarantee. */
+.versus__pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: start;
+  margin-top: var(--space-4);
 }
-.queue__conflicts:hover {
-  text-decoration: underline;
+.versus__others {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
 }
-
-/* stage — one claim at a time */
-.stage__body {
-  padding: var(--space-6) var(--space-6);
-  flex: 1;
-  overflow-y: auto;
-  min-height: 0;
+@container work (min-width: 1560px) {
+  .versus__pair {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  }
 }
-.stage__meta {
+.versus__side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+/* The side you are already looking at is marked, so the pair never becomes a
+   guess about which one is on the stage. */
+.versus__side.is-this {
+  border-color: var(--conflict-line);
+}
+.versus__side header {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin-bottom: var(--space-4);
   flex-wrap: wrap;
 }
-.claim {
-  font-size: var(--text-xl);
-  line-height: 1.36;
-  letter-spacing: -0.014em;
-  font-weight: 450;
-  text-wrap: pretty;
-  margin: 0 0 var(--space-5);
-  max-width: 36ch;
+.versus__side p {
+  margin: 0;
+  font-size: var(--text-base);
+  line-height: 1.5;
 }
-.stage__empty {
-  color: var(--text-dim);
+/* The side already on the stage is set one step down and dimmed. It sits a
+   couple of lines under the claim card, so at equal weight it read as the same
+   sentence printed twice; the pair still has to be *drawn* as a pair — that is
+   the whole argument of the block — but only one half of it is news. */
+.versus__side.is-this p {
   font-size: var(--text-sm);
-  max-width: 46ch;
+  color: var(--text-dim);
+}
+.versus__from {
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  color: var(--text-faint);
+}
+.versus__here {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  color: var(--conflict);
+}
+.versus__side .link-button {
+  align-self: flex-start;
+  margin-top: auto;
+  font-size: var(--text-sm);
+}
+.versus__vs {
+  align-self: center;
+  justify-self: start;
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.versus__both {
+  display: inline-block;
+  margin-top: var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--conflict);
 }
 
 .flagbox {
@@ -1280,55 +2014,85 @@ kbd {
   color: var(--text);
 }
 
-.edges {
-  font-size: var(--text-sm);
-  color: var(--text-dim);
+/* --- related claims -------------------------------------------------------
+ *
+ * The local edges only — a node-link canvas is an explicit non-goal (design
+ * baseline §8, flow spec, the 2026-08-11 UI direction decision) because it
+ * reintroduces the overwhelm this screen removes. These are clickable: the value
+ * of knowing a claim rests on another is being able to go and read it.
+ */
+.edges ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-bottom: var(--space-5);
-  max-width: 62ch;
+  gap: 2px;
 }
-.edges__relation {
-  color: var(--text-faint);
+.edges.card__body {
+  padding: var(--space-2);
 }
-
-.actions {
-  display: flex;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-  align-items: center;
+.edge {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 3px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text-dim);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 8px var(--space-3);
+  cursor: pointer;
+  transition:
+    background var(--motion),
+    color var(--motion);
 }
-
-.hints {
-  border-top: 1px solid var(--border);
-  padding: 8px var(--space-6);
+.edge:hover {
+  background: var(--sunken);
+  color: var(--text);
+}
+/* The relation and the type used to be two fixed columns flanking the claim,
+   which left the claim itself about 180px to say itself in and truncated nearly
+   every one of them. Relation and type now share one line above the claim, so
+   the claim gets the card's full width and two lines to use it. */
+.edge__rel {
   font-family: var(--font-mono);
   font-size: var(--text-micro);
   font-weight: var(--weight-medium);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--text-faint);
-  display: flex;
-  gap: var(--space-4);
-  flex-wrap: wrap;
-  flex: none;
+}
+.edge__tag {
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  color: var(--text-faint);
+  grid-row: 1;
+  justify-self: end;
+}
+.edge__rel {
+  grid-row: 1;
+}
+.edge__what {
+  grid-row: 2;
+  grid-column: 1 / -1;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
-/* evidence — the paper column */
-.ev {
-  background: var(--paper);
-}
-.ev .zone__head {
-  border-bottom-color: var(--paper-edge);
-  color: var(--paper-dim);
-}
+/* --- evidence, as a card -------------------------------------------------- */
+
 .ev__body {
-  padding: var(--space-3);
-  overflow-y: auto;
-  flex: 1;
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  min-height: 0;
 }
 .doc {
   border: 1px solid var(--paper-edge);
@@ -1353,6 +2117,9 @@ kbd {
 }
 .doc__open {
   margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   color: var(--paper-dim);
   text-decoration: none;
   flex: none;
@@ -1383,6 +2150,83 @@ kbd {
 .ev .badge {
   border-color: var(--paper-edge);
   color: var(--paper-dim);
+}
+
+/* What else Atlas read out of the same document — the question a reader has
+   standing right there, answered from provenance already on hand rather than a
+   new fetch. */
+.ev__also.card__body {
+  padding: var(--space-2);
+}
+.ev__also ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.ev__sib {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: start;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  color: var(--text-dim);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 7px var(--space-3);
+  cursor: pointer;
+  transition:
+    background var(--motion),
+    color var(--motion);
+}
+.ev__sib:hover {
+  background: var(--sunken);
+  color: var(--text);
+}
+.ev__sib-mark {
+  font-size: var(--text-micro);
+  line-height: 1.7;
+  color: var(--text-faint);
+}
+.ev__sib-mark.is-confirmed {
+  color: var(--status-confirmed);
+}
+.ev__sib-mark.is-rejected {
+  color: var(--status-rejected);
+}
+.ev__sib-mark.is-edited {
+  color: var(--status-edited);
+}
+/* Two lines is enough to recognise a claim you have already read; the full text
+   is one click away and this list is context, not the subject. */
+.ev__sib-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Below this the bar cannot hold four things on one line without the feature's
+   own name being the thing that gives way, so the progress meter and the
+   conflict pill drop to a second row rather than the title truncating to
+   nothing. */
+@media (max-width: 900px) {
+  .rv__bar {
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-3);
+  }
+  .rv__id {
+    flex: 1 1 100%;
+    order: -1;
+  }
 }
 
 /* --- conflicts ------------------------------------------------------------- */
@@ -1936,11 +2780,17 @@ kbd {
    a stranger is asked to read a three-column product screen, and the queue and
    evidence columns are what make it legible as the real thing rather than a
    mockup. Every 100px here goes to the claim in the middle. */
+/* Section rhythm, tightened 2026-08-18. Every band ran ~104px of padding top
+   *and* bottom, so consecutive sections sat ~208px apart — enough air that the
+   page read as a series of unrelated screens rather than one argument. The
+   scale is now ~76px, still generous, and the ratio between the sections and
+   the space inside them is what changed: the gap between two sections should
+   be larger than the gaps within one, not four times larger. */
 .showcase {
   position: relative;
   max-width: 1440px;
   margin: 0 auto;
-  padding: clamp(48px, 7vw, 104px) clamp(var(--space-4), 4vw, 44px);
+  padding: clamp(40px, 5vw, 76px) clamp(var(--space-4), 4vw, 44px);
   text-align: center;
 }
 .showcase__frame {
@@ -2026,7 +2876,7 @@ kbd {
 .loop {
   max-width: 1080px;
   margin: 0 auto;
-  padding: clamp(48px, 7vw, 96px) clamp(var(--space-4), 5vw, 56px) clamp(32px, 4vw, 56px);
+  padding: clamp(40px, 5vw, 72px) clamp(var(--space-4), 5vw, 56px) clamp(32px, 4vw, 56px);
   text-align: center;
 }
 .loop__diagram {
@@ -2203,7 +3053,7 @@ kbd {
 .how {
   max-width: 1180px;
   margin: 0 auto;
-  padding: clamp(48px, 7vw, 104px) clamp(var(--space-4), 5vw, 56px);
+  padding: clamp(40px, 5vw, 76px) clamp(var(--space-4), 5vw, 56px);
   text-align: center;
 }
 .act {
@@ -2295,7 +3145,7 @@ kbd {
 .conflict-demo {
   max-width: 1180px;
   margin: 0 auto;
-  padding: clamp(48px, 7vw, 104px) clamp(var(--space-4), 5vw, 56px);
+  padding: clamp(40px, 5vw, 76px) clamp(var(--space-4), 5vw, 56px);
   display: grid;
   grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
   gap: clamp(var(--space-5), 5vw, 72px);
@@ -2395,7 +3245,7 @@ kbd {
 .trust {
   max-width: 1180px;
   margin: 0 auto;
-  padding: clamp(48px, 7vw, 104px) clamp(var(--space-4), 5vw, 56px);
+  padding: clamp(40px, 5vw, 76px) clamp(var(--space-4), 5vw, 56px);
 }
 .trust__card {
   position: relative;
@@ -2451,7 +3301,7 @@ kbd {
   position: relative;
   max-width: 1180px;
   margin: 0 auto;
-  padding: clamp(48px, 7vw, 96px) clamp(var(--space-4), 5vw, 56px) clamp(64px, 9vw, 120px);
+  padding: clamp(40px, 5vw, 72px) clamp(var(--space-4), 5vw, 56px) clamp(48px, 6vw, 88px);
   text-align: center;
 }
 .closer::before {
@@ -3416,7 +4266,7 @@ kbd {
 .turn {
   max-width: 1240px;
   margin: 0 auto;
-  padding: clamp(48px, 7vw, 104px) clamp(var(--space-4), 5vw, 56px);
+  padding: clamp(40px, 5vw, 76px) clamp(var(--space-4), 5vw, 56px);
 }
 .turn__intro {
   max-width: 720px;

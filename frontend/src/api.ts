@@ -18,7 +18,15 @@ type Populated<T, K extends keyof T> = Omit<T, K> & Required<Pick<T, K>>;
 
 export type SourceRef = Populated<components["schemas"]["SourceRef"], "id">;
 export type Edge = Populated<components["schemas"]["Edge"], "id">;
-export type Node = Populated<components["schemas"]["Node"], "id" | "updated_at"> & {
+/* `source_refs` is `Omit`-ed before being re-declared, not simply intersected
+ * on: intersecting leaves the property as `RawSourceRef[] & SourceRef[]`, and
+ * `.map` over that resolves to the *first* signature — so a ref read back off a
+ * node arrived un-narrowed and every consumer had to re-assert `id`. Same shape
+ * `FeatureScopeDetail` below already uses for `nodes`/`edges`. */
+export type Node = Omit<
+  Populated<components["schemas"]["Node"], "id" | "updated_at">,
+  "source_refs"
+> & {
   source_refs: SourceRef[];
 };
 /* The rail and the dashboard read rows, not bare identities: a row is the

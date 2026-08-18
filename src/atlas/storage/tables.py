@@ -32,7 +32,7 @@ from sqlalchemy.sql import func
 # EventType lives in models/schema.py (the single source of truth for the domain
 # model); importing it here keeps the Postgres enum from ever drifting from the
 # schema definition. storage -> models is the correct dependency direction.
-from atlas.models.schema import EventType, Role
+from atlas.models.schema import ActorKind, EventType, Role
 from atlas.storage.db import Base
 
 __all__ = ["EventLog", "EventType", "Workspace", "WorkspaceMember", "append_event"]
@@ -84,6 +84,17 @@ class EventLog(Base):
         JSON().with_variant(JSONB(), "postgresql"), nullable=False
     )
     actor: Mapped[str] = mapped_column(Text, nullable=False)
+    #: Whether a person was behind this event (2026-08-18). Rows written before
+    #: this column existed are backfilled `unknown`; `append_event` refuses to
+    #: write that value, so the ambiguous set is closed and cannot grow.
+    actor_kind: Mapped[ActorKind] = mapped_column(
+        Enum(
+            ActorKind,
+            name="actor_kind",
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
+        nullable=False,
+    )
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -155,6 +166,7 @@ def append_event(
     event_type: EventType,
     payload: dict[str, Any],
     actor: str,
+    actor_kind: ActorKind,
     workspace_id: uuid.UUID,
 ) -> EventLog:
     """The one sanctioned way to add a row to event_log.
@@ -168,6 +180,9 @@ def append_event(
     the dump of a `NodeStatusChangePayload`/`NodeEditPayload`, never a hand-built
     dict (CLAUDE.md: nothing unvalidated reaches storage).
 
+    `actor_kind` is required and has no default, so every write path has to
+    state whether a person is behind it (models/schema.py `ActorKind`).
+
     `actor` *is* checked here, because it is the one field this function owns
     outright: every event is the audit record for who did what (TRD Sec9), and a
     blank actor is an audit hole rather than a missing convenience. The column's
@@ -176,10 +191,19 @@ def append_event(
     """
     if not actor.strip():
         raise ValueError("actor must not be blank or whitespace-only")
+    if actor_kind is ActorKind.UNKNOWN:
+        # `unknown` is a statement about the past -- events written before the
+        # column existed. New code claiming it would reintroduce the ambiguity
+        # the backfill exists to record, and would quietly corrupt the guard
+        # metric that gates every other number in roadmap-v2.
+        raise ValueError(
+            "actor_kind must be HUMAN or AUTOMATED; UNKNOWN is reserved for backfilled rows"
+        )
     event = EventLog(
         event_type=event_type,
         payload=payload,
         actor=actor,
+        actor_kind=actor_kind,
         workspace_id=workspace_id,
     )
     session.add(event)

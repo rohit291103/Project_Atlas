@@ -71,7 +71,8 @@ export const SOURCE_LABELS: Record<SourceRef["source_type"], string> = {
   human_assertion: "a person",
 };
 
-const sourcesOf = (node: Node) => new Set(node.source_refs.map((ref) => SOURCE_LABELS[ref.source_type]));
+const sourcesOf = (node: Node) =>
+  new Set(node.source_refs.map((ref) => SOURCE_LABELS[ref.source_type]));
 
 export const sourceLabel = (node: Node): string => [...sourcesOf(node)].join(" + ");
 
@@ -115,14 +116,27 @@ const isReviewed = (node: Node) => node.status !== "unconfirmed";
 /** Within a group, keep the fixed type order, then unconfirmed first. */
 const rank = (node: Node) => SECTION_ORDER.indexOf(node.type as NodeType);
 
-/** Group into the four sections, dropping empty ones; unconfirmed first. */
-export function toSections(nodes: Node[]): Section[] {
+/** Group into the four sections, dropping empty ones.
+ *
+ * Order within a group: **contested, then unruled, then settled**, and only
+ * then the fixed type order. A disagreement outranks a backlog for the same
+ * reason it does on the product home — an unreviewed claim is work somebody has
+ * yet to do, a conflict is a decision nobody has made. Passing no conflict map
+ * keeps the previous unconfirmed-first behaviour exactly.
+ */
+export function toSections(nodes: Node[], conflicts?: Map<string, Node[]>): Section[] {
+  const contested = (node: Node) => (conflicts?.has(node.id) ? 0 : 1);
   return GROUPS.map(({ key, label, types }) => ({
     key,
     label,
     nodes: nodes
       .filter((node) => types.includes(node.type as NodeType))
-      .sort((a, b) => Number(isReviewed(a)) - Number(isReviewed(b)) || rank(a) - rank(b)),
+      .sort(
+        (a, b) =>
+          contested(a) - contested(b) ||
+          Number(isReviewed(a)) - Number(isReviewed(b)) ||
+          rank(a) - rank(b),
+      ),
   })).filter((section) => section.nodes.length > 0);
 }
 
@@ -187,7 +201,12 @@ export function conflictPairs(detail: FeatureScopeDetail): ConflictPair[] {
  * "unreviewed" is defined once, in `storage/projections.py`, rather than
  * re-derived per component.
  */
-export type WorkSummary = { features: number; total: number; unreviewed: number; conflicts: number };
+export type WorkSummary = {
+  features: number;
+  total: number;
+  unreviewed: number;
+  conflicts: number;
+};
 
 export function summarize(scopes: FeatureScope[]): WorkSummary {
   return scopes.reduce<WorkSummary>(
@@ -218,17 +237,92 @@ export function needsRuling(scopes: FeatureScope[]): FeatureScope[] {
     );
 }
 
-/** Non-conflict relationships, rendered as inline text refs — there is no graph
- * canvas in Phase 1 (design baseline §8). */
-export function relationsOf(node: Node, edges: Edge[], nodes: Node[]): string[] {
+/** How an edge reads from each end.
+ *
+ * An edge is directed and its name only makes sense read forwards: `A
+ * derives_from B` means B is where A came from. Read from B's end the same edge
+ * has to be phrased the other way round, or the claim would appear to derive
+ * from the thing that derives from it. The old build sidestepped this by only
+ * ever showing outgoing edges — which meant a claim that three other claims
+ * depended on displayed no relationships at all, the exact case where knowing
+ * them matters most.
+ */
+const RELATION_PHRASING: Record<string, { out: string; in: string }> = {
+  derives_from: { out: "derives from", in: "is the basis for" },
+  implements: { out: "implements", in: "is implemented by" },
+  supports: { out: "supports", in: "is supported by" },
+  depends_on: { out: "depends on", in: "is depended on by" },
+  refines: { out: "refines", in: "is refined by" },
+  supersedes: { out: "supersedes", in: "is superseded by" },
+};
+
+export type Neighbour = { node: Node; relation: string };
+
+/** A claim's non-conflict relationships, both directions, as real neighbours.
+ *
+ * Still not a graph canvas — that is an explicit non-goal in three places
+ * (design baseline §8, flow spec, and the 2026-08-11 UI direction decision) on
+ * the grounds that a node-link view reintroduces the overwhelm this screen
+ * exists to remove. These are the local edges only: what this one claim touches,
+ * as a short list you can click through. Conflicts are excluded because they get
+ * their own treatment on the stage rather than a line in a list.
+ */
+export function neighboursOf(node: Node, edges: Edge[], nodes: Node[]): Neighbour[] {
   const byId = new Map(nodes.map((n) => [n.id, n]));
-  return edges
-    .filter((edge) => edge.relation_type !== "conflicts_with" && edge.from_node_id === node.id)
-    .map((edge) => {
-      const target = byId.get(edge.to_node_id);
-      return target ? `${edge.relation_type} → ${target.content}` : "";
-    })
-    .filter(Boolean);
+  const out: Neighbour[] = [];
+  for (const edge of edges) {
+    if (edge.relation_type === "conflicts_with") continue;
+    const phrasing = RELATION_PHRASING[edge.relation_type];
+    const forward = edge.from_node_id === node.id;
+    const other = byId.get(forward ? edge.to_node_id : edge.from_node_id);
+    if (!other || (!forward && edge.to_node_id !== node.id)) continue;
+    out.push({
+      node: other,
+      relation: phrasing
+        ? forward
+          ? phrasing.out
+          : phrasing.in
+        : edge.relation_type.replace(/_/g, " "),
+    });
+  }
+  // Deduplicate: two sources can assert the same relationship, and the reader
+  // does not care that it was extracted twice.
+  const seen = new Set<string>();
+  return out.filter(({ node: n, relation }) => {
+    const key = `${relation}::${n.id}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/* --- what the queue is showing -------------------------------------------
+ *
+ * The queue was one flat list of every claim in display order. That is the
+ * right shape on day one and the wrong shape on day two: by the time a feature
+ * is 25-of-27 reviewed, the two claims that still want a person are below
+ * twenty finished ones, and the eight unresolved conflicts are not distinguished
+ * at all. Reviewing is triage, not reading — so the default view is the work,
+ * and the finished pile is one line you can open.
+ */
+export type QueueView = "ruling" | "conflicts" | "all";
+
+export const QUEUE_VIEWS: { key: QueueView; label: string }[] = [
+  { key: "ruling", label: "Needs ruling" },
+  { key: "conflicts", label: "Conflicts" },
+  { key: "all", label: "All" },
+];
+
+/** The nodes a view admits. `conflicts` is the map from `conflictMap`.
+ *
+ * "Needs ruling" deliberately keeps a *confirmed* claim that is still in an
+ * unresolved conflict: confirming one side does not settle a disagreement
+ * (TRD §5.2), so dropping it here would hide work the rail is still counting.
+ */
+export function inView(node: Node, view: QueueView, conflicts: Map<string, Node[]>): boolean {
+  if (view === "all") return true;
+  if (view === "conflicts") return conflicts.has(node.id);
+  return node.status === "unconfirmed" || conflicts.has(node.id);
 }
 
 /** Three pips for the three extraction confidence levels; an em dash for a

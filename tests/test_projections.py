@@ -23,6 +23,7 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from atlas.models.schema import (
+    ActorKind,
     CreatedBy,
     Edge,
     Event,
@@ -78,6 +79,7 @@ def node_created(node: Node) -> Event:
         event_type=EventType.NODE_CREATED,
         payload=node.model_dump(mode="json"),
         actor="system" if node.created_by is CreatedBy.SYSTEM else "pm@acme.test",
+        actor_kind=ActorKind.HUMAN,
         workspace_id=node.workspace_id,
     )
 
@@ -88,6 +90,7 @@ def status_change(event_type: EventType, node: Node, *, actor: str = "pm@acme.te
         event_type=event_type,
         payload=payload.model_dump(mode="json"),
         actor=actor,
+        actor_kind=ActorKind.HUMAN,
         workspace_id=node.workspace_id,
     )
 
@@ -98,6 +101,7 @@ def node_edited(node: Node, *, content: str, actor: str = "pm@acme.test") -> Eve
         event_type=EventType.NODE_EDITED,
         payload=payload.model_dump(mode="json"),
         actor=actor,
+        actor_kind=ActorKind.HUMAN,
         workspace_id=node.workspace_id,
     )
 
@@ -122,6 +126,7 @@ def ingestion_run(
         event_type=EventType.INGESTION_RUN,
         payload=payload.model_dump(mode="json"),
         actor="system",
+        actor_kind=ActorKind.AUTOMATED,
         workspace_id=workspace_id,
     )
 
@@ -131,6 +136,7 @@ def edge_created(edge: Edge, *, workspace_id: uuid.UUID = WORKSPACE_ID) -> Event
         event_type=EventType.EDGE_CREATED,
         payload=edge.model_dump(mode="json"),
         actor="system",
+        actor_kind=ActorKind.AUTOMATED,
         workspace_id=workspace_id,
     )
 
@@ -188,6 +194,7 @@ def test_replay_spec_exported_event_has_no_node_edge_effect() -> None:
         event_type=EventType.SPEC_EXPORTED,
         payload={"spec_version": 1},
         actor="system",
+        actor_kind=ActorKind.AUTOMATED,
         workspace_id=WORKSPACE_ID,
     )
 
@@ -207,6 +214,7 @@ def test_replay_revalidates_node_payload_provenance_gate() -> None:
         event_type=EventType.NODE_CREATED,
         payload=payload,
         actor="system",
+        actor_kind=ActorKind.AUTOMATED,
         workspace_id=WORKSPACE_ID,
     )
 
@@ -285,6 +293,7 @@ def test_replay_edit_rejects_blank_content() -> None:
         event_type=EventType.NODE_EDITED,
         payload={"node_id": str(node.id), "content": "   ", "previous_content": node.content},
         actor="pm@acme.test",
+        actor_kind=ActorKind.HUMAN,
         workspace_id=WORKSPACE_ID,
     )
 
@@ -399,6 +408,7 @@ def test_replay_revalidates_the_ingestion_run_payload() -> None:
             "url": "https://github.com/acme/repo/pull/1",
         },
         actor="system",
+        actor_kind=ActorKind.AUTOMATED,
         workspace_id=WORKSPACE_ID,
     )
 
@@ -553,6 +563,7 @@ def _write(session: Session, event: Event) -> EventLog:
         event_type=event.event_type,
         payload=event.payload,
         actor=event.actor,
+        actor_kind=ActorKind.HUMAN,
         workspace_id=event.workspace_id,
     )
 

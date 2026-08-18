@@ -20,6 +20,7 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from atlas.models.schema import (
+    ActorKind,
     CreatedBy,
     EventType,
     Node,
@@ -76,6 +77,7 @@ def stored_node(session_factory: sessionmaker[Session]) -> Node:
             event_type=EventType.NODE_CREATED,
             payload=node.model_dump(mode="json"),
             actor="system",
+            actor_kind=ActorKind.AUTOMATED,
             workspace_id=WORKSPACE_ID,
         )
     return node
@@ -93,7 +95,7 @@ def test_confirm_node_projects_as_confirmed_by_the_acting_human(
     session_factory: sessionmaker[Session], stored_node: Node
 ) -> None:
     with session_scope(session_factory) as session:
-        confirm_node(session, node=stored_node, actor=PM)
+        confirm_node(session, node=stored_node, actor=PM, actor_kind=ActorKind.HUMAN)
 
     projected = _replay(session_factory)[stored_node.id]
     assert projected.status is NodeStatus.CONFIRMED
@@ -104,7 +106,7 @@ def test_reject_node_projects_as_rejected(
     session_factory: sessionmaker[Session], stored_node: Node
 ) -> None:
     with session_scope(session_factory) as session:
-        reject_node(session, node=stored_node, actor=PM)
+        reject_node(session, node=stored_node, actor=PM, actor_kind=ActorKind.HUMAN)
 
     assert _replay(session_factory)[stored_node.id].status is NodeStatus.REJECTED
 
@@ -115,7 +117,7 @@ def test_confirm_node_writes_an_event_rather_than_mutating_state(
     """CLAUDE.md Engineering Philosophy Sec3: never mutate Node/Edge state --
     write an event. The confirm must show up as a second row in the log."""
     with session_scope(session_factory) as session:
-        confirm_node(session, node=stored_node, actor=PM)
+        confirm_node(session, node=stored_node, actor=PM, actor_kind=ActorKind.HUMAN)
 
     with session_scope(session_factory) as session:
         types = [row.event_type for row in session.query(EventLog).order_by(EventLog.sequence)]
@@ -128,7 +130,7 @@ def test_confirm_node_requires_a_non_blank_actor(
     """Every event is an audit record (TRD Sec9) -- an anonymous confirm would
     be an audit hole, not a convenience."""
     with pytest.raises(ValueError, match="actor"), session_scope(session_factory) as session:
-        confirm_node(session, node=stored_node, actor="   ")
+        confirm_node(session, node=stored_node, actor="   ", actor_kind=ActorKind.HUMAN)
 
 
 # --- edit ----------------------------------------------------------------------
@@ -139,7 +141,11 @@ def test_edit_node_projects_the_new_content_as_edited(
 ) -> None:
     with session_scope(session_factory) as session:
         edit_node(
-            session, node=stored_node, content="Rate-limit per API key, not per IP.", actor=PM
+            session,
+            node=stored_node,
+            content="Rate-limit per API key, not per IP.",
+            actor=PM,
+            actor_kind=ActorKind.HUMAN,
         )
 
     projected = _replay(session_factory)[stored_node.id]
@@ -156,7 +162,9 @@ def test_edit_node_records_the_content_it_replaced(
     -- and the caller can't get it wrong, because `edit_node` reads it off the
     node rather than taking it as an argument."""
     with session_scope(session_factory) as session:
-        event = edit_node(session, node=stored_node, content="Reworded.", actor=PM)
+        event = edit_node(
+            session, node=stored_node, content="Reworded.", actor=PM, actor_kind=ActorKind.HUMAN
+        )
         assert event.payload["previous_content"] == stored_node.content
 
 
@@ -167,11 +175,23 @@ def test_successive_edits_chain_back_to_the_system_extracted_original(
     chain of `node_edited` payloads back through `node_created` reconstructs the
     full history -- no step claims a before-image that was never current."""
     with session_scope(session_factory) as session:
-        edit_node(session, node=stored_node, content="First revision.", actor=PM)
+        edit_node(
+            session,
+            node=stored_node,
+            content="First revision.",
+            actor=PM,
+            actor_kind=ActorKind.HUMAN,
+        )
 
     once_edited = _replay(session_factory)[stored_node.id]
     with session_scope(session_factory) as session:
-        edit_node(session, node=once_edited, content="Second revision.", actor=PM)
+        edit_node(
+            session,
+            node=once_edited,
+            content="Second revision.",
+            actor=PM,
+            actor_kind=ActorKind.HUMAN,
+        )
 
     with session_scope(session_factory) as session:
         edits = [
@@ -189,7 +209,7 @@ def test_edit_node_rejects_blank_content(
     session_factory: sessionmaker[Session], stored_node: Node
 ) -> None:
     with pytest.raises(ValidationError), session_scope(session_factory) as session:
-        edit_node(session, node=stored_node, content="   ", actor=PM)
+        edit_node(session, node=stored_node, content="   ", actor=PM, actor_kind=ActorKind.HUMAN)
 
 
 # --- manual add ----------------------------------------------------------------
@@ -204,6 +224,7 @@ def _add(session: Session, *, content: str = FREEZE, actor: str = PM) -> EventLo
         node_type=NodeType.CONSTRAINT,
         content=content,
         actor=actor,
+        actor_kind=ActorKind.HUMAN,
         workspace_id=WORKSPACE_ID,
         feature_scope_id=FEATURE_SCOPE_ID,
     )
@@ -258,7 +279,13 @@ def test_add_node_excerpt_survives_a_later_edit_of_the_content(
 
     added = _replay(session_factory)[node_id]
     with session_scope(session_factory) as session:
-        edit_node(session, node=added, content="Must ship before the Q3 freeze.", actor=PM)
+        edit_node(
+            session,
+            node=added,
+            content="Must ship before the Q3 freeze.",
+            actor=PM,
+            actor_kind=ActorKind.HUMAN,
+        )
 
     edited = _replay(session_factory)[node_id]
     assert edited.content == "Must ship before the Q3 freeze."

@@ -29,7 +29,7 @@ from rich.table import Table
 from rich.text import Text
 
 from atlas.config import DEFAULT_WORKSPACE_ID, JiraSettings, Settings
-from atlas.models.schema import RunState, RunTargetKind
+from atlas.models.schema import ActorKind, RunState, RunTargetKind
 from atlas.pipeline import (
     GitHubCredential,
     JiraCredential,
@@ -255,7 +255,11 @@ def product_create(name: str) -> None:
     session_factory = get_sessionmaker(get_engine(_require_db_url()))
     with workspace_session(session_factory, DEFAULT_WORKSPACE_ID) as session:
         product_id, _ = create_product(
-            session, workspace_id=DEFAULT_WORKSPACE_ID, name=name, actor="cli"
+            session,
+            workspace_id=DEFAULT_WORKSPACE_ID,
+            name=name,
+            actor="cli",
+            actor_kind=ActorKind.AUTOMATED,
         )
     console.print(f"[green]Created product[/green] [bold]{name}[/bold] · {product_id}")
 
@@ -289,6 +293,7 @@ def product_assign(feature_scope: str, product: str) -> None:
             feature_scope_id=scope_id,
             product_id=product_id,
             actor="cli",
+            actor_kind=ActorKind.AUTOMATED,
         )
     console.print(
         f"[green]Filed[/green] {projection.feature_scopes[scope_id].title} "

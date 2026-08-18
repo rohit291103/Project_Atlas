@@ -12,7 +12,8 @@ AI coding agents can implement software faster than teams can supply them with c
 |---|---|
 | `docs/prd/PRD_Product_Knowledge_Layer_MVP.md` | Product requirements, target users, success metrics, non-goals |
 | `docs/architecture/TRD_Context_to_Spec_Engine.md` | Full technical architecture, data model, all phases |
-| `docs/prd/MVP_Roadmap.md` | Phased roadmap (Phase 0–4), exit criteria per phase |
+| `docs/prd/roadmap-v2.md` | **Current** phased roadmap (Phase 0–4), exit criteria and success metrics per phase |
+| `docs/prd/MVP_Roadmap.md` | Roadmap v1 — superseded 2026-08-18, retained as record |
 | `docs/architecture/Phase0_Architecture.md` | Current phase's concrete implementation plan (stack, repo layout, data flow) |
 | `docs/tracker.md` | Living current-state snapshot — read first, every session |
 
@@ -20,25 +21,33 @@ These are the source of truth. Don't re-derive scope, schema, or architecture fr
 
 ## Roadmap — the whole story
 
-This file describes the **entire project across all five phases** — philosophy, module boundary, non-goals — not just whichever phase is currently in progress. It doesn't get rewritten as phases advance; only the "Current Development Phase" section below does. Full detail: `docs/prd/MVP_Roadmap.md`.
+This file describes the **entire project across all five phases** — philosophy, module boundary, non-goals — not just whichever phase is currently in progress. It doesn't get rewritten as phases advance; only the "Current Development Phase" section below does. Full detail: `docs/prd/roadmap-v2.md` (v1 is retained at `MVP_Roadmap.md` as record; see `docs/decisions/2026-08-18-roadmap-v2-spec-export-and-proof.md` for what changed and why).
 
-| Phase | Weeks | Core Deliverable | Primary Risk Being Retired |
+| Phase | Core Deliverable | Primary Risk Being Retired | State |
 |---|---|---|---|
-| **0** ← current | 1–4 | Internal extraction proof (GitHub only) | Does extraction even work? |
-| 1 | 5–9 | Confirmation UI + 2nd source | Can a non-engineer use this? |
-| 2 | 10–13 | Spec generation & export | Does this improve coding agent output? |
-| 3 | 14–18 | Contextual Q&A + feedback loop | Does extraction quality improve with usage? |
-| 4 | 19–24 | Security/RBAC hardening | Will enterprises actually pilot this? |
+| 0 | Internal extraction proof (GitHub only) | Does extraction even work? | Met 2026-07-28 |
+| **1** ← current | Confirmation UI + 2nd source | Can a non-engineer use this? | Built; criterion not yet measured |
+| 2 | **Spec export + the proof** | **Does this improve coding agent output?** | Not started |
+| 3 | 3rd source + Q&A + incremental sync + feedback loop | Does it compound with usage? | Not started |
+| 4 | Security/RBAC hardening | Will enterprises actually pilot this? | Not started |
+
+**Week ranges were dropped as commitments in v2** — nominal weeks stopped describing reality (5 elapsed vs 9 budgeted through Phase 1). Phases are gated by evidence, not calendar. The guiding principle: **every phase must end with evidence about a claim, not with software.**
 
 Each phase's *concrete* implementation plan gets its own doc in `docs/architecture/` (`Phase0_Architecture.md` now; `Phase1_Architecture.md` etc. as each phase starts) — read this file for the permanent picture, read the current phase's architecture doc for what's actually being built right now.
 
 ## Current Development Phase
 
-**Phase 1** (Roadmap Weeks 5–9): make the loop usable by a non-engineer (a PM) and extend to a second source. Concrete plan: `docs/architecture/Phase1_Architecture.md`. Exit criterion: a PM outside the build team can, *unassisted*, connect two sources, review extracted elements, and confirm/reject them in under 20 minutes. **Primary risk being retired: can a non-engineer actually use this?** — not "does more get built."
+**Phase 1 close-out.** Make the loop usable by a non-engineer (a PM) and extend to a second source. Concrete plan: `docs/architecture/Phase1_Architecture.md`. Exit criterion: a PM outside the build team can, *unassisted*, connect two sources, review extracted elements, and confirm/reject them in under 20 minutes. **Primary risk being retired: can a non-engineer actually use this?** — not "does more get built."
 
-In scope now (Phase 0's extraction exit criterion was met 2026-07-28 — `docs/decisions/2026-07-28-phase0-exit-phase1-entry.md`): the **confirmation UI** (React SPA + FastAPI `api/`), a **second source (Jira)**, **scoped ingestion** by epic/label, **workspace-level RBAC + audit logging**, and cross-source **conflict detection**. Sequencing is **UI-first on existing GitHub data** (retire the primary risk before adding Jira) — see the four vertical slices in `Phase1_Architecture.md` §3.
+**Construction is complete** (all four slices plus 2A/2B); the exit criterion is not met, because it was never a construction criterion. Three things remain, and only one is code:
 
-Explicitly **not** current priority (these are Phase 2–4, don't build ahead of them): spec generation/export, contextual Q&A / retrieval, feature-level RBAC, incremental delta-sync, a third (doc) source, SSO/SAML. If a task implies one of these, flag it rather than quietly building it. The new `api/` + frontend module boundary must pass a `codebase-design` pass before it is scaffolded.
+1. **Frontend review by the user** — the whole UI, landing through conflicts, dark and light.
+2. **The PM measurement** — a PM outside the build team, unassisted, under 20 minutes. Blocked only on the PM's exact name, so membership can be seated under the string they type at sign-in.
+3. **Actor provenance** (in progress) — `Event.actor` gains an actor *kind* separating human from automated, enforced at the schema boundary, plus a dedicated workspace for the browser suite. This sits *before* the PM measurement deliberately: that session produces the first real confirmation data, every roadmap-v2 metric reads confirmation data, and Phase 2's spec export reads *confirmed* nodes. Rationale: `docs/decisions/2026-08-18-roadmap-v2-spec-export-and-proof.md` §9.
+
+**Next, per roadmap v2:** Phase 2 is **spec export + the proof** — confirmed nodes → Markdown → inline provenance, with unresolved conflicts surfaced as open disagreements rather than silently resolved; then a blind, pre-registered, N≥5 measurement of agent output quality with the spec vs. without, run first against the internal `ripgrep` golden set. Don't start it until Phase 1's exit criterion is actually measured.
+
+Explicitly **not** current priority (these are Phase 3–4, don't build ahead of them): contextual Q&A / retrieval, feature-level RBAC, incremental delta-sync, a third (doc) source, SSO/SAML. If a task implies one of these, flag it rather than quietly building it.
 
 ## Engineering Philosophy (non-negotiable — TRD §2)
 

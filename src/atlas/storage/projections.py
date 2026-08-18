@@ -316,7 +316,9 @@ class Projection:
             for node_id, node in self.nodes.items()
             if node.feature_scope_id == feature_scope_id
         }
-        live = {node_id for node_id in node_ids if self.nodes[node_id].status is not NodeStatus.REJECTED}
+        live = {
+            node_id for node_id in node_ids if self.nodes[node_id].status is not NodeStatus.REJECTED
+        }
         return ScopeCounts(
             total=len(node_ids),
             unreviewed=sum(

@@ -24,14 +24,14 @@ import uuid
 
 from sqlalchemy.orm import Session
 
-from atlas.models.schema import EventType, FeatureScopeAssignedPayload, ProductPayload
+from atlas.models.schema import ActorKind, EventType, FeatureScopeAssignedPayload, ProductPayload
 from atlas.storage.tables import EventLog, append_event
 
 __all__ = ["assign_feature_scope", "create_product", "rename_product"]
 
 
 def create_product(
-    session: Session, *, workspace_id: uuid.UUID, name: str, actor: str
+    session: Session, *, workspace_id: uuid.UUID, name: str, actor: str, actor_kind: ActorKind
 ) -> tuple[uuid.UUID, EventLog]:
     """Open a new product and return its id alongside the event that created it.
 
@@ -46,13 +46,20 @@ def create_product(
         event_type=EventType.PRODUCT_CREATED,
         payload=payload.model_dump(mode="json"),
         actor=actor,
+        actor_kind=actor_kind,
         workspace_id=workspace_id,
     )
     return product_id, event
 
 
 def rename_product(
-    session: Session, *, workspace_id: uuid.UUID, product_id: uuid.UUID, name: str, actor: str
+    session: Session,
+    *,
+    workspace_id: uuid.UUID,
+    product_id: uuid.UUID,
+    name: str,
+    actor: str,
+    actor_kind: ActorKind,
 ) -> EventLog:
     """Rename an existing product.
 
@@ -67,6 +74,7 @@ def rename_product(
         event_type=EventType.PRODUCT_RENAMED,
         payload=payload.model_dump(mode="json"),
         actor=actor,
+        actor_kind=actor_kind,
         workspace_id=workspace_id,
     )
 
@@ -78,6 +86,7 @@ def assign_feature_scope(
     feature_scope_id: uuid.UUID,
     product_id: uuid.UUID,
     actor: str,
+    actor_kind: ActorKind,
 ) -> EventLog:
     """File a feature under a product.
 
@@ -92,5 +101,6 @@ def assign_feature_scope(
         event_type=EventType.FEATURE_SCOPE_ASSIGNED,
         payload=payload.model_dump(mode="json"),
         actor=actor,
+        actor_kind=actor_kind,
         workspace_id=workspace_id,
     )

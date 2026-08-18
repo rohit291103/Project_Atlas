@@ -28,6 +28,7 @@ import pytest
 from pydantic import ValidationError
 
 from atlas.models.schema import (
+    ActorKind,
     CreatedBy,
     Event,
     EventType,
@@ -59,6 +60,7 @@ def product_created(
         event_type=EventType.PRODUCT_CREATED,
         payload=ProductPayload(product_id=product_id, name=name).model_dump(mode="json"),
         actor=actor,
+        actor_kind=ActorKind.HUMAN,
         workspace_id=WORKSPACE_ID,
     )
 
@@ -70,6 +72,7 @@ def product_renamed(
         event_type=EventType.PRODUCT_RENAMED,
         payload=ProductPayload(product_id=product_id, name=name).model_dump(mode="json"),
         actor=actor,
+        actor_kind=ActorKind.HUMAN,
         workspace_id=WORKSPACE_ID,
     )
 
@@ -85,6 +88,7 @@ def feature_scope_assigned(
         event_type=EventType.FEATURE_SCOPE_ASSIGNED,
         payload=payload.model_dump(mode="json"),
         actor=actor,
+        actor_kind=ActorKind.HUMAN,
         workspace_id=WORKSPACE_ID,
     )
 
@@ -108,6 +112,7 @@ def ingestion_run(
         event_type=EventType.INGESTION_RUN,
         payload=payload.model_dump(mode="json"),
         actor="system",
+        actor_kind=ActorKind.AUTOMATED,
         workspace_id=WORKSPACE_ID,
     )
 
@@ -135,6 +140,7 @@ def node_created(*, feature_scope_id: uuid.UUID = SCOPE_ID) -> Event:
         event_type=EventType.NODE_CREATED,
         payload=node.model_dump(mode="json"),
         actor="system",
+        actor_kind=ActorKind.AUTOMATED,
         workspace_id=WORKSPACE_ID,
     )
 

@@ -16,6 +16,7 @@ import pytest
 from pydantic import ValidationError
 
 from atlas.models.schema import (
+    ActorKind,
     CreatedBy,
     Edge,
     Event,
@@ -267,6 +268,7 @@ def test_event_valid_construction() -> None:
         event_type=EventType.NODE_CREATED,
         payload={"node_id": str(uuid.uuid4())},
         actor="system",
+        actor_kind=ActorKind.AUTOMATED,
         workspace_id=uuid.uuid4(),
     )
     assert event.event_type is EventType.NODE_CREATED
@@ -279,6 +281,7 @@ def test_event_rejects_unknown_event_type() -> None:
             event_type="node_archived",  # type: ignore[arg-type]
             payload={},
             actor="system",
+            actor_kind=ActorKind.AUTOMATED,
             workspace_id=uuid.uuid4(),
         )
 
@@ -289,6 +292,7 @@ def test_event_rejects_blank_actor() -> None:
             event_type=EventType.INGESTION_RUN,
             payload={},
             actor="   ",
+            actor_kind=ActorKind.HUMAN,
             workspace_id=uuid.uuid4(),
         )
 
@@ -299,6 +303,7 @@ def test_event_forbids_extra_fields() -> None:
             event_type=EventType.INGESTION_RUN,
             payload={},
             actor="system",
+            actor_kind=ActorKind.AUTOMATED,
             workspace_id=uuid.uuid4(),
             hallucinated_field="oops",  # type: ignore[call-arg]
         )
@@ -380,3 +385,54 @@ def test_node_json_round_trips_for_event_payload_storage() -> None:
 
     # And it must validate back into an equal Node.
     assert Node.model_validate(dumped) == node
+
+
+# --- ActorKind (2026-08-18) ----------------------------------------------------
+#
+# `actor` alone could not answer "was this a person?". On 2026-08-16 the browser
+# suite confirmed 6 real claims under a human's name, irreversibly, and nothing
+# in the log distinguished that from the person doing it. Every roadmap-v2 metric
+# reads confirmation data, so the distinction has to be structural rather than a
+# convention (`docs/decisions/2026-08-18-roadmap-v2-spec-export-and-proof.md`).
+
+
+def test_actor_kind_has_exactly_the_three_documented_values() -> None:
+    """`unknown` exists only for events written before this field did."""
+    assert {member.value for member in ActorKind} == {"human", "automated", "unknown"}
+
+
+def test_event_requires_actor_kind() -> None:
+    """No default. A default would silently mislabel whichever call site forgot,
+    which is precisely the failure this field exists to make impossible."""
+    with pytest.raises(ValidationError):
+        Event(  # type: ignore[call-arg]
+            event_type=EventType.NODE_CONFIRMED,
+            payload={},
+            actor="Priya (PM)",
+            workspace_id=uuid.uuid4(),
+        )
+
+
+def test_event_carries_actor_kind_when_given() -> None:
+    event = Event(
+        event_type=EventType.NODE_CONFIRMED,
+        payload={},
+        actor="Priya (PM)",
+        actor_kind=ActorKind.HUMAN,
+        workspace_id=uuid.uuid4(),
+    )
+    assert event.actor_kind is ActorKind.HUMAN
+
+
+def test_event_accepts_unknown_actor_kind_so_backfilled_rows_replay() -> None:
+    """The domain model must be able to *represent* a pre-migration event, or
+    projection replay breaks on the log's own history. Refusing to *write* one is
+    the write path's job (see tests/test_storage.py), not the schema's."""
+    event = Event(
+        event_type=EventType.NODE_CONFIRMED,
+        payload={},
+        actor="Rohit",
+        actor_kind=ActorKind.UNKNOWN,
+        workspace_id=uuid.uuid4(),
+    )
+    assert event.actor_kind is ActorKind.UNKNOWN

@@ -105,9 +105,19 @@ test("the rail shows one product's features, not every product's", async ({ page
     /^Sources$/,
     /^Conflicts\d*$/,
   ]);
-  // ...and the groups are labelled with the same verbs the landing page and the
-  // sign-in panel use, so the product speaks one vocabulary.
-  await expect(page.locator(".rail__group-label")).toHaveText(["Connect", "Review", "Features"]);
+
+  /* One section label in the rail, not three.
+   *
+   * Those three destinations used to sit under mono all-caps group headings —
+   * "CONNECT" over `Sources`, "REVIEW" over `Conflicts` — and since every group
+   * held exactly one item, the rail rendered as a single column of alternating
+   * type sizes with no readable parent/child relationship in it at all. The loop
+   * those headings named survives in the order asserted above and in the glyph on
+   * each row; the only heading left is the one with a list under it. */
+  await expect(page.locator(".rail__group-label")).toHaveText(["Features"]);
+  // Each nav row carries its glyph, which is what now separates a destination
+  // from a label. Without it we are back to three identical-looking text rows.
+  await expect(page.locator(".rail__nav-item .rail__nav-icon")).toHaveCount(3);
 });
 
 test("the rail filter narrows the feature list and ⌘K reaches it", async ({ page }) => {
@@ -165,16 +175,18 @@ test("the rail, the nav and the dashboard all report the same work left", async 
   const badges = page.locator(".rail__item .rail__badge");
   await expect(badges.first()).toBeVisible();
 
-  // Conflicts is counted as disagreements, so the nav badge and the dashboard
-  // summary line must be the same figure.
+  /* Conflicts is counted as disagreements, so the nav badge and the dashboard's
+     own figure must agree. This used to read the count out of the overview's
+     one-line summary; that line is gone from the populated view, because the
+     dashboard restated all four of its numbers directly underneath it. The
+     assertion is the same one, pointed at the tile. */
   const navBadge = page
     .locator(".rail__nav-item", { hasText: "Conflicts" })
     .locator(".rail__badge");
   if (await navBadge.count()) {
     const navCount = Number((await navBadge.innerText()).trim());
-    const sub = await page.locator(".page-sub").innerText();
-    const fromSummary = Number(/(\d+)\s+conflicts?/.exec(sub)?.[1] ?? "-1");
-    expect(fromSummary).toBe(navCount);
+    const tile = page.locator(".stat", { hasText: "Unresolved conflicts" }).locator(".stat__n");
+    expect(Number((await tile.innerText()).trim())).toBe(navCount);
   }
 });
 
@@ -286,9 +298,23 @@ test("a cross-source conflict names the other side's tool", async ({ page }) => 
   if ((await flagged.count()) === 0) test.skip(true, "this feature has no conflicts");
 
   await flagged.first().click();
-  // A claim can disagree with more than one other claim, so scope to the first
-  // banner rather than asserting across all of them.
-  await expect(page.locator(".flagbox").first()).toContainText(/in (Jira|GitHub)/);
+
+  /* The promise being guarded is unchanged — a disagreement must name the tools
+     on each side, since "no single tool could have told you this" is the whole
+     claim. What changed is the shape it is made in: a one-line banner became
+     two cards side by side (`.versus`), so the assertion moved from the banner's
+     prose to the source label on each side. A claim can disagree with several
+     others, so the block names them all in one header rather than repeating
+     itself per edge. */
+  const versus = page.locator(".versus");
+  await expect(versus).toHaveCount(1);
+  await expect(versus.locator(".versus__side.is-this")).toHaveCount(1);
+
+  const tools = await versus.locator(".versus__from").allInnerTexts();
+  expect(tools.length).toBeGreaterThanOrEqual(2);
+  expect(tools.every((tool) => /Jira|GitHub|a person/.test(tool))).toBe(true);
+  // Cross-source is the case worth naming out loud, and the header says so.
+  await expect(versus.locator(".versus__head")).toContainText(/disagree|contradict/);
 });
 
 test("the conflicts screen shows both sides of a disagreement together", async ({ page }) => {
@@ -367,6 +393,132 @@ test("no text on the review screen renders below the 11px floor", async ({ page 
   });
 
   expect(tooSmall).toEqual([]);
+});
+
+/* --- the review screen's structure (2026-08-18 rebuild) --------------------
+ *
+ * Three assertions about shape rather than behaviour, each guarding a defect that
+ * was visible in a screenshot and invisible to `tsc`, `vite build` and every test
+ * above: three panes wearing three different header treatments, a claim marooned
+ * above several hundred pixels of empty column, and widths nobody could change.
+ */
+
+test("every label on the review screen belongs to one type system", async ({ page }) => {
+  await openFirstFeature(page, EDITOR);
+
+  /* The defect: the queue's header rendered sans 13/550 in full-strength ink
+     while the two beside it — at the same y, at the same level of the hierarchy —
+     rendered 11px mono all-caps in the faintest grey on the palette. Three
+     headings styled as though they came from three different applications.
+
+     Every card label now resolves to one rule, so there is a single treatment to
+     be consistent about instead of three to keep in sync by hand. Colour is
+     deliberately excluded: the evidence card sits on the product's one warm
+     surface and its label takes the paper family so it stays legible there. */
+  const heads = await page.locator(".card__title").evaluateAll((els) =>
+    els.map((el) => {
+      const style = getComputedStyle(el);
+      return [
+        style.fontSize,
+        style.fontWeight,
+        style.letterSpacing,
+        style.textTransform,
+        style.fontFamily,
+      ].join(" | ");
+    }),
+  );
+  expect(heads.length).toBeGreaterThanOrEqual(2);
+  expect([...new Set(heads)]).toHaveLength(1);
+
+  // And exactly one sans heading on the screen: the feature's own name.
+  await expect(page.locator(".rv__title")).toHaveCount(1);
+});
+
+test("the claim and its evidence are adjacent, and the rulings follow the claim", async ({
+  page,
+}) => {
+  await openFirstFeature(page, EDITOR);
+  await page.setViewportSize({ width: 1600, height: 900 });
+
+  /* The trust argument of the whole product is that a claim and the literal words
+     it came from can be compared. They used to be in two fixed panes with the
+     action bar sticky-pinned to the viewport's bottom edge, which on a tall
+     display left a few hundred pixels of nothing between a claim and the buttons
+     that rule on it. Claim and evidence are grid siblings now, so on a wide
+     workspace they sit abreast. */
+  const claim = await page.locator(".card--claim").boundingBox();
+  const evidence = await page.locator(".card--paper").boundingBox();
+  expect(claim, "the claim card should be on screen").not.toBeNull();
+  expect(evidence, "the evidence card should be on screen").not.toBeNull();
+  // Abreast: the evidence card starts to the right of the claim card, not below.
+  expect(evidence!.x).toBeGreaterThan(claim!.x + claim!.width - 1);
+
+  // The rulings are inside the claim card, following its text — not floating at
+  // the foot of the pane with a gradient over whatever they cover.
+  const actions = await page.locator(".actions").boundingBox();
+  expect(actions!.y).toBeGreaterThan(claim!.y);
+  expect(actions!.y).toBeLessThan(claim!.y + claim!.height);
+});
+
+test("the claim list can be resized and got out of the way", async ({ page }) => {
+  await openFirstFeature(page, EDITOR);
+  const queue = page.locator(".rv__queue");
+  const before = (await queue.boundingBox())!.width;
+
+  /* Driven from the keyboard on purpose: this screen is keyboard-first (design
+     baseline §1.4, §7), so a resizer only a mouse can reach is a control half
+     this product's own reviewers cannot use. */
+  await page.locator(".rv__grip").focus();
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight");
+  expect((await queue.boundingBox())!.width).toBeGreaterThan(before);
+
+  // ...and the pane goes away entirely, which a hard-coded 300px column never
+  // could. The claim stays, because hiding the list is not leaving the screen.
+  await page.keyboard.press("[");
+  await expect(page.locator(".rv__queue")).toHaveCount(0);
+  await expect(page.locator(".claim")).toBeVisible();
+
+  // The width survives a reload — a width you re-drag on every navigation is a
+  // worse default than the constant it replaced.
+  await page.keyboard.press("[");
+  await page.waitForSelector(".rv__queue");
+  const set = (await queue.boundingBox())!.width;
+  await page.reload();
+  await page.waitForSelector(".qitem");
+  expect((await queue.boundingBox())!.width).toBeCloseTo(set, 0);
+});
+
+test("the product overview says how much there is before which one to open", async ({ page }) => {
+  await signIn(page, EDITOR);
+
+  /* "Overview" used to be a title, a sentence and a list of features — which
+     answers "which feature do I open?" without ever answering the question a PM
+     asks first: how much is there, and how much of it is mine to do. */
+  const labels = await page.locator(".stat__label").allInnerTexts();
+  expect(labels.map((label) => label.toLowerCase().trim())).toEqual([
+    "features",
+    "claims extracted",
+    "needs review",
+    "unresolved conflicts",
+  ]);
+
+  // Every figure is `ScopeCounts` off the projection, the same datum the rail
+  // reads. The failure mode a dashboard invites is not a missing number but a
+  // number derived a second way, which then disagrees with the rail beside it.
+  const navBadge = page
+    .locator(".rail__nav-item", { hasText: "Conflicts" })
+    .locator(".rail__badge");
+  if (await navBadge.count()) {
+    const fromRail = Number((await navBadge.innerText()).trim());
+    const fromTile = Number(
+      (await page.locator(".stat").nth(3).locator(".stat__n").innerText()).trim(),
+    );
+    expect(fromTile).toBe(fromRail);
+  }
+
+  // The dive-in is still one click, and it goes to the most urgent feature.
+  await expect(page.locator(".dash__meter .action--primary")).toBeVisible();
 });
 
 test("the theme control offers a real light mode, not only the OS reading", async ({ page }) => {

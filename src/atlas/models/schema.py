@@ -170,6 +170,30 @@ class RunState(StrEnum):
     INTERRUPTED = "interrupted"
 
 
+class ActorKind(StrEnum):
+    """Whether a person was behind an event, or a machine was (2026-08-18).
+
+    `actor` names *who*; it could never answer *whether it was a human*. Both a
+    PM signing in and a test harness driving the same UI write the same string,
+    which is how the browser suite confirmed 6 real claims under a person's name
+    on 2026-08-16 -- irreversibly, because the log only moves forward.
+
+    That matters beyond the audit trail: roadmap-v2 makes "% of confirmations
+    made by a human actor" a *guard* metric that invalidates every other number
+    when it is below 100%, and Phase 2's spec export is assembled from confirmed
+    nodes. A confirmation carried less provenance than a claim did, in a product
+    whose whole argument is provenance.
+    """
+
+    #: A person acting through an authenticated session.
+    HUMAN = "human"
+    #: A test harness, a CLI invocation, a background task, a seed script.
+    AUTOMATED = "automated"
+    #: Events appended before this field existed. Set by the backfill only --
+    #: `append_event` refuses to write it, so the ambiguity cannot grow.
+    UNKNOWN = "unknown"
+
+
 class EventType(StrEnum):
     """Matches TRD Sec3.1 Event.event_type. storage/tables.py imports this."""
 
@@ -498,5 +522,9 @@ class Event(AtlasModel):
     event_type: EventType
     payload: dict[str, Any] = Field(default_factory=dict)
     actor: NonBlankStr
+    #: Deliberately no default. A default would silently mislabel whichever call
+    #: site forgot to think about it, which is the exact failure this field
+    #: exists to prevent -- so adding a write path forces the decision.
+    actor_kind: ActorKind
     timestamp: datetime = Field(default_factory=_utcnow)
     workspace_id: uuid.UUID

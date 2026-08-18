@@ -15,6 +15,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from atlas.models.schema import (
+    ActorKind,
     Event,
     EventType,
     IngestionRunPayload,
@@ -38,6 +39,7 @@ def _event(event_type: EventType, payload: object, *, at: datetime = T0) -> Even
         event_type=event_type,
         payload=payload.model_dump(mode="json"),  # type: ignore[attr-defined]
         actor="Priya",
+        actor_kind=ActorKind.HUMAN,
         timestamp=at,
         workspace_id=WORKSPACE,
     )

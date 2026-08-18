@@ -106,6 +106,11 @@ We are explicitly **not** targeting executives, compliance, or customer success 
 
 ## 6. Success Metrics
 
+> **Superseded 2026-08-18.** The metric set below was replaced in `docs/prd/roadmap-v2.md` — one guard
+> metric, one primary, three supporting. In particular *"% of extracted elements confirmed without edit"*
+> was retired as confounded (a rubber-stamping reviewer and a perfect extractor produce the same number).
+> This section is retained unchanged as record.
+
 | Metric | Target (90 days post-launch) |
 |---|---|
 | Time-to-first-spec for a new team | < 15 minutes from connecting sources to first export |

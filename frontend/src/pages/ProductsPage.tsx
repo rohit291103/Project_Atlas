@@ -12,7 +12,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { ApiError, api, canWrite } from "../api";
 import type { FeatureScope, Product, Role } from "../api";
-import { needsRuling, summarize } from "../review";
+import { SOURCE_BADGES, SOURCE_LABELS, needsRuling, summarize } from "../review";
 import { UNASSIGNED, linkProps } from "../router";
 import type { Route } from "../router";
 
@@ -76,7 +76,12 @@ export function ProductsPage({
         <div className="page-head">
           <h1>{focused.name}</h1>
         </div>
-        <p className="page-sub">{summaryLine(features)}</p>
+        {/* The one-line summary used to sit here unconditionally and then the
+            dashboard restated all four of its numbers immediately underneath.
+            It survives only for the case where there are no figures to show,
+            which is the case it was actually needed for. */}
+        {features.length === 0 && <p className="page-sub">{summaryLine(features)}</p>}
+
         {features.length === 0 && !unfiled && (
           <div className="notice">
             {writable ? (
@@ -91,6 +96,10 @@ export function ProductsPage({
               "Nothing here yet. Ask an editor to connect a source."
             )}
           </div>
+        )}
+
+        {features.length > 0 && (
+          <Dashboard features={features} productId={focused.id} navigate={navigate} />
         )}
         <Worklist features={features} productId={focused.id} navigate={navigate} />
       </div>
@@ -182,6 +191,136 @@ export function ProductsPage({
         )}
       </div>
     </div>
+  );
+}
+
+/* The product's overview, above the worklist.
+ *
+ * The rail's "Overview" used to open a title, a one-line summary and a list of
+ * features. That is a directory with a sentence on top, and it answered the
+ * question a PM asks second ("which feature do I open?") without ever answering
+ * the one they ask first: *how much is there, and how much of it is mine to do?*
+ * Four counts and a meter answer it in one glance, and the worklist underneath
+ * is then the dive-in rather than the whole screen.
+ *
+ * Every figure comes from `ScopeCounts` on the projection — the same source the
+ * rail badges, the Conflicts nav entry and the review bar read — so the
+ * dashboard can never disagree with the screens it links to. Nothing here is
+ * derived a second way, which is the failure mode a dashboard invites.
+ */
+function Dashboard({
+  features,
+  productId,
+  navigate,
+}: {
+  features: FeatureScope[];
+  productId: string;
+  navigate: (route: Route, replace?: boolean) => void;
+}) {
+  const work = summarize(features);
+  const pending = needsRuling(features);
+  const next = pending[0] ?? null;
+  const reviewed = work.total - work.unreviewed;
+  const percent = work.total ? Math.round((reviewed / work.total) * 100) : 0;
+  const backlog = features.filter((scope) => scope.counts.unreviewed > 0).length;
+  const contested = features.filter((scope) => scope.counts.conflicts > 0).length;
+
+  /* Which tools this product was actually assembled out of, read off the
+     ingestion runs already on each row. "Two sources connected" is a fact about
+     configuration; this is a fact about the data, and they are not the same
+     thing the day a connection exists but has pulled nothing. */
+  const sources = [
+    ...new Map(
+      features.flatMap((scope) =>
+        scope.runs.map(
+          (run) => [SOURCE_BADGES[run.source_type], SOURCE_LABELS[run.source_type]] as const,
+        ),
+      ),
+    ),
+  ];
+
+  return (
+    <section className="dash">
+      <div className="stats">
+        <div className="stat">
+          <span className="stat__label">Features</span>
+          <b className="stat__n">{features.length}</b>
+          <span className="stat__note">
+            {sources.length > 0 ? (
+              <>
+                assembled from{" "}
+                {sources.map(([badge, label]) => (
+                  <span className="badge" key={badge} title={label}>
+                    {badge}
+                  </span>
+                ))}
+              </>
+            ) : (
+              "nothing ingested yet"
+            )}
+          </span>
+        </div>
+
+        <div className="stat">
+          <span className="stat__label">Claims extracted</span>
+          <b className="stat__n">{work.total}</b>
+          <span className="stat__note">
+            {work.total === 0 ? "nothing extracted yet" : `${percent}% ruled on`}
+          </span>
+        </div>
+
+        {/* A draft is not a fact until a person acts on it (Engineering
+            Philosophy §2), so "needs review" is the product's real backlog and
+            not a nag — it is stated in neutral ink for exactly that reason. */}
+        <div className={`stat${work.unreviewed > 0 ? " stat--open" : " stat--clear"}`}>
+          <span className="stat__label">Needs review</span>
+          <b className="stat__n">{work.unreviewed}</b>
+          <span className="stat__note">
+            {work.unreviewed === 0
+              ? "every claim ruled on"
+              : `across ${backlog} ${backlog === 1 ? "feature" : "features"}`}
+          </span>
+        </div>
+
+        {/* The one loud tile, and only when it has something to be loud about. A
+            conflict outranks a backlog: an unreviewed claim is work somebody has
+            yet to do, a conflict is a decision nobody has made (TRD §5.2). */}
+        <div className={`stat${work.conflicts > 0 ? " stat--conflict" : " stat--clear"}`}>
+          <span className="stat__label">Unresolved conflicts</span>
+          <b className="stat__n">{work.conflicts}</b>
+          <span className="stat__note">
+            {work.conflicts === 0 ? (
+              "no disagreements"
+            ) : (
+              <a className="stat__go" {...linkProps({ name: "conflicts", productId }, navigate)}>
+                in {contested} {contested === 1 ? "feature" : "features"} — rule on them →
+              </a>
+            )}
+          </span>
+        </div>
+      </div>
+
+      {work.total > 0 && (
+        <div className="dash__meter">
+          <div className="dash__meter-line">
+            <span>
+              <b>{reviewed}</b> of {work.total} claims reviewed
+            </span>
+            {next && (
+              <a
+                className="action action--primary"
+                {...linkProps({ name: "feature", productId, featureId: next.id }, navigate)}
+              >
+                Review next →
+              </a>
+            )}
+          </div>
+          <span className="meter__track meter__track--lg">
+            <span className="meter__fill" style={{ width: `${percent}%` }} />
+          </span>
+        </div>
+      )}
+    </section>
   );
 }
 

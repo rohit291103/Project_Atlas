@@ -43,7 +43,14 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, Session, mapped_column
 from sqlalchemy.sql import func
 
-from atlas.models.schema import AtlasModel, ConnectionPayload, EventType, NonBlankStr, SourceType
+from atlas.models.schema import (
+    ActorKind,
+    AtlasModel,
+    ConnectionPayload,
+    EventType,
+    NonBlankStr,
+    SourceType,
+)
 from atlas.storage.db import Base
 from atlas.storage.tables import append_event
 
@@ -210,6 +217,7 @@ def create_connection(
     scope: str,
     secret: str,
     actor: str,
+    actor_kind: ActorKind,
     key: str,
 ) -> Connection:
     """Store a credential, encrypted, and append the audit event for it.
@@ -245,6 +253,7 @@ def create_connection(
             scope=scope,
         ).model_dump(mode="json"),
         actor=actor,
+        actor_kind=actor_kind,
         workspace_id=workspace_id,
     )
     return connection
@@ -273,7 +282,12 @@ def get_connection(
 
 
 def revoke_connection(
-    session: Session, *, workspace_id: uuid.UUID, connection_id: uuid.UUID, actor: str
+    session: Session,
+    *,
+    workspace_id: uuid.UUID,
+    connection_id: uuid.UUID,
+    actor: str,
+    actor_kind: ActorKind,
 ) -> bool:
     """Delete a credential outright. Returns False when there was nothing to delete.
 
@@ -302,6 +316,7 @@ def revoke_connection(
         event_type=EventType.CONNECTION_REVOKED,
         payload=payload.model_dump(mode="json"),
         actor=actor,
+        actor_kind=actor_kind,
         workspace_id=workspace_id,
     )
     return True

@@ -25,6 +25,7 @@ from sqlalchemy.pool import StaticPool
 
 from atlas.api.app import create_app
 from atlas.api.deps import (
+    AUTOMATED_ACTOR_HEADER,
     SESSION_COOKIE,
     get_api_settings,
     get_session,
@@ -33,6 +34,7 @@ from atlas.api.deps import (
 from atlas.config import ApiSettings
 from atlas.extraction.agent import build_result
 from atlas.models.schema import (
+    ActorKind,
     CreatedBy,
     EventType,
     IngestionRunPayload,
@@ -524,6 +526,7 @@ def test_a_feature_scope_reports_the_product_it_is_filed_under(
             feature_scope_id=FEATURE_SCOPE_ID,
             product_id=product_id,
             actor=ACTOR,
+            actor_kind=ActorKind.HUMAN,
         )
 
     assert signed_in.get("/feature-scopes").json()[0]["product_id"] == str(product_id)
@@ -930,3 +933,48 @@ def test_connecting_jira_to_a_host_atlas_will_not_talk_to_is_refused(
     assert response.status_code == 422
     assert "Jira Cloud site" in response.text
     assert SECRET_TOKEN not in response.text
+
+
+# --- actor kind at the HTTP seam (2026-08-18) ----------------------------------
+
+
+def test_a_confirmation_from_a_browser_session_is_recorded_as_human(
+    signed_in: TestClient, seeded: sessionmaker[Session]
+) -> None:
+    node = _nodes(signed_in)[0]
+
+    signed_in.post(f"/nodes/{node['id']}/confirm")
+
+    assert [event.actor_kind for event in _events(seeded, EventType.NODE_CONFIRMED)] == [
+        ActorKind.HUMAN
+    ]
+
+
+def test_a_client_declaring_itself_automated_is_recorded_as_automated(
+    signed_in: TestClient, seeded: sessionmaker[Session]
+) -> None:
+    """The header the browser suite sets. Without it, a harness holding a real
+    session is indistinguishable from the person whose name it signed in under --
+    which is how 6 real claims were confirmed as `Rohit` on 2026-08-16."""
+    node = _nodes(signed_in)[0]
+
+    signed_in.post(f"/nodes/{node['id']}/confirm", headers={AUTOMATED_ACTOR_HEADER: "1"})
+
+    assert [event.actor_kind for event in _events(seeded, EventType.NODE_CONFIRMED)] == [
+        ActorKind.AUTOMATED
+    ]
+
+
+def test_the_header_cannot_be_used_to_claim_humanness(
+    signed_in: TestClient, seeded: sessionmaker[Session]
+) -> None:
+    """Only the downgrade is claimable. `human` in the header still reads as a
+    machine declaring itself, because the header's presence is the signal --
+    otherwise a bot could ask for the one label the guard metric trusts."""
+    node = _nodes(signed_in)[0]
+
+    signed_in.post(f"/nodes/{node['id']}/confirm", headers={AUTOMATED_ACTOR_HEADER: "human"})
+
+    assert [event.actor_kind for event in _events(seeded, EventType.NODE_CONFIRMED)] == [
+        ActorKind.AUTOMATED
+    ]

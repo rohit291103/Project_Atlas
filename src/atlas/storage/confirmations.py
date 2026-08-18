@@ -26,6 +26,7 @@ import uuid
 from sqlalchemy.orm import Session
 
 from atlas.models.schema import (
+    ActorKind,
     CreatedBy,
     EventType,
     Node,
@@ -42,7 +43,7 @@ __all__ = ["add_node", "confirm_node", "edit_node", "reject_node"]
 
 
 def _append_status_change(
-    session: Session, *, event_type: EventType, node: Node, actor: str
+    session: Session, *, event_type: EventType, node: Node, actor: str, actor_kind: ActorKind
 ) -> EventLog:
     payload = NodeStatusChangePayload(node_id=node.id)
     return append_event(
@@ -50,33 +51,36 @@ def _append_status_change(
         event_type=event_type,
         payload=payload.model_dump(mode="json"),
         actor=actor,
+        actor_kind=actor_kind,
         workspace_id=node.workspace_id,
     )
 
 
-def confirm_node(session: Session, *, node: Node, actor: str) -> EventLog:
+def confirm_node(session: Session, *, node: Node, actor: str, actor_kind: ActorKind) -> EventLog:
     """Record that `actor` accepted `node` as extracted.
 
     Confirming a rejected node is allowed and reinstates it -- reversing a
     ruling is a new event, never a rewrite of the old one (TRD Sec3.1).
     """
     return _append_status_change(
-        session, event_type=EventType.NODE_CONFIRMED, node=node, actor=actor
+        session, event_type=EventType.NODE_CONFIRMED, node=node, actor=actor, actor_kind=actor_kind
     )
 
 
-def reject_node(session: Session, *, node: Node, actor: str) -> EventLog:
+def reject_node(session: Session, *, node: Node, actor: str, actor_kind: ActorKind) -> EventLog:
     """Record that `actor` rejected `node`.
 
     Nothing is deleted: the node stays in the projection with
     `status = rejected`, and spec assembly (Phase 2) filters on status.
     """
     return _append_status_change(
-        session, event_type=EventType.NODE_REJECTED, node=node, actor=actor
+        session, event_type=EventType.NODE_REJECTED, node=node, actor=actor, actor_kind=actor_kind
     )
 
 
-def edit_node(session: Session, *, node: Node, content: str, actor: str) -> EventLog:
+def edit_node(
+    session: Session, *, node: Node, content: str, actor: str, actor_kind: ActorKind
+) -> EventLog:
     """Record that `actor` rewrote `node`'s content.
 
     The event carries the content it replaced, read off `node` rather than taken
@@ -95,6 +99,7 @@ def edit_node(session: Session, *, node: Node, content: str, actor: str) -> Even
         event_type=EventType.NODE_EDITED,
         payload=payload.model_dump(mode="json"),
         actor=actor,
+        actor_kind=actor_kind,
         workspace_id=node.workspace_id,
     )
 
@@ -105,6 +110,7 @@ def add_node(
     node_type: NodeType,
     content: str,
     actor: str,
+    actor_kind: ActorKind,
     workspace_id: uuid.UUID,
     feature_scope_id: uuid.UUID,
 ) -> EventLog:
@@ -166,5 +172,6 @@ def add_node(
         event_type=EventType.NODE_CREATED,
         payload=node.model_dump(mode="json"),
         actor=actor,
+        actor_kind=actor_kind,
         workspace_id=workspace_id,
     )

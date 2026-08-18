@@ -23,6 +23,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, api } from "./api";
 import type { FeatureScope, Product, Role } from "./api";
+import { IconConflict, IconOverview, IconSources } from "./components/icons";
 import { Loading } from "./components/Loading";
 import { ProductSwitcher } from "./components/ProductSwitcher";
 import { landingProductId, rememberProduct } from "./lastProduct";
@@ -239,6 +240,68 @@ export function App() {
           />
         )}
 
+        {/* The product's own screens, as one flat block of destinations.
+            Each of these used to sit under its own mono all-caps group heading —
+            "CONNECT" over `Sources`, "REVIEW" over `Conflicts` — which read as a
+            single column of alternating type sizes rather than as headings over
+            children, because every group held exactly one child. A heading over
+            one item is noise a reader has to decode before dismissing.
+
+            The grouping vocabulary survives in the *order* (connect, then
+            review) and in the glyphs; a row with an icon is unmistakably a
+            place you can go, which is the distinction the labels were failing
+            to draw. The one heading left in the rail sits over the feature
+            list, which is the only place here a heading has a list to head. */}
+        {activeShelf && (
+          <div className="rail__nav">
+            <a
+              className={`rail__nav-item${route.name === "product" ? " is-active" : ""}`}
+              aria-current={route.name === "product" ? "page" : undefined}
+              {...linkProps({ name: "product", productId: activeShelf.product.id }, navigate)}
+            >
+              <IconOverview className="rail__nav-icon" />
+              <span className="rail__nav-text">Overview</span>
+            </a>
+
+            {isRealProduct && (
+              <a
+                className={`rail__nav-item${route.name === "sources" ? " is-active" : ""}`}
+                aria-current={route.name === "sources" ? "page" : undefined}
+                {...linkProps({ name: "sources", productId: activeShelf.product.id }, navigate)}
+              >
+                <IconSources className="rail__nav-icon" />
+                <span className="rail__nav-text">Sources</span>
+              </a>
+            )}
+
+            {isRealProduct && (
+              <a
+                className={`rail__nav-item${route.name === "conflicts" ? " is-active" : ""}`}
+                aria-current={route.name === "conflicts" ? "page" : undefined}
+                {...linkProps({ name: "conflicts", productId: activeShelf.product.id }, navigate)}
+              >
+                <IconConflict className="rail__nav-icon" />
+                <span className="rail__nav-text">Conflicts</span>
+                {/* Counted as disagreements, not as claims-in-a-disagreement,
+                    so this agrees with the screen it opens. */}
+                {work.conflicts > 0 && (
+                  <span className="rail__badge rail__badge--conflict">{work.conflicts}</span>
+                )}
+              </a>
+            )}
+          </div>
+        )}
+
+        {/* The feature list's own header, pinned above the scroll along with its
+            filter. Both used to be inside the scrolling area, so a product with
+            forty features scrolled its own navigation out of reach. */}
+        {activeShelf && (
+          <div className="rail__section">
+            <span className="rail__group-label">Features</span>
+            <span className="rail__section-n">{features.length}</span>
+          </div>
+        )}
+
         {/* A filter, not a command palette — see the note on `query` above. It
             only appears once there is a feature list for it to act on. */}
         {activeShelf && features.length > 0 && (
@@ -275,122 +338,78 @@ export function App() {
           )}
 
           {activeShelf && (
-            <>
-              {/* Grouped by the loop the product actually runs — connect, then
-                  review — rather than as one flat list of three screens. The
-                  groups are the same two verbs the landing page and the sign-in
-                  panel name, so the vocabulary is one vocabulary. There is
-                  deliberately no third "Extract" group: extraction is triggered
-                  from Sources and has no screen of its own, and a nav heading
-                  over nothing is a promise of a screen that doesn't exist. */}
-              <a
-                className={`rail__nav-item${route.name === "product" ? " is-active" : ""}`}
-                aria-current={route.name === "product" ? "page" : undefined}
-                {...linkProps({ name: "product", productId: activeShelf.product.id }, navigate)}
-              >
-                Overview
-              </a>
-
-              {isRealProduct && (
-                <div className="rail__group">
-                  <span className="rail__group-label">Connect</span>
-                  <a
-                    className={`rail__nav-item${route.name === "sources" ? " is-active" : ""}`}
-                    aria-current={route.name === "sources" ? "page" : undefined}
-                    {...linkProps({ name: "sources", productId: activeShelf.product.id }, navigate)}
-                  >
-                    Sources
-                  </a>
-                </div>
+            <ul className="rail__list">
+              {features.length === 0 && (
+                <li className="rail__hint" role="presentation">
+                  Nothing ingested yet.
+                </li>
               )}
-
-              {isRealProduct && (
-                <div className="rail__group">
-                  <span className="rail__group-label">Review</span>
-                  <a
-                    className={`rail__nav-item${route.name === "conflicts" ? " is-active" : ""}`}
-                    aria-current={route.name === "conflicts" ? "page" : undefined}
-                    {...linkProps(
-                      { name: "conflicts", productId: activeShelf.product.id },
-                      navigate,
-                    )}
-                  >
-                    Conflicts
-                    {/* Counted as disagreements, not as claims-in-a-disagreement,
-                        so this agrees with the screen it opens. */}
-                    {work.conflicts > 0 && (
-                      <span className="rail__badge rail__badge--conflict">{work.conflicts}</span>
-                    )}
-                  </a>
-                </div>
+              {features.length > 0 && visibleFeatures.length === 0 && (
+                <li className="rail__hint" role="presentation">
+                  No feature matches “{query.trim()}”.
+                </li>
               )}
-
-              <div className="rail__group">
-                <span className="rail__group-label">Features</span>
-              </div>
-              <ul className="rail__list">
-                {features.length === 0 && (
-                  <li className="rail__hint" role="presentation">
-                    Nothing ingested yet.
-                  </li>
-                )}
-                {features.length > 0 && visibleFeatures.length === 0 && (
-                  <li className="rail__hint" role="presentation">
-                    No feature matches “{query.trim()}”.
-                  </li>
-                )}
-                {visibleFeatures.map((scope) => {
-                  const target: Route = {
-                    name: "feature",
-                    productId: activeShelf.product.id,
-                    featureId: scope.id,
-                  };
-                  const active = route.name === "feature" && route.featureId === scope.id;
-                  return (
-                    <li key={scope.id}>
-                      <a
-                        className={`rail__item ${active ? "rail__item--active" : ""}`}
-                        aria-current={active ? "page" : undefined}
-                        title={scope.title}
-                        {...linkProps(target, navigate)}
-                      >
-                        <span className="rail__item-title">{scope.title}</span>
-                        {/* This slot used to hold source badges (`gh·jr`). The
-                            datum a PM actually navigates on is how much is left,
-                            not which tool fed it — the sources are named on the
-                            feature itself and on its cards. Swapping them also
-                            gives the title back ~30px before it truncates. */}
-                        <span className="rail__count">
-                          {/* The flag is what separates the two numbers. Side by
-                              side as bare digits, "6 6" reads as one quantity
-                              split in half rather than conflicts and backlog. */}
-                          {scope.counts.conflicts > 0 && (
-                            <span
-                              className="rail__badge rail__badge--conflict"
-                              title={`${scope.counts.conflicts} unresolved conflict${scope.counts.conflicts === 1 ? "" : "s"}`}
-                            >
-                              ⚑{scope.counts.conflicts}
-                            </span>
-                          )}
-                          {scope.counts.unreviewed > 0 ? (
-                            <span
-                              className="rail__badge"
-                              title={`${scope.counts.unreviewed} claim${scope.counts.unreviewed === 1 ? "" : "s"} still to review`}
-                            >
-                              {scope.counts.unreviewed}
-                            </span>
-                          ) : (
-                            <span className="rail__done" title="Every claim reviewed">
-                              ✓
-                            </span>
-                          )}
+              {visibleFeatures.map((scope) => {
+                const target: Route = {
+                  name: "feature",
+                  productId: activeShelf.product.id,
+                  featureId: scope.id,
+                };
+                const active = route.name === "feature" && route.featureId === scope.id;
+                const done = scope.counts.total - scope.counts.unreviewed;
+                return (
+                  <li key={scope.id}>
+                    <a
+                      className={`rail__item ${active ? "rail__item--active" : ""}`}
+                      aria-current={active ? "page" : undefined}
+                      title={scope.title}
+                      {...linkProps(target, navigate)}
+                    >
+                      <span className="rail__item-title">{scope.title}</span>
+                      {/* This slot used to hold source badges (`gh·jr`). The
+                          datum a PM actually navigates on is how much is left,
+                          not which tool fed it — the sources are named on the
+                          feature itself and on its cards. Swapping them also
+                          gives the title back ~30px before it truncates. */}
+                      <span className="rail__count">
+                        {/* The flag is what separates the two numbers. Side by
+                            side as bare digits, "6 6" reads as one quantity
+                            split in half rather than conflicts and backlog. */}
+                        {scope.counts.conflicts > 0 && (
+                          <span
+                            className="rail__badge rail__badge--conflict"
+                            title={`${scope.counts.conflicts} unresolved conflict${scope.counts.conflicts === 1 ? "" : "s"}`}
+                          >
+                            ⚑{scope.counts.conflicts}
+                          </span>
+                        )}
+                        {scope.counts.unreviewed > 0 ? (
+                          <span
+                            className="rail__badge"
+                            title={`${scope.counts.unreviewed} claim${scope.counts.unreviewed === 1 ? "" : "s"} still to review`}
+                          >
+                            {scope.counts.unreviewed}
+                          </span>
+                        ) : (
+                          <span className="rail__done" title="Every claim reviewed">
+                            ✓
+                          </span>
+                        )}
+                      </span>
+                      {/* A hairline of progress under the row. The badge says
+                          how much is left; this says how far in you already
+                          are, which is the difference between "20 to go" on an
+                          untouched feature and on one you are nearly through. */}
+                      {scope.counts.total > 0 && (
+                        <span className="rail__item-meter" aria-hidden>
+                          <span style={{ width: `${(done / scope.counts.total) * 100}%` }} />
                         </span>
-                      </a>
-                    </li>
-                  );
-                })}
-              </ul>
-            </>
+                      )}
+                    </a>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </div>
 

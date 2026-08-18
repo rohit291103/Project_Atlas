@@ -23,7 +23,7 @@ from cryptography.fernet import Fernet
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from atlas.models.schema import SourceType
+from atlas.models.schema import ActorKind, SourceType
 from atlas.storage.connections import (
     Connection,
     ConnectionView,
@@ -62,6 +62,7 @@ def _create(session: Session, **overrides: object) -> Connection:
         "scope": "acme/web",
         "secret": "ghp_supersecrettoken1234",
         "actor": "Priya",
+        "actor_kind": ActorKind.HUMAN,
         "key": KEY,
     }
     kwargs.update(overrides)
@@ -167,14 +168,24 @@ def test_revoke_removes_the_row_rather_than_flagging_it(session: Session) -> Non
     ciphertext behind, which is the thing revocation exists to prevent."""
     created = _create(session)
     session.commit()
-    assert revoke_connection(session, workspace_id=WORKSPACE, connection_id=created.id, actor="P")
+    assert revoke_connection(
+        session,
+        workspace_id=WORKSPACE,
+        connection_id=created.id,
+        actor="P",
+        actor_kind=ActorKind.HUMAN,
+    )
     session.commit()
     assert get_connection(session, workspace_id=WORKSPACE, connection_id=created.id) is None
 
 
 def test_revoking_something_that_is_gone_reports_it(session: Session) -> None:
     assert not revoke_connection(
-        session, workspace_id=WORKSPACE, connection_id=uuid.uuid4(), actor="P"
+        session,
+        workspace_id=WORKSPACE,
+        connection_id=uuid.uuid4(),
+        actor="P",
+        actor_kind=ActorKind.HUMAN,
     )
 
 
@@ -182,7 +193,13 @@ def test_revoke_appends_an_audit_event(session: Session) -> None:
     created = _create(session)
     session.commit()
     before = len(_event_payloads(session))
-    revoke_connection(session, workspace_id=WORKSPACE, connection_id=created.id, actor="Priya")
+    revoke_connection(
+        session,
+        workspace_id=WORKSPACE,
+        connection_id=created.id,
+        actor="Priya",
+        actor_kind=ActorKind.HUMAN,
+    )
     session.commit()
     assert len(_event_payloads(session)) == before + 1
 

@@ -52,6 +52,7 @@ from atlas.extraction.agent import (
 from atlas.ingestion.github import GitHubClient, GitHubError
 from atlas.ingestion.jira import JiraClient, JiraError
 from atlas.models.schema import (
+    ActorKind,
     EventType,
     IngestionRunPayload,
     Node,
@@ -318,6 +319,7 @@ def record_extraction(
         event_type=EventType.INGESTION_RUN,
         payload=ingestion_run.model_dump(mode="json"),
         actor="system",
+        actor_kind=ActorKind.AUTOMATED,
         workspace_id=workspace_id,
     )
     for node in result.nodes:
@@ -326,6 +328,7 @@ def record_extraction(
             event_type=EventType.NODE_CREATED,
             payload=node.model_dump(mode="json"),
             actor="system",
+            actor_kind=ActorKind.AUTOMATED,
             workspace_id=workspace_id,
         )
     for edge in result.edges:
@@ -334,6 +337,7 @@ def record_extraction(
             event_type=EventType.EDGE_CREATED,
             payload=edge.model_dump(mode="json"),
             actor="system",
+            actor_kind=ActorKind.AUTOMATED,
             workspace_id=workspace_id,
         )
 
@@ -360,6 +364,7 @@ def start_run(session: Session, request: RunRequest) -> uuid.UUID:
             target=request.target.strip(),
         ).model_dump(mode="json"),
         actor=request.actor,
+        actor_kind=ActorKind.AUTOMATED,
         workspace_id=request.workspace_id,
     )
     return run_id
@@ -441,6 +446,7 @@ async def execute_run(
                 mode="json"
             ),
             actor=request.actor,
+            actor_kind=ActorKind.AUTOMATED,
             workspace_id=request.workspace_id,
         )
     return RunOutcome(
@@ -460,6 +466,7 @@ def _finish_failed(
             event_type=EventType.INGESTION_RUN_FAILED,
             payload=RunFailedPayload(run_id=run_id, error=error).model_dump(mode="json"),
             actor=request.actor,
+            actor_kind=ActorKind.AUTOMATED,
             workspace_id=request.workspace_id,
         )
     return RunOutcome(run_id=run_id, state=RunState.FAILED, error=error)

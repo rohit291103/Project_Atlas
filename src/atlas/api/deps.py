@@ -31,7 +31,7 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from sqlalchemy.orm import Session, sessionmaker
 
 from atlas.config import ApiSettings
-from atlas.models.schema import Role
+from atlas.models.schema import ActorKind, Role
 from atlas.storage.db import get_engine, get_sessionmaker, session_scope
 from atlas.storage.rbac import find_membership, scope_to_workspace
 
@@ -56,6 +56,12 @@ SESSION_COOKIE = "atlas_session"
 #: A review sitting is one working session, so a day of validity is generous
 #: without leaving a signed cookie useful indefinitely.
 SESSION_MAX_AGE_SECONDS = 24 * 60 * 60
+
+#: A client sets this to declare itself a machine, so its writes are logged as
+#: `ActorKind.AUTOMATED` rather than inheriting the humanness an authenticated
+#: session would otherwise imply. Playwright sets it for the whole browser suite
+#: via `extraHTTPHeaders`. Only this direction is claimable -- see `Principal`.
+AUTOMATED_ACTOR_HEADER = "X-Atlas-Automated"
 _SESSION_SALT = "atlas-session-v1"
 
 
@@ -70,11 +76,22 @@ class Principal:
     row, never from the request or the cookie: membership is a server-side fact,
     so removing someone takes effect on their next request rather than whenever
     their cookie expires.
+
+    `actor_kind` answers a question `actor` never could: was a person behind
+    this request? An authenticated session is the *default* evidence of one, but
+    it is not proof -- the browser suite signs in through the same form and
+    holds the same cookie, which is how it confirmed 6 real claims under a
+    person's name on 2026-08-16. A client may therefore *downgrade* itself to
+    automated with the `X-Atlas-Automated` header. Only that direction is
+    claimable: understating humanness can make the guard metric more
+    conservative but never falsely reassuring, whereas letting a caller claim
+    HUMAN would hand a bot the one label the metric trusts.
     """
 
     workspace_id: uuid.UUID
     actor: str
     role: Role
+    actor_kind: ActorKind
 
 
 @lru_cache(maxsize=1)
@@ -178,7 +195,12 @@ def get_principal(request: Request, settings: SettingsDep, session: SessionDep) 
         raise HTTPException(status.HTTP_403_FORBIDDEN, f"{actor} is not a member of any workspace")
     scope_to_workspace(session, membership.workspace_id)
     return Principal(
-        workspace_id=membership.workspace_id, actor=membership.actor, role=membership.role
+        workspace_id=membership.workspace_id,
+        actor=membership.actor,
+        role=membership.role,
+        actor_kind=(
+            ActorKind.AUTOMATED if request.headers.get(AUTOMATED_ACTOR_HEADER) else ActorKind.HUMAN
+        ),
     )
 
 

@@ -1,5 +1,10 @@
 # MVP Roadmap: Context-to-Spec Engine
 
+> **Superseded 2026-08-18 by `docs/prd/roadmap-v2.md`.** Retained unchanged as record — the original
+> sequencing is part of the project's history. Phase numbering (0–4) is identical in v2; the contents of
+> Phases 2 and 3 moved, and the success metrics were replaced. What changed and why:
+> `docs/decisions/2026-08-18-roadmap-v2-spec-export-and-proof.md`.
+
 **Scope:** From zero to a pilot-ready MVP, sequenced to de-risk the core bet (extraction quality + trust) before investing in breadth.
 
 **Guiding principle:** Every phase must end with something a real team can use and give feedback on — no phase is "infrastructure only."

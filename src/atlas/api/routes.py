@@ -360,7 +360,11 @@ def create_product(
     """Open a new product. The id is minted in `storage/`, never taken from the
     request -- same reason `add_node` builds its Node from fields."""
     product_id, _ = products.create_product(
-        session, workspace_id=principal.workspace_id, name=body.name, actor=principal.actor
+        session,
+        workspace_id=principal.workspace_id,
+        name=body.name,
+        actor=principal.actor,
+        actor_kind=principal.actor_kind,
     )
     return Product(id=product_id, name=body.name)
 
@@ -533,6 +537,7 @@ def connect_source(
         scope=body.scope,
         secret=body.secret,
         actor=principal.actor,
+        actor_kind=principal.actor_kind,
         key=settings.secret_key,
     )
     return ConnectionCreated(
@@ -555,6 +560,7 @@ def revoke_connection(
         workspace_id=principal.workspace_id,
         connection_id=connection_id,
         actor=principal.actor,
+        actor_kind=principal.actor_kind,
     ):
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"no connection {connection_id}")
 
@@ -695,7 +701,9 @@ def confirm_node(
     principal: WriterDep,
 ) -> Node:
     node = _require_node(session, principal, node_id)
-    confirmations.confirm_node(session, node=node, actor=principal.actor)
+    confirmations.confirm_node(
+        session, node=node, actor=principal.actor, actor_kind=principal.actor_kind
+    )
     return _require_node(session, principal, node_id)
 
 
@@ -706,7 +714,9 @@ def reject_node(
     principal: WriterDep,
 ) -> Node:
     node = _require_node(session, principal, node_id)
-    confirmations.reject_node(session, node=node, actor=principal.actor)
+    confirmations.reject_node(
+        session, node=node, actor=principal.actor, actor_kind=principal.actor_kind
+    )
     return _require_node(session, principal, node_id)
 
 
@@ -718,7 +728,13 @@ def edit_node(
     principal: WriterDep,
 ) -> Node:
     node = _require_node(session, principal, node_id)
-    confirmations.edit_node(session, node=node, content=body.content, actor=principal.actor)
+    confirmations.edit_node(
+        session,
+        node=node,
+        content=body.content,
+        actor=principal.actor,
+        actor_kind=principal.actor_kind,
+    )
     return _require_node(session, principal, node_id)
 
 
@@ -745,6 +761,7 @@ def add_node(
         node_type=body.type,
         content=body.content,
         actor=principal.actor,
+        actor_kind=principal.actor_kind,
         workspace_id=principal.workspace_id,
         feature_scope_id=feature_scope_id,
     )

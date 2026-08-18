@@ -15,6 +15,7 @@ import pytest
 from sqlalchemy import Engine, inspect
 from sqlalchemy.orm import Session, sessionmaker
 
+from atlas.models.schema import ActorKind
 from atlas.storage.db import Base, get_engine, get_sessionmaker, session_scope
 from atlas.storage.tables import EventLog, EventType, append_event
 
@@ -43,6 +44,7 @@ def test_event_log_table_matches_trd_event_shape(engine: Engine) -> None:
         "timestamp",
         "workspace_id",
         "sequence",
+        "actor_kind",
     }
 
 
@@ -55,6 +57,7 @@ def test_append_event_writes_a_readable_row(session_factory: sessionmaker[Sessio
             event_type=EventType.NODE_CREATED,
             payload={"node_id": "abc", "type": "goal"},
             actor="system",
+            actor_kind=ActorKind.AUTOMATED,
             workspace_id=workspace_id,
         )
 
@@ -84,6 +87,7 @@ def test_append_event_assigns_a_monotonically_increasing_sequence(
             event_type=EventType.NODE_CREATED,
             payload={"n": 1},
             actor="system",
+            actor_kind=ActorKind.AUTOMATED,
             workspace_id=workspace_id,
         )
         second = append_event(
@@ -91,6 +95,7 @@ def test_append_event_assigns_a_monotonically_increasing_sequence(
             event_type=EventType.NODE_CONFIRMED,
             payload={"n": 2},
             actor="pm@acme.test",
+            actor_kind=ActorKind.HUMAN,
             workspace_id=workspace_id,
         )
         assert first.sequence is not None
@@ -112,6 +117,7 @@ def test_sequence_orders_across_workspaces_and_transactions(
                 event_type=EventType.INGESTION_RUN,
                 payload={},
                 actor="system",
+                actor_kind=ActorKind.AUTOMATED,
                 workspace_id=workspace_id,
             )
             sequences.append(row.sequence)
@@ -137,6 +143,7 @@ def test_event_type_is_stored_as_its_string_value_not_member_name(
             event_type=EventType.INGESTION_RUN,
             payload={},
             actor="system",
+            actor_kind=ActorKind.AUTOMATED,
             workspace_id=uuid.uuid4(),
         )
 
@@ -157,6 +164,7 @@ def test_append_event_rejects_a_blank_actor(
             event_type=EventType.NODE_CONFIRMED,
             payload={},
             actor=actor,
+            actor_kind=ActorKind.HUMAN,
             workspace_id=uuid.uuid4(),
         )
 
@@ -168,6 +176,7 @@ def test_session_scope_rolls_back_on_error(session_factory: sessionmaker[Session
             event_type=EventType.INGESTION_RUN,
             payload={},
             actor="system",
+            actor_kind=ActorKind.AUTOMATED,
             workspace_id=uuid.uuid4(),
         )
         raise RuntimeError("boom")
@@ -203,3 +212,50 @@ def test_event_log_is_append_only_by_convention() -> None:
 
     assert not hasattr(tables_module, "update_event")
     assert not hasattr(tables_module, "delete_event")
+
+
+# --- actor kind on the write path (2026-08-18) ---------------------------------
+
+
+def test_append_event_persists_actor_kind(session_factory: sessionmaker[Session]) -> None:
+    with session_scope(session_factory) as session:
+        row = append_event(
+            session,
+            event_type=EventType.NODE_CONFIRMED,
+            payload={},
+            actor="Priya (PM)",
+            actor_kind=ActorKind.HUMAN,
+            workspace_id=uuid.uuid4(),
+        )
+        assert row.actor_kind is ActorKind.HUMAN
+
+
+def test_append_event_refuses_unknown_actor_kind(
+    session_factory: sessionmaker[Session],
+) -> None:
+    """`unknown` describes events written before the field existed. New code
+    claiming it would reintroduce exactly the ambiguity the backfill records."""
+    with session_scope(session_factory) as session, pytest.raises(ValueError, match="actor_kind"):
+        append_event(
+            session,
+            event_type=EventType.NODE_CONFIRMED,
+            payload={},
+            actor="Rohit",
+            actor_kind=ActorKind.UNKNOWN,
+            workspace_id=uuid.uuid4(),
+        )
+
+
+def test_append_event_requires_actor_kind_explicitly(
+    session_factory: sessionmaker[Session],
+) -> None:
+    """Keyword-only with no default, so adding a new write path forces a decision
+    about whether a person is behind it."""
+    with session_scope(session_factory) as session, pytest.raises(TypeError):
+        append_event(  # type: ignore[call-arg]
+            session,
+            event_type=EventType.INGESTION_RUN,
+            payload={},
+            actor="cli",
+            workspace_id=uuid.uuid4(),
+        )

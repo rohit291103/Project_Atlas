@@ -36,6 +36,15 @@ export default defineConfig({
     baseURL: BASE_URL,
     viewport: { width: 1280, height: 900 },
     colorScheme: "dark", // the canonical surface (design baseline §2)
+    // Every request this suite makes declares itself a machine, so the events it
+    // writes are logged as `actor_kind = automated` rather than inheriting the
+    // humanness an authenticated session implies. On 2026-08-16 this suite
+    // confirmed 6 real claims as `Rohit` and nothing in the log could tell them
+    // apart from rulings he actually made — irreversibly, because the log only
+    // moves forward. It does not stop the suite mutating a shared log (a
+    // dedicated workspace is the fix for that); it stops the mutations lying
+    // about who made them, and keeps them out of roadmap-v2's guard metric.
+    extraHTTPHeaders: { "X-Atlas-Automated": "1" },
   },
   webServer: {
     command: `npm run dev -- --port ${UI_PORT} --strictPort`,
