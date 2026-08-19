@@ -24,10 +24,23 @@ import uuid
 
 from sqlalchemy.orm import Session
 
-from atlas.models.schema import ActorKind, EventType, FeatureScopeAssignedPayload, ProductPayload
+from atlas.models.schema import (
+    ActorKind,
+    EventType,
+    FeatureScopeAssignedPayload,
+    FeatureScopeDescribedPayload,
+    ProductDescribedPayload,
+    ProductPayload,
+)
 from atlas.storage.tables import EventLog, append_event
 
-__all__ = ["assign_feature_scope", "create_product", "rename_product"]
+__all__ = [
+    "assign_feature_scope",
+    "create_product",
+    "describe_feature_scope",
+    "describe_product",
+    "rename_product",
+]
 
 
 def create_product(
@@ -99,6 +112,63 @@ def assign_feature_scope(
     return append_event(
         session,
         event_type=EventType.FEATURE_SCOPE_ASSIGNED,
+        payload=payload.model_dump(mode="json"),
+        actor=actor,
+        actor_kind=actor_kind,
+        workspace_id=workspace_id,
+    )
+
+
+def describe_product(
+    session: Session,
+    *,
+    workspace_id: uuid.UUID,
+    product_id: uuid.UUID,
+    description: str,
+    actor: str,
+    actor_kind: ActorKind,
+) -> EventLog:
+    """Say what a product is, in the PM's own words.
+
+    An empty `description` clears it -- the only way to remove a wrong one, in a
+    log that only moves forward (`models/schema.py` `DescriptionStr`).
+
+    Like `rename_product`, this deliberately does not check that the product
+    exists: the caller loaded the projection to get here, and the replay raises
+    on a description with no creation rather than swallowing it.
+    """
+    payload = ProductDescribedPayload(product_id=product_id, description=description)
+    return append_event(
+        session,
+        event_type=EventType.PRODUCT_DESCRIBED,
+        payload=payload.model_dump(mode="json"),
+        actor=actor,
+        actor_kind=actor_kind,
+        workspace_id=workspace_id,
+    )
+
+
+def describe_feature_scope(
+    session: Session,
+    *,
+    workspace_id: uuid.UUID,
+    feature_scope_id: uuid.UUID,
+    description: str,
+    actor: str,
+    actor_kind: ActorKind,
+) -> EventLog:
+    """Say what a feature is *for*.
+
+    Not a rename: the scope's `title` stays the artifact's, fixed to the run that
+    opened it (`storage/projections.py`), so a feature keeps the name a reviewer
+    recognises while gaining the sentence that says why it exists.
+    """
+    payload = FeatureScopeDescribedPayload(
+        feature_scope_id=feature_scope_id, description=description
+    )
+    return append_event(
+        session,
+        event_type=EventType.FEATURE_SCOPE_DESCRIBED,
         payload=payload.model_dump(mode="json"),
         actor=actor,
         actor_kind=actor_kind,

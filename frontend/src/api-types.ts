@@ -63,6 +63,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/products/{product_id}/description": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Describe Product
+         * @description Say what this product is. `PUT` because the body states the field's whole
+         *     value -- sending it twice leaves the same product, even though each send
+         *     appends its own audit event.
+         *
+         *     Authored orientation, not an extracted claim: no provenance, no confirmation
+         *     loop, and nothing here can reach a spec export
+         *     (`docs/decisions/2026-08-19-product-orientation-rerun-safety-and-demo-data.md`
+         *     decision 4).
+         */
+        put: operations["describe_product_products__product_id__description_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/feature-scopes": {
         parameters: {
             query?: never;
@@ -102,6 +129,30 @@ export interface paths {
          */
         get: operations["get_feature_scope_feature_scopes__feature_scope_id__get"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/feature-scopes/{feature_scope_id}/description": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Describe Feature Scope
+         * @description Say what this feature is *for*.
+         *
+         *     Not a rename. The title stays the one the artifact that opened the scope
+         *     gave it -- first-run-wins, per `storage/projections.py` -- so a reviewer
+         *     keeps the name they recognise and gains the sentence saying why it exists.
+         */
+        put: operations["describe_feature_scope_feature_scopes__feature_scope_id__description_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -394,6 +445,19 @@ export interface components {
          */
         CreatedBy: "system" | "user";
         /**
+         * DescribeRequest
+         * @description What a product or a feature is, in the PM's own words (slice 3).
+         *
+         *     `DescriptionStr` rather than `NonBlankStr`, and that is the whole difference:
+         *     an empty description is not a malformed one, it is how a wrong description is
+         *     removed. The length bound is the domain's own, reused rather than restated at
+         *     the wire.
+         */
+        DescribeRequest: {
+            /** Description */
+            description: string;
+        };
+        /**
          * Edge
          * @description A typed relationship between two Nodes (TRD Sec3.1).
          */
@@ -458,6 +522,8 @@ export interface components {
             runs: components["schemas"]["IngestionRunPayload"][];
             /** Product Id */
             product_id?: string | null;
+            /** Description */
+            description?: string | null;
         };
         /**
          * FeatureScopeDetail
@@ -497,6 +563,8 @@ export interface components {
             /** Product Id */
             product_id: string | null;
             counts: components["schemas"]["ScopeCounts"];
+            /** Description */
+            description: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -625,6 +693,8 @@ export interface components {
             id: string;
             /** Name */
             name: string;
+            /** Description */
+            description?: string | null;
         };
         /**
          * RelationType
@@ -1014,6 +1084,41 @@ export interface operations {
             };
         };
     };
+    describe_product_products__product_id__description_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DescribeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Product"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_feature_scopes_feature_scopes_get: {
         parameters: {
             query?: never;
@@ -1052,6 +1157,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FeatureScopeDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    describe_feature_scope_feature_scopes__feature_scope_id__description_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                feature_scope_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DescribeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeatureScope"];
                 };
             };
             /** @description Validation Error */

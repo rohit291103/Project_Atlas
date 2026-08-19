@@ -28,15 +28,20 @@ import pytest
 from pydantic import ValidationError
 
 from atlas.models.schema import (
+    DESCRIPTION_MAX_LENGTH as DESCRIPTION_MAX,
+)
+from atlas.models.schema import (
     ActorKind,
     CreatedBy,
     Event,
     EventType,
     FeatureScopeAssignedPayload,
+    FeatureScopeDescribedPayload,
     IngestionRunPayload,
     Node,
     NodeStatus,
     NodeType,
+    ProductDescribedPayload,
     ProductPayload,
     SourceRef,
     SourceType,
@@ -305,3 +310,165 @@ def test_for_product_keeps_only_that_products_scopes_and_their_nodes() -> None:
 def test_for_product_excludes_unassigned_scopes() -> None:
     projection = replay([product_created(), ingestion_run()])
     assert projection.for_product(PRODUCT_ID).feature_scopes == {}
+
+
+# --- what a product and a feature *are* (slice 3) -------------------------------
+#
+# `description` is PM-authored plain text, not a Node: it carries no provenance
+# and never enters the confirmation loop, per decision 4 of
+# `docs/decisions/2026-08-19-product-orientation-rerun-safety-and-demo-data.md`.
+# Extracting it instead would have made orientation a *claim about the feature*,
+# obliged to start unconfirmed like anything else -- machine-written text in the
+# one place a first-time visitor goes to find out what they are looking at.
+
+
+def product_described(
+    *,
+    product_id: uuid.UUID = PRODUCT_ID,
+    description: str = "The billing surface Acme's customers actually see.",
+    actor: str = "priya",
+) -> Event:
+    payload = ProductDescribedPayload(product_id=product_id, description=description)
+    return Event(
+        event_type=EventType.PRODUCT_DESCRIBED,
+        payload=payload.model_dump(mode="json"),
+        actor=actor,
+        actor_kind=ActorKind.HUMAN,
+        workspace_id=WORKSPACE_ID,
+    )
+
+
+def feature_scope_described(
+    *,
+    feature_scope_id: uuid.UUID = SCOPE_ID,
+    description: str = "Why we are letting users search inside archives.",
+    actor: str = "priya",
+) -> Event:
+    payload = FeatureScopeDescribedPayload(
+        feature_scope_id=feature_scope_id, description=description
+    )
+    return Event(
+        event_type=EventType.FEATURE_SCOPE_DESCRIBED,
+        payload=payload.model_dump(mode="json"),
+        actor=actor,
+        actor_kind=ActorKind.HUMAN,
+        workspace_id=WORKSPACE_ID,
+    )
+
+
+def test_a_product_starts_with_no_description() -> None:
+    """Absent, not empty. Nothing is invented for a product nobody has described,
+    and the Overview renders the absence rather than a placeholder sentence."""
+    assert replay([product_created()]).products[PRODUCT_ID].description is None
+
+
+def test_product_described_gives_the_product_its_description() -> None:
+    projection = replay([product_created(), product_described()])
+    assert (
+        projection.products[PRODUCT_ID].description
+        == "The billing surface Acme's customers actually see."
+    )
+
+
+def test_describing_an_unknown_product_raises() -> None:
+    """Same rule as a rename: a description with no creation means a corrupt log
+    or an upstream bug, and swallowing it would make the write silently vanish."""
+    with pytest.raises(ValueError, match="unknown product"):
+        replay([product_described()])
+
+
+def test_the_last_product_description_wins() -> None:
+    projection = replay(
+        [product_created(), product_described(), product_described(description="Rewritten.")]
+    )
+    assert projection.products[PRODUCT_ID].description == "Rewritten."
+
+
+def test_a_product_description_can_be_cleared() -> None:
+    """An empty description is how a PM removes a wrong one. Refusing blank here
+    would make a bad description permanent, which is worse than allowing the
+    field to return to absent."""
+    projection = replay([product_created(), product_described(), product_described(description="")])
+    assert projection.products[PRODUCT_ID].description is None
+
+
+def test_renaming_a_product_keeps_its_description() -> None:
+    """The two events say different things about the same product, so neither may
+    overwrite the other's field. A rename that silently blanked the description
+    is exactly the bug a wholesale re-construction of the projected object
+    produces."""
+    projection = replay([product_created(), product_described(), product_renamed()])
+    assert projection.products[PRODUCT_ID].name == "Acme Web (v2)"
+    assert projection.products[PRODUCT_ID].description is not None
+
+
+def test_a_feature_scope_starts_with_no_description() -> None:
+    assert replay([ingestion_run()]).feature_scopes[SCOPE_ID].description is None
+
+
+def test_feature_scope_described_gives_the_feature_its_description() -> None:
+    projection = replay([ingestion_run(), feature_scope_described()])
+    assert (
+        projection.feature_scopes[SCOPE_ID].description
+        == "Why we are letting users search inside archives."
+    )
+
+
+def test_a_description_written_before_the_run_still_lands() -> None:
+    """Order-independent for the same reason `feature_scope_assigned` is: a
+    person's statement about a feature must not depend on whether ingestion
+    happened to be replayed first."""
+    projection = replay([feature_scope_described(), ingestion_run()])
+    assert projection.feature_scopes[SCOPE_ID].description is not None
+
+
+def test_a_later_run_does_not_clear_a_feature_description() -> None:
+    """A second source joining a feature adds evidence; it does not un-say what a
+    person wrote about it -- the same instinct as the first-run-wins title rule."""
+    projection = replay(
+        [
+            ingestion_run(),
+            feature_scope_described(),
+            ingestion_run(title="SCRUM-7 -- ship a --maxdepth flag", external_id="SCRUM-7"),
+        ]
+    )
+    assert projection.feature_scopes[SCOPE_ID].description is not None
+    assert projection.feature_scopes[SCOPE_ID].title.startswith("ripgrep #111")
+
+
+def test_a_feature_description_survives_being_filed_under_a_product() -> None:
+    projection = replay(
+        [ingestion_run(), feature_scope_described(), product_created(), feature_scope_assigned()]
+    )
+    scope = projection.feature_scopes[SCOPE_ID]
+    assert scope.product_id == PRODUCT_ID
+    assert scope.description is not None
+
+
+def test_describing_a_scope_that_has_no_run_projects_no_scope() -> None:
+    """The pre-1A' case, handled exactly as an assignment to such a scope is: a
+    description does not conjure a feature with a fabricated title. The event is
+    inert rather than fatal -- the log is append-only, so a replay that raised
+    here would make the whole workspace unreadable forever."""
+    projection = replay([feature_scope_described(), node_created()])
+    assert projection.feature_scopes == {}
+    assert projection.nodes
+
+
+def test_a_description_may_be_blank_but_not_unbounded() -> None:
+    """Blank is meaningful (it clears). Unbounded is not: the payload lands in
+    JSONB in an append-only log, so there is no later opportunity to trim it."""
+    assert ProductDescribedPayload(product_id=PRODUCT_ID, description="").description == ""
+    with pytest.raises(ValidationError):
+        ProductDescribedPayload(product_id=PRODUCT_ID, description="x" * (DESCRIPTION_MAX + 1))
+
+
+def test_surrounding_whitespace_is_trimmed_from_a_description() -> None:
+    """Unlike a `SourceRef.excerpt`, an authored description carries no provenance
+    obligation to stay verbatim -- and a description of only spaces means
+    cleared, not "described as blank"."""
+    payload = FeatureScopeDescribedPayload(feature_scope_id=SCOPE_ID, description="  spaced  ")
+    assert payload.description == "spaced"
+    assert (
+        FeatureScopeDescribedPayload(feature_scope_id=SCOPE_ID, description="   ").description == ""
+    )

@@ -45,6 +45,7 @@ is grouped, sorted or drawn.
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response, status
@@ -64,6 +65,7 @@ from atlas.api.deps import (
 )
 from atlas.models.schema import (
     AtlasModel,
+    DescriptionStr,
     Edge,
     IngestionRunPayload,
     Node,
@@ -127,6 +129,18 @@ class AddNodeRequest(AtlasModel):
 
 class CreateProductRequest(AtlasModel):
     name: NonBlankStr
+
+
+class DescribeRequest(AtlasModel):
+    """What a product or a feature is, in the PM's own words (slice 3).
+
+    `DescriptionStr` rather than `NonBlankStr`, and that is the whole difference:
+    an empty description is not a malformed one, it is how a wrong description is
+    removed. The length bound is the domain's own, reused rather than restated at
+    the wire.
+    """
+
+    description: DescriptionStr
 
 
 class ConnectSourceRequest(AtlasModel):
@@ -237,6 +251,10 @@ class FeatureScopeRow(AtlasModel):
     runs: list[IngestionRunPayload]
     product_id: uuid.UUID | None
     counts: ScopeCounts
+    #: What the feature is for, or `None` until someone says. Carried on the row
+    #: so a product's feature list can show it without fetching every feature's
+    #: full detail to read one sentence.
+    description: str | None
 
 
 class FeatureScopeDetail(AtlasModel):
@@ -282,6 +300,40 @@ def _require_feature_scope(session: Session, principal: Principal, scope_id: uui
     )
     if not projection.feature_scopes and not projection.nodes:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"no feature scope {scope_id}")
+
+
+def _require_product(session: Session, principal: Principal, product_id: uuid.UUID) -> Product:
+    """The product from the caller's own workspace, or 404.
+
+    Existence, not domain logic -- the same shape as `_require_feature_scope`.
+    A product is a projection, so there is no row to constrain against, which
+    makes this check the thing standing between a typo'd id and a connection
+    filed under a product that does not exist.
+    """
+    projection = load_projection(session, workspace_id=principal.workspace_id)
+    product = projection.products.get(product_id)
+    if product is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"no product {product_id}")
+    return product
+
+
+def _require_named_feature_scope(
+    session: Session, principal: Principal, scope_id: uuid.UUID
+) -> FeatureScope:
+    """The scope's projected *identity*, or 404 -- stricter than
+    `_require_feature_scope`, deliberately.
+
+    A scope with nodes but no `ingestion_run` (the pre-1A' case) has no identity
+    to hang a description on, and the replay drops a description naming one
+    rather than fabricating a feature for it (`storage/projections.py`). Refusing
+    at the wire is what keeps the log free of events that could never be read
+    back.
+    """
+    projection = load_projection(session, workspace_id=principal.workspace_id)
+    scope = projection.feature_scopes.get(scope_id)
+    if scope is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"no feature scope {scope_id}")
+    return scope
 
 
 # --- session ------------------------------------------------------------------
@@ -370,6 +422,34 @@ def create_product(
     return Product(id=product_id, name=body.name)
 
 
+@router.put("/products/{product_id}/description", response_model=Product)
+def describe_product(
+    product_id: uuid.UUID,
+    body: DescribeRequest,
+    session: SessionDep,
+    principal: WriterDep,
+) -> Product:
+    """Say what this product is. `PUT` because the body states the field's whole
+    value -- sending it twice leaves the same product, even though each send
+    appends its own audit event.
+
+    Authored orientation, not an extracted claim: no provenance, no confirmation
+    loop, and nothing here can reach a spec export
+    (`docs/decisions/2026-08-19-product-orientation-rerun-safety-and-demo-data.md`
+    decision 4).
+    """
+    product = _require_product(session, principal, product_id)
+    products.describe_product(
+        session,
+        workspace_id=principal.workspace_id,
+        product_id=product_id,
+        description=body.description,
+        actor=principal.actor,
+        actor_kind=principal.actor_kind,
+    )
+    return replace(product, description=body.description or None)
+
+
 @router.get("/feature-scopes", response_model=list[FeatureScopeRow])
 def list_feature_scopes(
     session: SessionDep,
@@ -391,6 +471,7 @@ def list_feature_scopes(
             runs=list(scope.runs),
             product_id=scope.product_id,
             counts=projection.counts_for(scope.id),
+            description=scope.description,
         )
         for scope in projection.feature_scopes.values()
     ]
@@ -415,20 +496,32 @@ def get_feature_scope(
     )
 
 
-# --- sources (slice 2B) --------------------------------------------------------
+@router.put("/feature-scopes/{feature_scope_id}/description", response_model=FeatureScope)
+def describe_feature_scope(
+    feature_scope_id: uuid.UUID,
+    body: DescribeRequest,
+    session: SessionDep,
+    principal: WriterDep,
+) -> FeatureScope:
+    """Say what this feature is *for*.
 
-
-def _require_product(session: Session, principal: Principal, product_id: uuid.UUID) -> None:
-    """404 unless the caller's own workspace has this product.
-
-    Existence, not domain logic -- the same shape as `_require_feature_scope`.
-    A product is a projection, so there is no row to constrain against, which
-    makes this check the thing standing between a typo'd id and a connection
-    filed under a product that does not exist.
+    Not a rename. The title stays the one the artifact that opened the scope
+    gave it -- first-run-wins, per `storage/projections.py` -- so a reviewer
+    keeps the name they recognise and gains the sentence saying why it exists.
     """
-    projection = load_projection(session, workspace_id=principal.workspace_id)
-    if product_id not in projection.products:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, f"no product {product_id}")
+    scope = _require_named_feature_scope(session, principal, feature_scope_id)
+    products.describe_feature_scope(
+        session,
+        workspace_id=principal.workspace_id,
+        feature_scope_id=feature_scope_id,
+        description=body.description,
+        actor=principal.actor,
+        actor_kind=principal.actor_kind,
+    )
+    return replace(scope, description=body.description or None)
+
+
+# --- sources (slice 2B) --------------------------------------------------------
 
 
 def _normalize_host(host: str) -> str:

@@ -40,6 +40,21 @@ def _reject_blank(value: str) -> str:
 #: it -- `api/` reuses this rather than re-deriving the check at the wire.
 NonBlankStr = Annotated[str, Field(min_length=1), AfterValidator(_reject_blank)]
 
+#: How long an authored description may be. The payload lands in JSONB in an
+#: append-only log, so there is no later opportunity to trim it -- and orientation
+#: that runs past a paragraph is a spec, which is what the *claims* are for.
+DESCRIPTION_MAX_LENGTH = 2000
+
+#: PM-authored orientation text: what a product or a feature *is*. Deliberately
+#: **not** `NonBlankStr` -- blank is the only way to remove a wrong description,
+#: and refusing it would make a mistake permanent in a log that only moves
+#: forward. It is trimmed rather than kept verbatim, which separates it from a
+#: `SourceRef.excerpt`: an excerpt is evidence and must stay literal, a
+#: description is authored prose and nobody meant the trailing spaces.
+DescriptionStr = Annotated[
+    str, Field(max_length=DESCRIPTION_MAX_LENGTH), AfterValidator(lambda value: value.strip())
+]
+
 
 class AtlasModel(BaseModel):
     """Shared config for every entity: reject unknown fields at the gate."""
@@ -211,6 +226,12 @@ class EventType(StrEnum):
     PRODUCT_CREATED = "product_created"
     PRODUCT_RENAMED = "product_renamed"
     FEATURE_SCOPE_ASSIGNED = "feature_scope_assigned"
+    # Orientation (slice 3): what a product and a feature *are*, in the PM's own
+    # words. Separate events from `product_renamed` rather than a second field on
+    # its payload, because a rename and a description are different statements
+    # about the same thing and neither may silently restate the other.
+    PRODUCT_DESCRIBED = "product_described"
+    FEATURE_SCOPE_DESCRIBED = "feature_scope_described"
     # The run lifecycle (slice 2B). Ingestion triggered from the UI runs
     # in-process and returns before it finishes, so "is it still going?" has to
     # be answerable from the log rather than from the request that started it.
@@ -507,6 +528,46 @@ class FeatureScopeAssignedPayload(AtlasModel):
 
     feature_scope_id: uuid.UUID
     product_id: uuid.UUID
+
+
+class ProductDescribedPayload(AtlasModel):
+    """Payload of a `product_described` Event -- what this product *is*.
+
+    **The PM types it** (`docs/decisions/2026-08-19-product-orientation-rerun-
+    safety-and-demo-data.md` decision 4). Extracting a summary instead would have
+    made the description a *claim about the product*: obliged to carry provenance
+    and to start unconfirmed like anything else, and machine-written text in the
+    one place a first-time visitor goes to find out what they are looking at.
+    Orientation is also the thing a PM knows better than the extractor does.
+
+    So this is an ordinary event-sourced field, not a Node -- no `SourceRef`, no
+    confidence score, no confirmation loop, and nothing here reaches a spec
+    export, which is assembled from confirmed claims.
+
+    Kept apart from `ProductPayload` deliberately. A rename restates the
+    product's whole identity; a description says something else about it. One
+    shared payload would mean either event silently overwriting the other's
+    field, or an optional field whose absence is ambiguous between "unchanged"
+    and "cleared".
+    """
+
+    product_id: uuid.UUID
+    #: Empty means *cleared*. See `DescriptionStr`.
+    description: DescriptionStr
+
+
+class FeatureScopeDescribedPayload(AtlasModel):
+    """Payload of a `feature_scope_described` Event -- what this feature is for.
+
+    The same authored text one level down, and the reason it is not the scope's
+    `title`: a title is inherited from whichever artifact opened the scope and is
+    fixed to the first run (`storage/projections.py`), so it says what the
+    feature was *called*, never what it is *for*.
+    """
+
+    feature_scope_id: uuid.UUID
+    #: Empty means *cleared*. See `DescriptionStr`.
+    description: DescriptionStr
 
 
 class Event(AtlasModel):

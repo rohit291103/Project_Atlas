@@ -204,6 +204,9 @@ def _events(session_factory: sessionmaker[Session], event_type: EventType) -> li
         ("get", f"/products/{uuid.uuid4()}/runs"),
         ("post", f"/products/{uuid.uuid4()}/runs"),
         ("get", f"/runs/{uuid.uuid4()}"),
+        # Slice 3. Orientation is authored, so these are writes like any other.
+        ("put", f"/products/{uuid.uuid4()}/description"),
+        ("put", f"/feature-scopes/{FEATURE_SCOPE_ID}/description"),
     ],
 )
 def test_every_endpoint_requires_a_session(client: TestClient, method: str, path: str) -> None:
@@ -539,6 +542,120 @@ def test_products_are_invisible_across_workspaces(signed_in: TestClient) -> None
     listed = signed_in.get("/products").json()
 
     assert len(listed) == 1
+
+
+# --- saying what a product and a feature are (slice 3) --------------------------
+#
+# PM-authored plain text, not a Node -- no provenance, no confirmation loop
+# (`docs/decisions/2026-08-19-product-orientation-rerun-safety-and-demo-data.md`
+# decision 4). `PUT` rather than `POST` because the request states the field's
+# whole value: sending it twice leaves the same description, even though each
+# send appends its own audit event.
+
+
+def test_a_product_says_what_it_is(signed_in: TestClient) -> None:
+    product_id = signed_in.post("/products", json={"name": "Acme Web"}).json()["id"]
+
+    response = signed_in.put(
+        f"/products/{product_id}/description",
+        json={"description": "Where Acme's customers pay their bills."},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["description"] == "Where Acme's customers pay their bills."
+    assert response.json()["name"] == "Acme Web"
+    listed = signed_in.get("/products").json()
+    assert listed[0]["description"] == "Where Acme's customers pay their bills."
+
+
+def test_a_product_description_is_cleared_by_an_empty_one(signed_in: TestClient) -> None:
+    product_id = signed_in.post("/products", json={"name": "Acme Web"}).json()["id"]
+    signed_in.put(f"/products/{product_id}/description", json={"description": "Wrong."})
+
+    assert (
+        signed_in.put(f"/products/{product_id}/description", json={"description": ""}).status_code
+        == 200
+    )
+    assert signed_in.get("/products").json()[0]["description"] is None
+
+
+def test_describing_a_product_that_does_not_exist_is_a_404(signed_in: TestClient) -> None:
+    response = signed_in.put(
+        f"/products/{uuid.uuid4()}/description", json={"description": "Ghost."}
+    )
+
+    assert response.status_code == 404
+
+
+def test_a_viewer_may_not_describe_a_product(
+    client: TestClient, seeded: sessionmaker[Session]
+) -> None:
+    client.post("/session", json={"passphrase": PASSPHRASE, "name": ACTOR})
+    product_id = client.post("/products", json={"name": "Acme Web"}).json()["id"]
+    client.delete("/session")
+    client.post("/session", json={"passphrase": PASSPHRASE, "name": VIEWER})
+
+    response = client.put(f"/products/{product_id}/description", json={"description": "Sneaky."})
+
+    assert response.status_code == 403
+
+
+def test_describing_a_product_is_recorded_as_the_signed_in_person(
+    signed_in: TestClient, seeded: sessionmaker[Session]
+) -> None:
+    """Orientation is not a claim, but it is still someone's statement -- so it
+    lands in the log with the same actor and the same `actor_kind` a ruling
+    does."""
+    product_id = signed_in.post("/products", json={"name": "Acme Web"}).json()["id"]
+
+    signed_in.put(f"/products/{product_id}/description", json={"description": "Billing."})
+
+    events = _events(seeded, EventType.PRODUCT_DESCRIBED)
+    assert [(event.actor, event.actor_kind) for event in events] == [(ACTOR, ActorKind.HUMAN)]
+
+
+def test_a_feature_says_what_it_is(signed_in: TestClient) -> None:
+    response = signed_in.put(
+        f"/feature-scopes/{FEATURE_SCOPE_ID}/description",
+        json={"description": "Stop the gateway falling over under bursts."},
+    )
+
+    assert response.status_code == 200
+    detail = signed_in.get(f"/feature-scopes/{FEATURE_SCOPE_ID}").json()
+    assert detail["feature_scope"]["description"] == "Stop the gateway falling over under bursts."
+    row = signed_in.get("/feature-scopes").json()[0]
+    assert row["description"] == "Stop the gateway falling over under bursts."
+
+
+def test_describing_a_feature_scope_that_does_not_exist_is_a_404(signed_in: TestClient) -> None:
+    """A scope with nodes but no `ingestion_run` has no projected identity to
+    attach a description to, so the write is refused at the wire rather than
+    written as an event the replay would drop."""
+    response = signed_in.put(
+        f"/feature-scopes/{uuid.uuid4()}/description", json={"description": "Ghost."}
+    )
+
+    assert response.status_code == 404
+
+
+def test_a_viewer_may_not_describe_a_feature(client: TestClient) -> None:
+    client.post("/session", json={"passphrase": PASSPHRASE, "name": VIEWER})
+
+    response = client.put(
+        f"/feature-scopes/{FEATURE_SCOPE_ID}/description", json={"description": "Sneaky."}
+    )
+
+    assert response.status_code == 403
+
+
+def test_an_over_long_description_is_refused_at_the_wire(signed_in: TestClient) -> None:
+    product_id = signed_in.post("/products", json={"name": "Acme Web"}).json()["id"]
+
+    response = signed_in.put(
+        f"/products/{product_id}/description", json={"description": "x" * 5000}
+    )
+
+    assert response.status_code == 422
 
 
 # --- sources and runs (slice 2B) -----------------------------------------------

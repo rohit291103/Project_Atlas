@@ -52,11 +52,13 @@ from atlas.models.schema import (
     Edge,
     EventType,
     FeatureScopeAssignedPayload,
+    FeatureScopeDescribedPayload,
     IngestionRunPayload,
     Node,
     NodeEditPayload,
     NodeStatus,
     NodeStatusChangePayload,
+    ProductDescribedPayload,
     ProductPayload,
     RelationType,
     RunFailedPayload,
@@ -151,6 +153,12 @@ class FeatureScope:
     #: during the fold, because an assignment and a run can arrive in either
     #: order and the answer must not depend on which.
     product_id: uuid.UUID | None = None
+    #: What this feature is *for*, in the PM's own words -- `None` until someone
+    #: says. Distinct from `title`, which is inherited from the artifact that
+    #: opened the scope and therefore says what the feature was *called*.
+    #: Resolved at the end of `replay` for the same order-independence reason
+    #: `product_id` is.
+    description: str | None = None
 
 
 @dataclass(frozen=True)
@@ -191,6 +199,11 @@ class Product:
 
     id: uuid.UUID
     name: str
+    #: What the product is, in the PM's own words -- `None` until someone says.
+    #: Authored text, not an extracted claim (`models/schema.py`
+    #: `ProductDescribedPayload`), so it carries no provenance and never enters
+    #: the confirmation loop.
+    description: str | None = None
 
 
 @dataclass(frozen=True)
@@ -454,6 +467,13 @@ def replay(events: Iterable[_ReplayableEvent]) -> Projection:
     # feature out of the product a person put it in.
     assigned: dict[uuid.UUID, uuid.UUID] = {}
     defaulted: dict[uuid.UUID, uuid.UUID] = {}
+    # Feature descriptions are resolved at the end for the same reason: a person
+    # can say what a feature is for before or after ingestion opens it, and last
+    # one wins either way. A description naming a scope no run ever opened is
+    # inert -- the scope has no identity to attach it to, exactly as an
+    # assignment to such a scope is inert. Raising instead would make an
+    # append-only log unreadable forever over a piece of orientation text.
+    described: dict[uuid.UUID, str] = {}
 
     for event in events:
         event_type = event.event_type
@@ -536,7 +556,25 @@ def replay(events: Iterable[_ReplayableEvent]) -> Projection:
                     f"'product_renamed' names unknown product {renamed.product_id}: "
                     "the log has no product_created for it"
                 )
-            products[renamed.product_id] = Product(id=renamed.product_id, name=renamed.name)
+            products[renamed.product_id] = replace(products[renamed.product_id], name=renamed.name)
+        elif event_type == EventType.PRODUCT_DESCRIBED:
+            described_product = ProductDescribedPayload.model_validate(event.payload)
+            if described_product.product_id not in products:
+                raise ValueError(
+                    f"'product_described' names unknown product "
+                    f"{described_product.product_id}: the log has no product_created for it"
+                )
+            products[described_product.product_id] = replace(
+                products[described_product.product_id],
+                # Empty is how a wrong description is removed, and `None` is what
+                # "nobody has said" looks like everywhere else -- so the two
+                # collapse here rather than leaving an empty string for every
+                # reader to special-case.
+                description=described_product.description or None,
+            )
+        elif event_type == EventType.FEATURE_SCOPE_DESCRIBED:
+            described_scope = FeatureScopeDescribedPayload.model_validate(event.payload)
+            described[described_scope.feature_scope_id] = described_scope.description
         elif event_type == EventType.FEATURE_SCOPE_ASSIGNED:
             assignment = FeatureScopeAssignedPayload.model_validate(event.payload)
             assigned[assignment.feature_scope_id] = assignment.product_id
@@ -550,7 +588,11 @@ def replay(events: Iterable[_ReplayableEvent]) -> Projection:
     # inventing one would be exactly the fabrication the rest of this module
     # refuses.
     feature_scopes = {
-        scope_id: replace(scope, product_id=assigned.get(scope_id, defaulted.get(scope_id)))
+        scope_id: replace(
+            scope,
+            product_id=assigned.get(scope_id, defaulted.get(scope_id)),
+            description=described.get(scope_id) or None,
+        )
         for scope_id, scope in feature_scopes.items()
     }
     return Projection(
