@@ -52,6 +52,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, api, canWrite } from "../api";
+import { Orientation } from "../components/Orientation";
 import type { FeatureScopeDetail, Node, NodeType, Role, SourceRef } from "../api";
 import {
   QUEUE_VIEWS,
@@ -534,6 +535,28 @@ export function ReviewPage({
         )}
       </header>
 
+      {/* The same layering one level down (slice 4): a feature says what it is
+          for, above its claim list. Not the title — that is inherited from
+          whichever artifact opened the scope and is fixed to the first run, so
+          it says what the feature was *called*, never what it is *for*. It sits
+          outside `rv__bar` because the bar is a fixed-height row of facts and
+          this is a sentence; a paragraph in there would push the progress meter
+          and the conflict link around as it wrapped. */}
+      {scope && (
+        <div className="rv__what" data-tour="feature-what">
+          <Orientation
+            description={scope.description ?? null}
+            writable={writable}
+            what="feature"
+            placeholder="What is this feature for? The problem it solves, in a sentence."
+            onSave={async (description) => {
+              await api.describeFeature(scopeId, description);
+              await load();
+            }}
+          />
+        </div>
+      )}
+
       <div
         className={`rv__body${collapsed ? " is-collapsed" : ""}`}
         style={{ "--queue-w": `${queueWidth}px` } as React.CSSProperties}
@@ -694,7 +717,7 @@ export function ReviewPage({
                  by a container query on the pane, because the pane's width is
                  something the reviewer sets by dragging. */
               <div className="rv__stack">
-                <div className="rv__col">
+                <div className="rv__col" data-tour="claim">
                   <ClaimCard
                     node={focused}
                     editing={editing}
@@ -728,7 +751,7 @@ export function ReviewPage({
                   />
                 </div>
 
-                <div className="rv__col">
+                <div className="rv__col" data-tour="provenance">
                   <Evidence node={focused} />
                   <Siblings siblings={siblingsOf(focused, allNodes)} onFocusNode={jumpTo} />
                 </div>
@@ -938,7 +961,7 @@ function Versus({
   conflictsHref: { href: string; onClick: (event: React.MouseEvent) => void };
 }) {
   return (
-    <div className="versus">
+    <div className="versus" data-tour="versus">
       <div className="versus__head">
         <span className="versus__mark" aria-hidden>
           ⚠

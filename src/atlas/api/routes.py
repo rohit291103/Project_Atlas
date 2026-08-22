@@ -49,6 +49,7 @@ from dataclasses import replace
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response, status
+from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
 from atlas.api.deps import (
@@ -63,6 +64,7 @@ from atlas.api.deps import (
     issue_session,
     verify_passphrase,
 )
+from atlas.assembly import ProductDocument, assemble, to_markdown
 from atlas.models.schema import (
     AtlasModel,
     DescriptionStr,
@@ -273,6 +275,18 @@ class FeatureScopeDetail(AtlasModel):
 # --- helpers -------------------------------------------------------------------
 
 
+def _spec_filename(product_name: str) -> str:
+    """A safe download filename from a product name.
+
+    Whitelist rather than blacklist: a product name is user-supplied and goes
+    into a `Content-Disposition` header, where a stray quote or newline is a
+    header-injection primitive rather than a cosmetic problem.
+    """
+    kept = [character if character.isalnum() else "-" for character in product_name.lower()]
+    slug = "".join(kept).strip("-").replace("--", "-") or "product"
+    return f"{slug[:60]}-spec.md"
+
+
 def _require_node(session: Session, principal: Principal, node_id: uuid.UUID) -> Node:
     """Load the node from the caller's own workspace, or 404.
 
@@ -448,6 +462,64 @@ def describe_product(
         actor_kind=principal.actor_kind,
     )
     return replace(product, description=body.description or None)
+
+
+@router.get("/products/{product_id}/document", response_model=ProductDocument)
+def get_product_document(
+    product_id: uuid.UUID,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> ProductDocument:
+    """What this product *is*, assembled from what has actually been confirmed.
+
+    Thin, per the module boundary: load the projection, call one function, return.
+    Every editorial rule -- confirmed-only, provenance on every line, an
+    unresolved conflict shown as an open disagreement rather than silently
+    resolved -- lives in `assembly.py`, which the Markdown export reads through
+    too. Duplicating any of it here is what would let the page and the export
+    disagree about what "confirmed" means.
+
+    `load_projection` is called directly rather than via `_require_product`
+    because that helper loads a projection and discards it, and a replay is the
+    expensive thing on this path (see
+    `docs/architecture/product-info-and-spec-export-v1.md` Sec9).
+    """
+    projection = load_projection(session, workspace_id=principal.workspace_id)
+    if product_id not in projection.products:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"no product {product_id}")
+    return assemble(projection, product_id)
+
+
+@router.get(
+    "/products/{product_id}/spec",
+    response_class=PlainTextResponse,
+    responses={200: {"content": {"text/markdown": {}}}},
+)
+def export_product_spec(
+    product_id: uuid.UUID,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> PlainTextResponse:
+    """The same document as Markdown — spec export v0 (roadmap v2, Phase 2A).
+
+    One assembly, two renderings: whatever the About page shows is what this
+    file contains, because both call `assemble` and neither re-decides what
+    "confirmed" means. That is the property worth having, and it is the reason
+    the export shipped alongside the page rather than after it.
+
+    Served as an attachment so a browser saves it rather than rendering it as a
+    wall of plain text, and named after the product so a folder of these is
+    still legible.
+    """
+    projection = load_projection(session, workspace_id=principal.workspace_id)
+    if product_id not in projection.products:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"no product {product_id}")
+    document = assemble(projection, product_id)
+    return PlainTextResponse(
+        to_markdown(document),
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{_spec_filename(document.name)}"'},
+    )
 
 
 @router.get("/feature-scopes", response_model=list[FeatureScopeRow])

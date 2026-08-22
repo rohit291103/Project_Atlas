@@ -90,6 +90,67 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/products/{product_id}/document": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Product Document
+         * @description What this product *is*, assembled from what has actually been confirmed.
+         *
+         *     Thin, per the module boundary: load the projection, call one function, return.
+         *     Every editorial rule -- confirmed-only, provenance on every line, an
+         *     unresolved conflict shown as an open disagreement rather than silently
+         *     resolved -- lives in `assembly.py`, which the Markdown export reads through
+         *     too. Duplicating any of it here is what would let the page and the export
+         *     disagree about what "confirmed" means.
+         *
+         *     `load_projection` is called directly rather than via `_require_product`
+         *     because that helper loads a projection and discards it, and a replay is the
+         *     expensive thing on this path (see
+         *     `docs/architecture/product-info-and-spec-export-v1.md` Sec9).
+         */
+        get: operations["get_product_document_products__product_id__document_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/products/{product_id}/spec": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Product Spec
+         * @description The same document as Markdown — spec export v0 (roadmap v2, Phase 2A).
+         *
+         *     One assembly, two renderings: whatever the About page shows is what this
+         *     file contains, because both call `assemble` and neither re-decides what
+         *     "confirmed" means. That is the property worth having, and it is the reason
+         *     the export shipped alongside the page rather than after it.
+         *
+         *     Served as an attachment so a browser saves it rather than rendering it as a
+         *     wall of plain text, and named after the product so a folder of these is
+         *     still legible.
+         */
+        get: operations["export_product_spec_products__product_id__spec_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/feature-scopes": {
         parameters: {
             query?: never;
@@ -355,6 +416,29 @@ export interface components {
             content: string;
         };
         /**
+         * Claim
+         * @description One claim as it appears in a document, with its provenance attached.
+         *
+         *     `status` is carried rather than dropped because the unruled side of a live
+         *     disagreement is rendered too, and rendering it without saying it is unruled
+         *     would be the dishonest half of showing it at all.
+         */
+        Claim: {
+            /**
+             * Node Id
+             * Format: uuid
+             */
+            node_id: string;
+            type: components["schemas"]["NodeType"];
+            /** Content */
+            content: string;
+            status: components["schemas"]["NodeStatus"];
+            /** Sources */
+            sources: components["schemas"]["SourceRef"][];
+            /** Feature Title */
+            feature_title: string;
+        };
+        /**
          * ConnectSourceRequest
          * @description Connect one source to one product.
          *
@@ -456,6 +540,23 @@ export interface components {
         DescribeRequest: {
             /** Description */
             description: string;
+        };
+        /**
+         * Disagreement
+         * @description A `conflicts_with` nobody has settled, carrying both sides.
+         *
+         *     Confirming one side does not resolve a conflict (TRD Sec5.2) -- only a
+         *     rejection does, because rejecting is the act that says which side lost. So a
+         *     disagreement stands while neither endpoint is rejected.
+         */
+        Disagreement: {
+            /**
+             * Edge Id
+             * Format: uuid
+             */
+            edge_id: string;
+            left: components["schemas"]["Claim"];
+            right: components["schemas"]["Claim"];
         };
         /**
          * Edge
@@ -565,6 +666,27 @@ export interface components {
             counts: components["schemas"]["ScopeCounts"];
             /** Description */
             description: string | null;
+        };
+        /**
+         * FeatureSection
+         * @description One feature's part of the document.
+         */
+        FeatureSection: {
+            /**
+             * Feature Scope Id
+             * Format: uuid
+             */
+            feature_scope_id: string;
+            /** Title */
+            title: string;
+            /** Description */
+            description: string | null;
+            /** Claims */
+            claims: components["schemas"]["Claim"][];
+            /** Disagreements */
+            disagreements: components["schemas"]["Disagreement"][];
+            /** Unreviewed */
+            unreviewed: number;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -695,6 +817,28 @@ export interface components {
             name: string;
             /** Description */
             description?: string | null;
+        };
+        /**
+         * ProductDocument
+         * @description What a product is, assembled from what has actually been confirmed.
+         */
+        ProductDocument: {
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string | null;
+            /** Features */
+            features: components["schemas"]["FeatureSection"][];
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at?: string;
         };
         /**
          * RelationType
@@ -1106,6 +1250,69 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Product"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_product_document_products__product_id__document_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductDocument"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_product_spec_products__product_id__spec_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                    "text/markdown": unknown;
                 };
             };
             /** @description Validation Error */

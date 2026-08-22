@@ -30,6 +30,25 @@ const PASSPHRASE = process.env.ATLAS_APP_PASSPHRASE ?? "letmein";
 
 type Page = import("@playwright/test").Page;
 
+/* The guided tour opens on any browser that has not seen it — which is every
+ * Playwright context, since each one starts with empty storage. It navigates to
+ * the product chooser on its first step, so left alone it would break the
+ * `signIn` helper for all 23 tests below and put an overlay over most of them.
+ *
+ * Marking it seen is the same move the suite already makes with the
+ * `X-Atlas-Automated` header: a machine declaring what it is. Onboarding is for
+ * people. The two tour tests opt back in by clearing the flag themselves — the
+ * tour is a real behaviour and is tested as one rather than hidden.
+ */
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => window.localStorage.setItem("atlas.tourSeen", "1"));
+});
+
+/** Undo the opt-out above, for the tests that are about the tour itself. */
+async function wantTour(page: Page) {
+  await page.addInitScript(() => window.localStorage.removeItem("atlas.tourSeen"));
+}
+
 /** Sign in and stop, without entering a product. */
 async function signInOnly(page: Page, name: string) {
   // `/` is the marketing page as of slice 2B; the form lives at its own route.
@@ -98,10 +117,14 @@ test("the rail shows one product's features, not every product's", async ({ page
   // it was previously reachable only by typing the URL. Matched loosely because
   // Conflicts carries a live count badge inside the same element.
   //
-  // Order follows the loop the product runs — connect, then review — rather
-  // than the order the screens happened to be built in.
+  // Order: the two *reading* destinations first (what is mine to do, then what
+  // this product is), then the loop the product runs — connect, then review.
+  // About joined between Overview and Sources on 2026-08-21; the order is
+  // asserted rather than the set, because it is a deliberate reading order and
+  // not an accident of the order the screens were built in.
   await expect(page.locator(".rail__nav-item")).toHaveText([
     /^Overview$/,
+    /^About$/,
     /^Sources$/,
     /^Conflicts\d*$/,
   ]);
@@ -116,8 +139,11 @@ test("the rail shows one product's features, not every product's", async ({ page
    * each row; the only heading left is the one with a list under it. */
   await expect(page.locator(".rail__group-label")).toHaveText(["Features"]);
   // Each nav row carries its glyph, which is what now separates a destination
-  // from a label. Without it we are back to three identical-looking text rows.
-  await expect(page.locator(".rail__nav-item .rail__nav-icon")).toHaveCount(3);
+  // from a label. Without it we are back to a column of identical-looking text
+  // rows. Counted against the rows themselves rather than a literal, so adding
+  // a destination without a glyph fails here instead of silently passing.
+  const navRows = await page.locator(".rail__nav-item").count();
+  await expect(page.locator(".rail__nav-item .rail__nav-icon")).toHaveCount(navRows);
 });
 
 test("the rail filter narrows the feature list and ⌘K reaches it", async ({ page }) => {
@@ -623,10 +649,17 @@ test("the hero demo shows every claim with its source excerpt, and yields when d
     await expect(demo.locator(".ld-quote mark")).toBeVisible();
   }
 
-  // The second claim is the one that contradicts the Jira requirement; the
-  // demo must surface that rather than quietly showing four agreeable claims.
-  await claims.nth(1).click();
+  // One pair of claims contradicts the other, and the demo must surface that
+  // rather than quietly showing four agreeable ones. Selected by its text
+  // rather than by index: the queue is grouped the way the app groups it
+  // ("What it must do" / "How it was decided" / "Unresolved"), so a claim's
+  // position in the list is a property of its *type*, not something a test
+  // should be pinning.
+  await demo.locator(".ld-qitem", { hasText: "runs on every file" }).click();
   await expect(demo.locator(".ld-flag")).toBeVisible();
+  // Both sides, and the refusal to choose between them, stated on the screen.
+  await expect(demo.locator(".ld-flag__side")).toHaveCount(2);
+  await expect(demo.locator(".ld-flag")).toContainText("Confirming one side does not settle this");
 
   // A click hands control to the reader, and it stays handed over.
   const badge = demo.locator(".ld-frame__live");
@@ -667,6 +700,87 @@ test("the hero demo's tabs select claims, and follow autoplay when it is driving
   await expect(page.locator(".ld-claim")).toContainText("--pre-glob be repeated");
   await expect(tabs.nth(3)).toHaveClass(/is-active/);
   await expect(tabs.nth(3)).toHaveAttribute("aria-selected", "true");
+});
+
+/* The demo claims to be a picture of the review screen, and the whole reason it
+ * is live DOM rather than a PNG is that a PNG goes stale silently. That only
+ * pays off if something notices when the app moves and the demo doesn't — which
+ * is what this test is. It pins the two structures that actually drifted:
+ * the rail's destinations (About was added to the app and missing here for a
+ * fortnight) and the queue's plain-English group headings.
+ */
+test("the hero demo draws the application the app actually is", async ({ page }) => {
+  await page.goto("/");
+  const demo = page.locator(".ld-frame");
+
+  // The rail's destinations, in the app's order. `App.tsx` renders exactly
+  // these four for a real product.
+  await expect(demo.locator(".ld-rail__nav")).toHaveText([
+    /^Overview$/,
+    /^About$/,
+    /^Sources$/,
+    /^Conflicts1$/,
+  ]);
+
+  // The queue groups claims by what a person calls them, not by the storage
+  // enum — these are `GROUPS` in review.ts.
+  await expect(demo.locator(".ld-qgroup__label")).toHaveText([
+    "What it must do",
+    "How it was decided",
+    "Unresolved",
+  ]);
+
+  // The screen's own title bar, which replaced a fake window title. Both
+  // figures are shown because they count different things, exactly as the app
+  // does.
+  await expect(demo.locator(".ld-rvbar__title")).toHaveText("Preprocessor flag");
+  await expect(demo.locator(".ld-rvbar__conflicts")).toContainText("2 claims in 1 conflict");
+});
+
+/* Each tab has to argue something different, or the strip is four labels over
+ * one picture. The mechanism is a sentence plus a spotlight on the region of
+ * the frame that carries the argument, and the two things worth asserting are
+ * that the sentence changes and that exactly one region is ever lit — a second
+ * spotlight would mean the reader is being pointed at two things at once,
+ * which is the same as being pointed at nothing.
+ */
+test("each claim type in the hero demo spotlights a different part of the screen", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const tabs = page.locator(".ld-tab");
+  const seen = new Set<string>();
+
+  for (let i = 0; i < 4; i++) {
+    await tabs.nth(i).click();
+    await expect(page.locator(".ld-shell .is-spot")).toHaveCount(1);
+    const lens = await page.locator(".ld-lens").innerText();
+    expect(lens.length).toBeGreaterThan(40);
+    seen.add(lens);
+  }
+  expect(seen.size).toBe(4);
+});
+
+/* The page used to end at "confirm", because until the About page and the
+ * Markdown export shipped there was nothing to show afterwards. The section
+ * asserts the two halves of what shipped, and the one rule that makes the
+ * export honest rather than merely short.
+ */
+test("the landing page shows what confirming produces, page and file", async ({ page }) => {
+  await page.goto("/");
+  const spec = page.locator("#spec");
+  await expect(spec).toBeVisible();
+
+  // The page half quotes its source and says what it is still missing.
+  await expect(spec.locator(".ld-about__ex").first()).not.toBeEmpty();
+  await expect(spec.locator(".ld-about__note")).toContainText("awaiting review");
+
+  // The file half carries provenance inline and lists the unsettled
+  // disagreement rather than picking a side.
+  const file = spec.locator(".ld-md");
+  await expect(file).toContainText("SCRUM-14");
+  await expect(file).toContainText("Open disagreements");
+  await expect(file).toContainText("Neither side has been rejected");
 });
 
 test("buttons on the landing page are not underlined links", async ({ page }) => {
@@ -719,4 +833,145 @@ test("switching the connect form to Jira asks for the email the token belongs to
   // Jira Cloud authenticates email + token; asking for one without the other is
   // a connection that can only fail on its first run.
   await expect(page.locator("#email")).toBeVisible();
+});
+
+/* --- the guided tour ---------------------------------------------------------
+ *
+ * Read-only: the tour navigates and reads, and writes nothing but a localStorage
+ * flag in its own browser context. Safe to run against the shared workspace.
+ *
+ * What this actually guards is the **anchors**. A tour step finds its element by
+ * `data-tour` and *skips itself* when the element is missing — deliberately, so
+ * the tour survives products that have no conflicts. The cost of that mercy is
+ * that deleting a `data-tour` attribute during a refactor silently shortens the
+ * tour instead of breaking anything, and nobody would notice until a demo. So
+ * the test walks every step and asserts each one found something to point at.
+ */
+
+test("the guided tour opens on a first visit and spotlights every step", async ({ page }) => {
+  await wantTour(page);
+  await signInOnly(page, EDITOR);
+  // A fresh context has never seen it, so it opens itself.
+  await page.waitForSelector(".tour__card", { timeout: 40000 });
+
+  const total = Number(
+    ((await page.locator(".tour__step").textContent()) ?? "1 of 1").split(" of ")[1],
+  );
+  expect(total).toBeGreaterThanOrEqual(4);
+
+  for (let step = 1; step <= total; step++) {
+    await page.waitForSelector(".tour__card", { timeout: 40000 });
+    await expect(page.locator(".tour__step")).toHaveText(`${step} of ${total}`);
+    // The spotlight only renders once an anchor has been measured, so its
+    // presence *is* the assertion that this step found its element.
+    await expect(page.locator(".tour__hole")).toBeVisible();
+    await expect(page.locator(".tour__title")).not.toBeEmpty();
+    await page.locator(".tour__row .action--primary").click();
+    await page.waitForTimeout(400);
+  }
+
+  await expect(page.locator(".tour__card")).toHaveCount(0);
+});
+
+test("a browser that has seen the tour is not shown it again, but can replay it", async ({
+  page,
+}) => {
+  /* No `wantTour` here: the opt-out in `beforeEach` *is* the returning browser's
+     state, which is the case under test. Reloading with the flag cleared cannot
+     test this — the init script would clear it again on every load. */
+  await signInOnly(page, EDITOR);
+  await page.waitForSelector(".switcher__trigger", { timeout: 40000 });
+  // Long enough for the rail to resolve, which is what arms the auto-open.
+  await page.waitForTimeout(4000);
+  await expect(page.locator(".tour__card")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Show me around" }).click();
+
+  await expect(page.locator(".tour__card")).toBeVisible();
+  await expect(page.locator(".tour__step")).toContainText("1 of");
+});
+
+/* --- the About page ---------------------------------------------------------
+ *
+ * Read-only, like almost everything above: these open the page and read it. The
+ * one property worth checking in a real browser is the one the type system
+ * cannot see — that the page shows a claim's *source text*, not a paraphrase of
+ * it, and that a draft is nowhere on the page.
+ */
+
+test("About says what the product is and shows where each claim came from", async ({ page }) => {
+  await signIn(page, EDITOR);
+  await page.locator('[data-tour="nav-about"]').click();
+
+  await expect(page.locator("h1")).not.toBeEmpty();
+  const claims = page.locator(".about__claim");
+  if ((await claims.count()) === 0) {
+    /* A product where nothing has been confirmed renders the honest empty
+       state rather than a blank page, and that is worth asserting too — it is
+       the state every new product starts in. */
+    await expect(page.locator(".about__nothing").first()).toBeVisible();
+    return;
+  }
+  // Every claim carries its excerpt and a link out to the artifact it came
+  // from. A claim rendered without provenance is the bug this product exists
+  // to prevent, so it is checked on the page and not only in the assembly.
+  await expect(claims.first().locator(".about__ex")).toBeVisible();
+  await expect(claims.first().locator(".about__link")).toHaveAttribute("href", /^https?:\/\//);
+});
+
+test("About never shows a claim nobody has ruled on", async ({ page }) => {
+  await signIn(page, EDITOR);
+
+  // Take an unreviewed claim's text off the review screen…
+  await page.locator(".rail__item").first().click();
+  await page.waitForSelector(".qitem__text", { timeout: 40000 });
+  const unruled = page.locator(".qitem:not(.qitem--reviewed) .qitem__text").first();
+  if ((await unruled.count()) === 0) test.skip();
+  const draft = ((await unruled.textContent()) ?? "").trim();
+
+  // …and assert it is absent from the assembled document.
+  await page.locator('[data-tour="nav-about"]').click();
+  await page.waitForSelector(".about__provenance-note", { timeout: 40000 });
+
+  expect(draft.length).toBeGreaterThan(10);
+  await expect(page.locator(".about")).not.toContainText(draft);
+});
+
+test("a disagreement on About shows both sides, and says it is unresolved", async ({ page }) => {
+  await signIn(page, EDITOR);
+  await page.locator('[data-tour="nav-about"]').click();
+  await page.waitForSelector(".about__provenance-note", { timeout: 40000 });
+
+  const pairs = page.locator(".about__vs");
+  if ((await pairs.count()) === 0) test.skip();
+
+  await expect(page.locator(".about__heading--conflict").first()).toBeVisible();
+  // Both sides on screen together — the thing the old inline conflict banner
+  // could not do, and the reason a disagreement is an object here too.
+  await expect(pairs.first().locator(".about__vs-side")).toHaveCount(2);
+  // Stated once for the section, not repeated over every pair.
+  await expect(page.locator(".about__vs-why").first()).toContainText("does not resolve");
+});
+
+test("the spec export downloads as Markdown containing the confirmed claims", async ({ page }) => {
+  await signIn(page, EDITOR);
+  await page.locator('[data-tour="nav-about"]').click();
+  await page.waitForSelector(".about__provenance-note", { timeout: 40000 });
+
+  const download = page.getByRole("link", { name: "Download" });
+  if ((await download.count()) === 0) test.skip(); // nothing confirmed to export
+
+  const claim = ((await page.locator(".about__claim-text").first().textContent()) ?? "").trim();
+  const [file] = await Promise.all([page.waitForEvent("download"), download.click()]);
+
+  expect(file.suggestedFilename()).toMatch(/-spec\.md$/);
+  const stream = await file.createReadStream();
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+  const markdown = Buffer.concat(chunks).toString("utf8");
+
+  expect(markdown).toContain("# ");
+  // The export and the page are one assembly rendered twice; if this fails, the
+  // confirmed-only filter has been reimplemented somewhere it should not be.
+  expect(markdown).toContain(claim.replace(/\s*edited$/, ""));
 });

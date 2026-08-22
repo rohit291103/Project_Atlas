@@ -1,0 +1,25 @@
+# Secrets first. `.env` holds the database URL, the Fernet key and two source
+# credentials; it must never enter an image layer, where it stays readable
+# forever even if a later layer deletes it.
+.env
+.env.*
+!.env.example
+
+.git
+.github
+.venv
+venv
+**/node_modules
+frontend/dist
+frontend/test-results
+frontend/playwright-report
+docs
+tests
+scripts
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/*.pyc
+.DS_Store
+openapi.json

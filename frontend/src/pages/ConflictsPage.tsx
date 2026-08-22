@@ -116,8 +116,14 @@ export function ConflictsPage({
 
       {error && <div className="notice notice--error">{error}</div>}
 
-      {entries.map((entry) => (
-        <article className="pair" key={entry.id}>
+      {entries.map((entry, index) => (
+        <article
+          className="pair"
+          key={entry.id}
+          /* Only the first pair is a tour anchor: the tour spotlights one
+             thing, and `querySelector` would take the first of these anyway. */
+          data-tour={index === 0 ? "conflict-pair" : undefined}
+        >
           <div className="pair__head">
             <span className="pair__mark" aria-hidden>
               ⚠

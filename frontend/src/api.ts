@@ -35,6 +35,10 @@ export type Node = Omit<
 export type FeatureScope = components["schemas"]["FeatureScopeRow"];
 export type ScopeCounts = components["schemas"]["ScopeCounts"];
 export type Product = components["schemas"]["Product"];
+/** The scope's *identity* — what a feature's UUID means. Distinct from
+ * `FeatureScope` above, which is a rail/list row: identity plus how much of it
+ * is still work. This is what a describe writes back. */
+export type FeatureScopeIdentity = components["schemas"]["FeatureScope"];
 export type FeatureScopeDetail = Omit<
   components["schemas"]["FeatureScopeDetail"],
   "nodes" | "edges"
@@ -49,6 +53,14 @@ export type Run = components["schemas"]["RunView"];
 export type RunState = components["schemas"]["RunState"];
 export type RunTargetKind = components["schemas"]["RunTargetKind"];
 export type SourceType = components["schemas"]["SourceType"];
+/* The About page and the Markdown export read the same assembled document —
+   the server decides what "confirmed" means, exactly once (`src/atlas/
+   assembly.py`). Nothing here re-filters by status: doing so would put the rule
+   in two languages and let the page and the export disagree. */
+export type ProductDocument = components["schemas"]["ProductDocument"];
+export type DocumentSection = components["schemas"]["FeatureSection"];
+export type DocumentClaim = components["schemas"]["Claim"];
+export type Disagreement = components["schemas"]["Disagreement"];
 
 /** A viewer may read the extracted draft but not rule on it (TRD §9). The UI
  * hides what the API would refuse — an affordance that always 403s is worse
@@ -56,6 +68,14 @@ export type SourceType = components["schemas"]["SourceType"];
 export const canWrite = (role: Role): boolean => role !== "viewer";
 
 const BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
+
+/** The download address for a product's spec.
+ *
+ * Exported so the page can hang a real `<a download>` off it rather than
+ * building a blob: a plain link is a top-level GET, which `SameSite=Lax` allows
+ * the session cookie to ride along on, and it lets the browser name the file
+ * from the `Content-Disposition` the server already sends. */
+export const specUrl = (productId: string): string => `${BASE}/products/${productId}/spec`;
 
 export class ApiError extends Error {
   constructor(
@@ -95,6 +115,11 @@ async function errorMessage(response: Response): Promise<string> {
 const post = <T,>(path: string, body?: unknown) =>
   request<T>(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
 
+/* `PUT` for the two describe endpoints, matching the API: the body states the
+   field's whole value, so sending it twice leaves the same description. */
+const put = <T,>(path: string, body: unknown) =>
+  request<T>(path, { method: "PUT", body: JSON.stringify(body) });
+
 /** What the connect form collects. `secret` only ever travels *outbound* — no
  * response type in this file has a field it could come back in, which is the
  * client-side half of the rule `ConnectionView` enforces on the server. */
@@ -114,6 +139,23 @@ export const api = {
 
   products: () => request<Product[]>("/products"),
   createProduct: (name: string) => post<Product>("/products", { name }),
+  /* Orientation, both layers. An empty string clears it — the only way to
+     remove a wrong description from a log that only moves forward. */
+  describeProduct: (productId: string, description: string) =>
+    put<Product>(`/products/${productId}/description`, { description }),
+  describeFeature: (scopeId: string, description: string) =>
+    put<FeatureScopeIdentity>(`/feature-scopes/${scopeId}/description`, { description }),
+
+  /** What the product *is*, assembled from confirmed claims — the About page. */
+  document: (productId: string) => request<ProductDocument>(`/products/${productId}/document`),
+  /* The same document as Markdown. Text, not JSON, so it bypasses `request`'s
+     parse — everything else about the call (the session cookie, the error
+     shape) is identical. */
+  spec: async (productId: string): Promise<string> => {
+    const response = await fetch(specUrl(productId), { credentials: "include" });
+    if (!response.ok) throw new ApiError(response.status, await errorMessage(response));
+    return response.text();
+  },
 
   featureScopes: () => request<FeatureScope[]>("/feature-scopes"),
   featureScope: (id: string) => request<FeatureScopeDetail>(`/feature-scopes/${id}`),

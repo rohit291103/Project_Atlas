@@ -11,6 +11,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { ApiError, api, canWrite } from "../api";
+import { Orientation } from "../components/Orientation";
 import type { FeatureScope, Product, Role } from "../api";
 import { SOURCE_BADGES, SOURCE_LABELS, needsRuling, summarize } from "../review";
 import { UNASSIGNED, linkProps } from "../router";
@@ -21,14 +22,15 @@ export function ProductsPage({
   scopes,
   role,
   navigate,
-  onCreated,
+  onChanged,
   focusProductId,
 }: {
   products: Product[];
   scopes: FeatureScope[];
   role: Role;
   navigate: (route: Route, replace?: boolean) => void;
-  onCreated: () => void;
+  /** Refetch the rail. A create *or* a describe changes what the rail shows. */
+  onChanged: () => void;
   focusProductId: string | null;
 }) {
   const writable = canWrite(role);
@@ -58,11 +60,11 @@ export function ProductsPage({
       setName("");
       setAdding(false);
       setError(null);
-      onCreated();
+      onChanged();
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : "Couldn't create that product.");
     }
-  }, [name, onCreated]);
+  }, [name, onChanged]);
 
   if (focused) {
     const features = featuresOf(focused.id);
@@ -76,6 +78,25 @@ export function ProductsPage({
         <div className="page-head">
           <h1>{focused.name}</h1>
         </div>
+        {/* Orientation first, counts second — slice 4. A first-time visitor
+            cannot act on "26 to review" until they know what they are looking
+            at, and a returning reviewer skips a line of prose for free. The
+            unfiled pseudo-product is the exception: it is not a product, it is
+            the absence of one, so there is nothing to describe. */}
+        {!unfiled && (
+          <div data-tour="product-what">
+            <Orientation
+              description={"description" in focused ? (focused.description ?? null) : null}
+              writable={writable}
+              what="product"
+              placeholder="What is this product, and who is it for? One or two sentences."
+              onSave={async (description) => {
+                await api.describeProduct(focused.id, description);
+                onChanged();
+              }}
+            />
+          </div>
+        )}
         {/* The one-line summary used to sit here unconditionally and then the
             dashboard restated all four of its numbers immediately underneath.
             It survives only for the case where there are no figures to show,
@@ -168,6 +189,7 @@ export function ProductsPage({
           <ProductCard
             key={product.id}
             name={product.name}
+            description={product.description}
             features={featuresOf(product.id)}
             productId={product.id}
             navigate={navigate}
@@ -263,12 +285,14 @@ function Portfolio({ products, scopes }: { products: Product[]; scopes: FeatureS
 function ProductCard({
   name,
   note,
+  description,
   features,
   productId,
   navigate,
 }: {
   name: string;
   note?: string;
+  description?: string | null;
   features: FeatureScope[];
   productId: string;
   navigate: (route: Route, replace?: boolean) => void;
@@ -278,13 +302,15 @@ function ProductCard({
   const percent = work.total ? ((work.total - work.unreviewed) / work.total) * 100 : 0;
 
   return (
-    <a className="pcard" {...linkProps({ name: "product", productId }, navigate)}>
+    <a className="pcard" data-tour="product-card" {...linkProps({ name: "product", productId }, navigate)}>
       <span className="pcard__top">
         <span className="pcard__name">{name}</span>
         <span className="pcard__go" aria-hidden>
           →
         </span>
       </span>
+
+      {description && <span className="pcard__what">{description}</span>}
 
       <span className="pcard__from">
         {note ??
@@ -365,7 +391,7 @@ function Dashboard({
   const sources = sourcesOf(features);
 
   return (
-    <section className="dash">
+    <section className="dash" data-tour="product-counts">
       <div className="stats">
         <div className="stat">
           <span className="stat__label">Features</span>
@@ -478,7 +504,7 @@ function Worklist({
   return (
     <>
       {pending.length > 0 && (
-        <section className="work">
+        <section className="work" data-tour="worklist">
           <h2 className="work__head">Needs your ruling</h2>
           <ul className="work__list">
             {pending.map((scope) => (

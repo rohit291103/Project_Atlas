@@ -6,13 +6,19 @@
  * a feature goes round, and the argument for the cycle is spatial in a way that
  * three paragraphs of prose is not.
  *
- * Four nodes, honestly chosen. Connect / Extract / Confirm are the three things
- * the product does today. The fourth — hand off — is deliberately *not* claimed
- * as a feature: spec assembly and export are Phase 2 (root CLAUDE.md), so the
- * node describes what the confirmed set already is and what a person does with
- * it, and the return arc credits the closing of the loop to the team's own work
- * landing as new pull requests and tickets. A fifth "Atlas generates your spec"
- * node would have completed the circle more neatly and been a lie.
+ * Four nodes, honestly chosen, and the fourth changed on 2026-08-22. It used to
+ * describe only what the confirmed set already *was* and what a person did with
+ * it, because spec assembly and export were Phase 2 and unbuilt — a node reading
+ * "Atlas generates your spec" would have completed the circle more neatly and
+ * been a lie. They shipped (`src/atlas/assembly.py`, `/p/{id}/about`, `GET
+ * /products/{id}/spec`), so the node now says what the product does: confirmed
+ * claims assemble into a page and a Markdown file, quotes and links intact.
+ *
+ * Still deliberately *not* claimed is the effect. That handing an agent this
+ * file measurably improves what it writes is Phase 2's proof, and that has not
+ * been run — the node describes the artifact, never the outcome. The return arc
+ * credits the closing of the loop to the team's own work landing as new pull
+ * requests and tickets, which is where the next pass starts.
  *
  * Geometry: the ring lives in a 0–100 viewBox at r=30 around (50,50), and the
  * node cards are absolutely positioned at the same radius in percentages — so
@@ -51,7 +57,7 @@ const STOPS: Stop[] = [
     key: "handoff",
     n: "04",
     title: "Hand off",
-    body: "What a coding agent should have been given first: quoted claims a person vouched for.",
+    body: "Confirmed claims assemble into a page and a Markdown spec, quotes and links intact.",
   },
 ];
 

@@ -23,10 +23,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, api } from "./api";
 import type { FeatureScope, Product, Role } from "./api";
-import { IconConflict, IconOverview, IconSources } from "./components/icons";
+import { IconConflict, IconAbout,
+  IconOverview, IconSources } from "./components/icons";
 import { Loading } from "./components/Loading";
 import { ProductSwitcher } from "./components/ProductSwitcher";
 import { landingProductId, rememberProduct } from "./lastProduct";
+import { Tour } from "./components/Tour";
+import { hasSeenTour, markTourSeen, tourFeature, tourSteps } from "./tour";
+import { AboutPage } from "./pages/AboutPage";
 import { ConflictsPage } from "./pages/ConflictsPage";
 import { LandingPage } from "./pages/LandingPage";
 import { ProductsPage } from "./pages/ProductsPage";
@@ -163,6 +167,50 @@ export function App() {
     [navigate],
   );
 
+  /* The guided first run. Opened once per browser on the first sign-in that
+     lands inside a product, and replayable from the rail — a PM being measured
+     may well want to see it twice, and a demo is given more than once. */
+  const [tourOpen, setTourOpen] = useState(false);
+  const tourArmed = useRef(!hasSeenTour());
+  /* Which product the tour is walking, held in state rather than derived.
+     Derived from the route, it broke: the first step navigates to the product
+     *chooser*, which clears the active product, so a tour started inside one
+     product silently switched to whichever happened to be first in the list.
+     It is still adopted from the route below, so clicking a different card on
+     that first step takes the tour with you. */
+  const [tourProductId, setTourProductId] = useState<string | null>(null);
+
+  const openTour = useCallback(() => {
+    const fromRoute = route.name === "products" || route.name === "home" || route.name === "signin"
+      ? null
+      : (route as { productId: string }).productId;
+    setTourProductId(fromRoute && fromRoute !== UNASSIGNED ? fromRoute : null);
+    setTourOpen(true);
+  }, [route]);
+
+  /* Wait for the rail: every step needs a real product, and the feature steps
+     need a feature that exists. Firing on sign-in would spotlight a skeleton. */
+  useEffect(() => {
+    if (!actor || !tourArmed.current || products.length === 0) return;
+    tourArmed.current = false;
+    openTour();
+  }, [actor, products.length, openTour]);
+
+  /* Follow the reviewer if they open a different product mid-tour. Only from a
+     product-shaped route: the chooser is where the tour *sends* them, so
+     reading a product id there would undo the line above. */
+  useEffect(() => {
+    if (!tourOpen) return;
+    if (route.name === "products" || route.name === "home" || route.name === "signin") return;
+    const id = (route as { productId: string }).productId;
+    if (id && id !== UNASSIGNED && id !== tourProductId) setTourProductId(id);
+  }, [tourOpen, route, tourProductId]);
+
+  const closeTour = useCallback(() => {
+    setTourOpen(false);
+    markTourSeen();
+  }, []);
+
   const signOut = useCallback(async () => {
     await api.signOut().catch(() => undefined);
     setActor(null);
@@ -204,6 +252,24 @@ export function App() {
 
   const activeProductId =
     route.name === "products" ? null : (route as { productId: string }).productId;
+
+  /* Which product and feature the tour walks through: whichever product is open
+     (or the first one), and its most contested feature — the conflict steps are
+     the ones with something to show.
+     Deliberately a plain expression, not a `useMemo`: everything from here down
+     sits *after* this component's early returns, so a hook here would be a
+     conditional hook (React #310, and it was — the tour never opened). It is a
+     filter and a sort over a handful of rows, recomputed per render, which is
+     also what keeps it pointing at real data as the rail settles. */
+  const walking = tourProductId ?? (products[0]?.id ?? null);
+  const tourTarget = walking
+    ? {
+        productId: walking,
+        featureId: tourFeature(
+          scopes.filter((scope) => (scope.product_id ?? UNASSIGNED) === walking),
+        ),
+      }
+    : null;
 
   // The rail below shows exactly one product's features. Anything cross-product
   // is a deliberate trip to "All products", never the default view.
@@ -263,6 +329,23 @@ export function App() {
               <span className="rail__nav-text">Overview</span>
             </a>
 
+            {/* About sits directly under Overview and above Sources, which puts
+                the two *reading* destinations together and leaves connect-then-
+                review as the order of everything below. It is the answer to
+                "what is this", which is the question that precedes "what is
+                mine to do" for anyone who has not been here before. */}
+            {isRealProduct && (
+              <a
+                data-tour="nav-about"
+                className={`rail__nav-item${route.name === "about" ? " is-active" : ""}`}
+                aria-current={route.name === "about" ? "page" : undefined}
+                {...linkProps({ name: "about", productId: activeShelf.product.id }, navigate)}
+              >
+                <IconAbout className="rail__nav-icon" />
+                <span className="rail__nav-text">About</span>
+              </a>
+            )}
+
             {isRealProduct && (
               <a
                 className={`rail__nav-item${route.name === "sources" ? " is-active" : ""}`}
@@ -276,6 +359,7 @@ export function App() {
 
             {isRealProduct && (
               <a
+                data-tour="nav-conflicts"
                 className={`rail__nav-item${route.name === "conflicts" ? " is-active" : ""}`}
                 aria-current={route.name === "conflicts" ? "page" : undefined}
                 {...linkProps({ name: "conflicts", productId: activeShelf.product.id }, navigate)}
@@ -465,6 +549,15 @@ export function App() {
               {theme === "dark" ? "☾" : theme === "light" ? "☀" : "◐"}
             </button>
           </div>
+          {/* Its own row: three links across a 232px rail wrapped mid-word. */}
+          <button
+            type="button"
+            className="link-button rail__tour"
+            onClick={openTour}
+            title="Walk through what is on these screens"
+          >
+            Show me around
+          </button>
           <div className="rail__foot-row">
             <a className="link-button" {...linkProps({ name: "products" }, navigate)}>
               All products
@@ -488,6 +581,15 @@ export function App() {
           onChanged={() => void loadRail()}
         />
       </main>
+
+      {tourOpen && tourTarget && (
+        <Tour
+          steps={tourSteps(tourTarget.productId, tourTarget.featureId)}
+          route={route}
+          navigate={navigate}
+          onClose={closeTour}
+        />
+      )}
     </div>
   );
 }
@@ -523,6 +625,18 @@ function Screen({
       />
     );
   }
+  if (route.name === "about") {
+    return (
+      <AboutPage
+        key={route.productId}
+        productId={route.productId}
+        role={role}
+        navigate={navigate}
+        onChanged={onChanged}
+      />
+    );
+  }
+
   if (route.name === "sources") {
     const product = products.find((candidate) => candidate.id === route.productId);
     return (
@@ -553,7 +667,7 @@ function Screen({
       scopes={scopes}
       role={role}
       navigate={navigate}
-      onCreated={onChanged}
+      onChanged={onChanged}
       focusProductId={route.name === "product" ? activeProductId : null}
     />
   );

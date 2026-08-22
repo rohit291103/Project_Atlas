@@ -1,0 +1,361 @@
+"""Confirmed Nodes and Edges -> one readable, provenance-carrying document.
+
+Two readers share this module: the `/about` info page (as JSON) and spec export
+v0 (as Markdown). It is its own module rather than a function in
+`storage/projections.py` or a helper in `api/` for a reason that is not code
+reuse -- see `docs/architecture/product-info-and-spec-export-v1.md` Sec4:
+
+`projections.py` replays the log into **state**. `Projection` is state;
+`for_product` and `counts_for` narrow state. A document is an *interpretation* of
+state, with editorial decisions in it -- what order, what to omit, what counts as
+an open disagreement. And `api/` holds no domain logic at all (CLAUDE.md's module
+boundary), which those decisions plainly are.
+
+The load-bearing argument is the filter. This is the one boundary where an
+unconfirmed claim must not pass (Engineering Philosophy Sec2, "extraction is a
+draft, never a fact"). The browser already pairs conflicts in TypeScript
+(`frontend/src/review.ts`); if the page filtered there and the export filtered
+here, the two would drift, and the drift is an export full of drafts. One place,
+one test file.
+
+Nothing here is stored. The document is derived on read like every other
+projection -- caching it would be a materialized view that no event invalidates.
+"""
+
+from __future__ import annotations
+
+import uuid
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+
+from atlas.models.schema import (
+    Node,
+    NodeStatus,
+    NodeType,
+    RelationType,
+    SourceRef,
+)
+from atlas.storage.projections import Projection
+
+#: The order claims appear in, regardless of the order they were extracted in.
+#:
+#: It reads as an argument rather than a database: what we want -> what is wrong
+#: -> what we know -> what must be true -> what limits us -> what we chose -> how
+#: it is built -> what we did not choose -> what is still open.
+#:
+#: Evidence and architecture notes get a fixed position here rather than being
+#: attached to the claims they `supports`. Following those edges would read
+#: better, and it is deliberately not built yet: it is edge-walking machinery for
+#: a nicety, and the `codebase-design` checklist is explicit about not adding
+#: structure ahead of a need. A test asserts this tuple covers every `NodeType`,
+#: so a tenth type has to be given a position on purpose.
+DOCUMENT_ORDER: tuple[NodeType, ...] = (
+    NodeType.GOAL,
+    NodeType.PROBLEM,
+    NodeType.EVIDENCE,
+    NodeType.REQUIREMENT,
+    NodeType.CONSTRAINT,
+    NodeType.DECISION,
+    NodeType.ARCHITECTURE_NOTE,
+    NodeType.REJECTED_ALTERNATIVE,
+    NodeType.OPEN_QUESTION,
+)
+
+#: A human has acted on these; the claim is the product's, not the extractor's.
+#: `EDITED` belongs here because an edit *is* a ruling -- someone read the draft,
+#: rewrote it and kept it, which is a stronger endorsement than a bare confirm.
+RULED: frozenset[NodeStatus] = frozenset({NodeStatus.CONFIRMED, NodeStatus.EDITED})
+
+#: Headings for each section of the rendered document.
+_HEADINGS: dict[NodeType, str] = {
+    NodeType.GOAL: "Goals",
+    NodeType.PROBLEM: "Problems",
+    NodeType.EVIDENCE: "Evidence",
+    NodeType.REQUIREMENT: "Requirements",
+    NodeType.CONSTRAINT: "Constraints",
+    NodeType.DECISION: "Decisions",
+    NodeType.ARCHITECTURE_NOTE: "Architecture notes",
+    NodeType.REJECTED_ALTERNATIVE: "Rejected alternatives",
+    NodeType.OPEN_QUESTION: "Open questions",
+}
+
+
+@dataclass(frozen=True)
+class Claim:
+    """One claim as it appears in a document, with its provenance attached.
+
+    `status` is carried rather than dropped because the unruled side of a live
+    disagreement is rendered too, and rendering it without saying it is unruled
+    would be the dishonest half of showing it at all.
+    """
+
+    node_id: uuid.UUID
+    type: NodeType
+    content: str
+    status: NodeStatus
+    sources: tuple[SourceRef, ...]
+    #: Which feature this claim belongs to. Only interesting when a disagreement
+    #: reaches across two of them, which is the case worth not hiding.
+    feature_title: str
+
+
+@dataclass(frozen=True)
+class Disagreement:
+    """A `conflicts_with` nobody has settled, carrying both sides.
+
+    Confirming one side does not resolve a conflict (TRD Sec5.2) -- only a
+    rejection does, because rejecting is the act that says which side lost. So a
+    disagreement stands while neither endpoint is rejected.
+    """
+
+    edge_id: uuid.UUID
+    left: Claim
+    right: Claim
+
+
+@dataclass(frozen=True)
+class FeatureSection:
+    """One feature's part of the document."""
+
+    feature_scope_id: uuid.UUID
+    title: str
+    #: The PM's own words, not an extracted summary.
+    description: str | None
+    claims: tuple[Claim, ...]
+    disagreements: tuple[Disagreement, ...]
+    #: How many claims were withheld for want of a ruling. Reported rather than
+    #: swallowed: a document that silently omits half its material is worse than
+    #: a short one that says how short it is. Required, with no default, so it
+    #: cannot be omitted and read as zero -- and so the generated TypeScript
+    #: types mark it present rather than possibly-undefined.
+    unreviewed: int
+
+
+@dataclass(frozen=True)
+class ProductDocument:
+    """What a product is, assembled from what has actually been confirmed."""
+
+    product_id: uuid.UUID
+    name: str
+    description: str | None
+    features: tuple[FeatureSection, ...]
+    generated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+    @property
+    def unreviewed(self) -> int:
+        return sum(section.unreviewed for section in self.features)
+
+
+def assemble(projection: Projection, product_id: uuid.UUID) -> ProductDocument:
+    """Build the document for one product.
+
+    Narrows the projection itself rather than trusting the caller to have done
+    it: passing a projection narrowed to the wrong product would produce a
+    plausible document about someone else's work, which is the worst kind of
+    wrong output to hand a PM.
+    """
+    product = projection.products.get(product_id)
+    if product is None:
+        raise KeyError(f"no product {product_id} in this projection")
+
+    scoped = projection.for_product(product_id)
+    titles = {scope_id: scope.title for scope_id, scope in projection.feature_scopes.items()}
+
+    contested = _contested_node_ids(projection, scoped)
+    sections = tuple(
+        _section(scope_id, scoped, projection, titles, contested)
+        for scope_id in scoped.feature_scopes
+    )
+    return ProductDocument(
+        product_id=product_id,
+        name=product.name,
+        description=product.description,
+        features=sections,
+    )
+
+
+def _live_conflicts(
+    projection: Projection, scoped: Projection
+) -> list[tuple[uuid.UUID, Node, Node]]:
+    """Every unsettled disagreement touching this product, from-side first.
+
+    Read against the *whole* projection, not the narrowed one, so a conflict
+    reaching a feature in another product is still seen from this side. What
+    makes one live: it is a `conflicts_with`, neither side has been rejected, and
+    at least one side has been ruled on -- a conflict between two drafts is still
+    review work rather than something a document has an opinion about.
+    """
+    live: list[tuple[uuid.UUID, Node, Node]] = []
+    for edge in projection.edges.values():
+        if edge.relation_type is not RelationType.CONFLICTS_WITH:
+            continue
+        left = projection.nodes.get(edge.from_node_id)
+        right = projection.nodes.get(edge.to_node_id)
+        if left is None or right is None:
+            continue
+        if left.feature_scope_id not in scoped.feature_scopes:
+            continue
+        if NodeStatus.REJECTED in (left.status, right.status):
+            continue
+        if not (left.status in RULED or right.status in RULED):
+            continue
+        live.append((edge.id, left, right))
+    return live
+
+
+def _contested_node_ids(projection: Projection, scoped: Projection) -> set[uuid.UUID]:
+    """Nodes under live dispute, which the settled body must not contain.
+
+    This is rule 4 enforced structurally: a contested claim appears *only* inside
+    its disagreement, so no reader can mistake it for settled fact. Dropping it
+    from the disagreement instead -- keeping the confirmed side in the body and
+    saying nothing -- would be silently resolving the conflict in favour of
+    whichever side happened to be confirmed first.
+    """
+    return {
+        node.id for _, left, right in _live_conflicts(projection, scoped) for node in (left, right)
+    }
+
+
+def _section(
+    scope_id: uuid.UUID,
+    scoped: Projection,
+    projection: Projection,
+    titles: dict[uuid.UUID, str],
+    contested: set[uuid.UUID],
+) -> FeatureSection:
+    scope = scoped.feature_scopes[scope_id]
+    mine = [node for node in scoped.nodes.values() if node.feature_scope_id == scope_id]
+
+    settled = [node for node in mine if node.status in RULED and node.id not in contested]
+    settled.sort(key=lambda node: (DOCUMENT_ORDER.index(node.type), node.created_at, str(node.id)))
+
+    disagreements = tuple(
+        Disagreement(
+            edge_id=edge_id,
+            left=_claim(left, titles),
+            right=_claim(right, titles),
+        )
+        for edge_id, left, right in _live_conflicts(projection, scoped)
+        if left.feature_scope_id == scope_id
+    )
+
+    return FeatureSection(
+        feature_scope_id=scope_id,
+        title=scope.title,
+        description=scope.description,
+        claims=tuple(_claim(node, titles) for node in settled),
+        disagreements=disagreements,
+        unreviewed=sum(1 for node in mine if node.status is NodeStatus.UNCONFIRMED),
+    )
+
+
+def _claim(node: Node, titles: dict[uuid.UUID, str]) -> Claim:
+    return Claim(
+        node_id=node.id,
+        type=node.type,
+        content=node.content,
+        status=node.status,
+        sources=tuple(node.source_refs),
+        feature_title=titles.get(node.feature_scope_id, "Unfiled"),
+    )
+
+
+# --- Markdown ------------------------------------------------------------------
+
+
+def to_markdown(doc: ProductDocument) -> str:
+    """Render the document as Markdown -- spec export v0.
+
+    A plain function, not a `Renderer` implementation: there are two output
+    formats and the `codebase-design` checklist is explicit that a strategy
+    pattern for two concrete variants is the abstraction to skip. If a third
+    format ever appears, that is the moment to reconsider, not before.
+    """
+    lines: list[str] = [f"# {doc.name}", ""]
+    if doc.description:
+        lines += [doc.description, ""]
+
+    # Say what is missing, in the document itself. A reader who does not know a
+    # third of the material was withheld will read the rest as complete -- and
+    # the one exception (a draft that contradicts a confirmed claim is shown, as
+    # a disagreement) has to be stated too, or the count looks like a lie.
+    lines += [
+        f"*Assembled {doc.generated_at:%Y-%m-%d} from confirmed claims only. "
+        f"{doc.unreviewed} claim(s) still await review and are omitted, except "
+        f"where one contradicts a confirmed claim — those appear below as "
+        f"unresolved disagreements.*",
+        "",
+    ]
+
+    for section in doc.features:
+        lines += [f"## {section.title}", ""]
+        if section.description:
+            lines += [section.description, ""]
+
+        for node_type in DOCUMENT_ORDER:
+            of_type = [claim for claim in section.claims if claim.type is node_type]
+            if not of_type:
+                continue
+            lines += [f"### {_HEADINGS[node_type]}", ""]
+            lines += [line for claim in of_type for line in _claim_lines(claim)]
+
+        if section.disagreements:
+            # The explanation belongs once under the heading, not above every
+            # pair: one claim can be in several disagreements at once (it really
+            # can contradict two different things), and repeating the banner six
+            # times buries the claims it is meant to frame.
+            #
+            # Not "nobody has ruled" either -- a side is usually confirmed. What
+            # makes it unresolved is that confirming a side does not settle a
+            # conflict (TRD Sec5.2); only ruling the other side out does.
+            lines += [
+                "### Unresolved disagreements",
+                "",
+                "> The sources disagree and nothing here has been settled. "
+                "Confirming one side of a disagreement does not resolve it — only "
+                "ruling the other side out does. These claims are listed here "
+                "rather than above so that nothing still in dispute reads as "
+                "settled.",
+                "",
+            ]
+            for number, disagreement in enumerate(section.disagreements, start=1):
+                lines += [
+                    f"**{number}.**",
+                    "",
+                    *_side_lines(disagreement.left, section.title),
+                    *_side_lines(disagreement.right, section.title),
+                ]
+
+        if not section.claims and not section.disagreements:
+            lines += [
+                f"*Nothing confirmed yet — {section.unreviewed} claim(s) awaiting review.*",
+                "",
+            ]
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _provenance_lines(claim: Claim) -> list[str]:
+    """Where the claim came from, quoted.
+
+    The excerpt is reproduced verbatim and never trimmed, wrapped or normalized:
+    it is the `SourceRef.excerpt`, which the eval harness verifies appears
+    literally in the raw source. Editing it for presentation here would corrupt
+    provenance exactly as surely as editing it at extraction would.
+    """
+    return [
+        f'  - > "{source.excerpt}" — '
+        f"[{source.source_type.value} {source.external_id}]({source.url})"
+        for source in claim.sources
+    ]
+
+
+def _claim_lines(claim: Claim) -> list[str]:
+    return [f"- {claim.content}", *_provenance_lines(claim), ""]
+
+
+def _side_lines(claim: Claim, section_title: str) -> list[str]:
+    ruling = "confirmed" if claim.status in RULED else "unreviewed"
+    where = "" if claim.feature_title == section_title else f", in *{claim.feature_title}*"
+    return [f"- **{claim.content}** ({ruling}{where})", *_provenance_lines(claim), ""]

@@ -13,6 +13,7 @@ conftest.py -- no live Supabase, no secrets, no network.
 
 from __future__ import annotations
 
+import json
 import uuid
 from collections.abc import Iterator
 from typing import Any
@@ -1155,3 +1156,172 @@ def test_an_epic_is_not_blocked_because_it_names_no_single_artifact(
     )
 
     assert response.status_code == 202
+
+
+# --- the product document (`/products/{id}/document`) ---------------------------
+#
+# The endpoint the About page and spec export both read. Everything interesting
+# is asserted in `tests/test_assembly.py` against the pure function; what belongs
+# here is only what the wire adds -- auth, 404, and the fact that the confirmed-
+# only rule survives serialization (`docs/architecture/
+# product-info-and-spec-export-v1.md` §4).
+
+
+@pytest.fixture
+def documented(signed_in: TestClient, seeded: sessionmaker[Session]) -> uuid.UUID:
+    """A product with the seeded feature filed under it."""
+    product_id = uuid.UUID(signed_in.post("/products", json={"name": "Gateway"}).json()["id"])
+    with session_scope(seeded) as session:
+        assign_feature_scope(
+            session,
+            workspace_id=WORKSPACE_ID,
+            feature_scope_id=FEATURE_SCOPE_ID,
+            product_id=product_id,
+            actor=ACTOR,
+            actor_kind=ActorKind.HUMAN,
+        )
+    return product_id
+
+
+def test_a_document_for_an_unknown_product_is_a_404(signed_in: TestClient) -> None:
+    assert signed_in.get(f"/products/{uuid.uuid4()}/document").status_code == 404
+
+
+def test_a_document_needs_a_session(client: TestClient, documented: uuid.UUID) -> None:
+    client.delete("/session")
+    assert client.get(f"/products/{documented}/document").status_code == 401
+
+
+def test_a_document_withholds_claims_nobody_has_ruled_on(
+    signed_in: TestClient, documented: uuid.UUID
+) -> None:
+    """The rule the module exists for, asserted over the wire: the seeded feature
+    has two unconfirmed claims, and the document must contain neither."""
+    doc = signed_in.get(f"/products/{documented}/document").json()
+
+    (section,) = doc["features"]
+    assert section["claims"] == []
+    assert section["unreviewed"] == 2
+    assert "rate-limit per client IP" not in json.dumps(doc)
+
+
+def test_confirming_a_claim_puts_it_in_the_document_with_its_excerpt(
+    signed_in: TestClient, documented: uuid.UUID
+) -> None:
+    """The reward the review loop did not previously have: a ruling makes
+    something *appear*, rather than only disappearing from a queue."""
+    nodes = signed_in.get(f"/feature-scopes/{FEATURE_SCOPE_ID}").json()["nodes"]
+    node = next(item for item in nodes if item["type"] == "requirement")
+    assert signed_in.post(f"/nodes/{node['id']}/confirm").status_code == 200
+
+    (section,) = signed_in.get(f"/products/{documented}/document").json()["features"]
+
+    (claim,) = section["claims"]
+    assert claim["content"] == "The gateway must rate-limit per client IP."
+    assert claim["status"] == "confirmed"
+    (source,) = claim["sources"]
+    assert source["excerpt"] == "adds a per-IP token-bucket limiter"
+    assert source["url"] == "https://github.com/acme/gateway/pull/42"
+
+
+def test_a_document_carries_the_authored_descriptions(
+    signed_in: TestClient, documented: uuid.UUID
+) -> None:
+    signed_in.put(f"/products/{documented}/description", json={"description": "The edge gateway."})
+    signed_in.put(
+        f"/feature-scopes/{FEATURE_SCOPE_ID}/description",
+        json={"description": "How we shed load."},
+    )
+
+    doc = signed_in.get(f"/products/{documented}/document").json()
+
+    assert doc["description"] == "The edge gateway."
+    assert doc["features"][0]["description"] == "How we shed load."
+
+
+def test_a_viewer_may_read_a_document(client: TestClient, documented: uuid.UUID) -> None:
+    """Reading what a product is is not a write, so a viewer gets it."""
+    client.post("/session", json={"passphrase": PASSPHRASE, "name": VIEWER})
+
+    assert client.get(f"/products/{documented}/document").status_code == 200
+
+
+def test_another_products_features_stay_out_of_the_document(
+    signed_in: TestClient, documented: uuid.UUID
+) -> None:
+    other = signed_in.post("/products", json={"name": "Somebody else's"}).json()["id"]
+
+    assert signed_in.get(f"/products/{other}/document").json()["features"] == []
+
+
+# --- spec export v0 (`/products/{id}/spec`) -------------------------------------
+#
+# Roadmap v2 Phase 2A, pulled forward because the About page builds the same
+# assembly. The property worth testing here is that the two agree: the export is
+# the page's document rendered differently, not a second opinion about what
+# "confirmed" means.
+
+
+def test_the_spec_is_markdown_named_after_the_product(
+    signed_in: TestClient, documented: uuid.UUID
+) -> None:
+    response = signed_in.get(f"/products/{documented}/spec")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/markdown")
+    assert response.headers["content-disposition"] == 'attachment; filename="gateway-spec.md"'
+    assert response.text.startswith("# Gateway")
+
+
+def test_a_spec_never_contains_an_unruled_claim(
+    signed_in: TestClient, documented: uuid.UUID
+) -> None:
+    """The rule this whole module exists for, at the far end of the pipe."""
+    assert "rate-limit per client IP" not in signed_in.get(f"/products/{documented}/spec").text
+
+
+def test_a_confirmed_claim_reaches_the_spec_with_its_excerpt(
+    signed_in: TestClient, documented: uuid.UUID
+) -> None:
+    nodes = signed_in.get(f"/feature-scopes/{FEATURE_SCOPE_ID}").json()["nodes"]
+    node = next(item for item in nodes if item["type"] == "requirement")
+    signed_in.post(f"/nodes/{node['id']}/confirm")
+
+    spec = signed_in.get(f"/products/{documented}/spec").text
+
+    assert "The gateway must rate-limit per client IP." in spec
+    assert "adds a per-IP token-bucket limiter" in spec
+    assert "https://github.com/acme/gateway/pull/42" in spec
+
+
+def test_the_spec_and_the_page_agree_about_what_is_confirmed(
+    signed_in: TestClient, documented: uuid.UUID
+) -> None:
+    """One assembly, two renderings. If these ever disagree, the filter has been
+    reimplemented somewhere it should not have been."""
+    nodes = signed_in.get(f"/feature-scopes/{FEATURE_SCOPE_ID}").json()["nodes"]
+    signed_in.post(f"/nodes/{nodes[0]['id']}/confirm")
+
+    doc = signed_in.get(f"/products/{documented}/document").json()
+    spec = signed_in.get(f"/products/{documented}/spec").text
+
+    for section in doc["features"]:
+        for claim in section["claims"]:
+            assert claim["content"] in spec
+
+
+def test_a_spec_for_an_unknown_product_is_a_404(signed_in: TestClient) -> None:
+    assert signed_in.get(f"/products/{uuid.uuid4()}/spec").status_code == 404
+
+
+def test_a_product_name_cannot_inject_a_download_header(signed_in: TestClient) -> None:
+    """The name is user-supplied and lands in `Content-Disposition`, where a
+    quote or a newline is a header-injection primitive rather than a cosmetic
+    problem. The filename is built from a whitelist, so it cannot carry one."""
+    hostile = signed_in.post("/products", json={"name": 'evil"; filename="x.sh'}).json()["id"]
+
+    disposition = signed_in.get(f"/products/{hostile}/spec").headers["content-disposition"]
+
+    assert disposition.count('"') == 2
+    assert "\n" not in disposition and "\r" not in disposition
+    assert ";" not in disposition[disposition.index('"') :]

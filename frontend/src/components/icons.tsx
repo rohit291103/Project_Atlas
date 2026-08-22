@@ -42,6 +42,16 @@ export const IconOverview = ({ className }: IconProps) => (
   </svg>
 );
 
+/** About — a document with lines on it. The screen is a written page about the
+ * product, so it is the one glyph here that is a piece of paper. */
+export const IconAbout = ({ className }: IconProps) => (
+  <svg {...base} className={className}>
+    <path d="M3.5 2h6L12.5 5v9h-9Z" />
+    <path d="M9.5 2v3h3" />
+    <path d="M5.5 8.5h5M5.5 11h3.5" />
+  </svg>
+);
+
 /** Sources — a plug. Connecting a tool, which is literally what the screen does. */
 export const IconSources = ({ className }: IconProps) => (
   <svg {...base} className={className}>

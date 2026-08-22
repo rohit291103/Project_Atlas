@@ -24,6 +24,7 @@
  *   3. strip     — why the gathering is the expensive part
  *   4. loop      — the shape of the thing, as a diagram
  *   5. three acts — connect / extract / confirm, each beside its own screen
+ *   6. spec      — what a morning of confirming leaves behind, on screen and as a file
  *   6. turn      — the same feature's context, raw and then extracted
  *   7. conflict  — the thing no single source tool can do
  *   8. trust     — the four refusals
@@ -47,6 +48,7 @@ import {
   ConnectDemo,
   ExtractDemo,
   ReviewDemo,
+  SpecDemo,
   TransformDemo,
 } from "../components/landing/demos";
 import { LoopDiagram } from "../components/landing/loop";
@@ -93,6 +95,7 @@ export function LandingPage({
             <a href="#demo">Demo</a>
             <a href="#loop">The loop</a>
             <a href="#how">How it works</a>
+            <a href="#spec">The spec</a>
             <a href="#conflicts">Conflicts</a>
             <a href="#trust">Trust</a>
           </nav>
@@ -245,8 +248,8 @@ export function LandingPage({
         </div>
       </section>
 
-      {/* The shape of the product, as a picture. See loop.tsx for why the
-          fourth node is "hand off" and not "Atlas writes your spec". */}
+      {/* The shape of the product, as a picture. See loop.tsx for what the
+          fourth node does and does not claim. */}
       <section className="loop" id="loop">
         <span className="pill">Continuous context</span>
         <h2 className="display">Atlas runs the loop your feature context goes round</h2>
@@ -332,6 +335,30 @@ export function LandingPage({
             <ConfirmDemo />
           </div>
         </div>
+      </section>
+
+      {/* What the confirming was *for*. Until `/p/{id}/about` and the Markdown
+          export shipped (2026-08-21), confirming a claim made it disappear into
+          a settled list and the product had no output to show — so the page
+          honestly stopped at "confirm". It doesn't stop there now, and this
+          section is deliberately full width rather than a fourth act: the two
+          panes *are* the argument, and an act column is 420px wide. */}
+      <section className="spec" id="spec">
+        <div className="spec__intro">
+          <span className="pill">What you're left with</span>
+          <h2 className="display">A page that writes itself, and a file you can hand over</h2>
+          <p className="display__sub">
+            Every claim you confirm joins a page about the product, under its feature, still
+            quoting the sentence it came from. The same set exports as Markdown — that's the file a
+            coding agent should have been given first.
+          </p>
+        </div>
+        <SpecDemo />
+        <p className="spec__note">
+          Nothing unconfirmed is in either one, and both say how much they left out. Disagreements
+          nobody has settled are listed as open rather than quietly decided — Atlas will not pick a
+          winner in a document any more than it will on screen.
+        </p>
       </section>
 
       {/* The transformation. The one thing prose could never carry: same
