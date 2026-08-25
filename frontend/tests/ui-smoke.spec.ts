@@ -18,14 +18,18 @@
 
 import { expect, test } from "@playwright/test";
 
-/* Actors come from the environment because membership is per-database: the local
- * seed has `Priya (PM)` and `Sam`, the live workspace has whoever was actually
- * granted a role. Hardcoding them meant the suite could only ever run against
- * one of the two, and it was silently the one nobody was using. A workspace with
- * no viewer skips the viewer test rather than failing it — that is a fact about
- * the database, not a defect in the page. */
-const EDITOR = process.env.ATLAS_TEST_EDITOR ?? "Priya (PM)";
-const VIEWER = process.env.ATLAS_TEST_VIEWER ?? "";
+import { actors } from "./fixture";
+
+/* The suite signs in as its own two actors, seated by
+ * `scripts/seed_test_workspace.py` in a workspace that exists only for these
+ * tests and is rebuilt before every run (see tests/global-setup.ts). They used
+ * to default to a *guess* at the local seed's names, which is how the suite
+ * ended up confirming real claims in the workspace the demo is given from.
+ *
+ * `ATLAS_TEST_EDITOR` / `ATLAS_TEST_VIEWER` still override, for a run against a
+ * deployed environment seeded some other way. */
+const EDITOR = actors.editor;
+const VIEWER = actors.viewer;
 const PASSPHRASE = process.env.ATLAS_APP_PASSPHRASE ?? "letmein";
 
 type Page = import("@playwright/test").Page;
@@ -168,9 +172,14 @@ test("the product you left is the product you come back to", async ({ page }) =>
   await signIn(page, EDITOR);
   const first = await page.locator(".switcher__name").innerText();
 
-  // Signing out lands on the marketing page, not the form; `signInOnly` goes
-  // to /signin itself, so there is nothing to wait for in between.
+  /* Signing out lands on the marketing page, not the form. Waiting for that
+     landing is not politeness: `signOut` awaits its `DELETE /session` before it
+     navigates, so calling `page.goto("/signin")` straight after the click can
+     abort the request in flight. The cookie then survives, `/signin` redirects
+     a still-valid session back into the app, and the test times out waiting for
+     a form that will never render. Flaked exactly that way on 2026-08-25. */
   await page.getByText("Sign out").click();
+  await page.waitForURL(/\/$/);
   await signInOnly(page, EDITOR);
 
   // No chooser this time: the remembered context reopens directly.
@@ -359,7 +368,7 @@ test("the conflicts screen shows both sides of a disagreement together", async (
 });
 
 test("a viewer is shown no write affordances at all", async ({ page }) => {
-  test.skip(!VIEWER, "no viewer actor in this workspace (set ATLAS_TEST_VIEWER)");
+  test.skip(!VIEWER, "no viewer actor in this workspace (ATLAS_TEST_VIEWER is set to empty)");
   await openFirstFeature(page, VIEWER);
 
   await expect(page.locator(".actions")).toHaveCount(0);

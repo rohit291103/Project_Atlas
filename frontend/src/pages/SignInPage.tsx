@@ -28,6 +28,7 @@ import { useState } from "react";
 import { linkProps } from "../router";
 import type { Route } from "../router";
 import { THEME_LABELS, useTheme } from "../theme";
+import { AtlasMark } from "../components/Logo";
 
 const SOURCES: { name: string; live: boolean }[] = [
   { name: "GitHub", live: true },
@@ -83,7 +84,7 @@ export function SignInPage({
             the questions arrive in. */}
         <aside className="entry__panel">
           <a className="entry__panel-brand" {...linkProps({ name: "home" }, navigate)}>
-            <span className="rail__glyph" aria-hidden />
+            <AtlasMark className="brandmark" />
             Atlas
           </a>
 

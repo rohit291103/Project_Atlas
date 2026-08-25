@@ -56,6 +56,7 @@ import { SourceMark } from "../components/landing/sourceMarks";
 import { linkProps } from "../router";
 import type { Route } from "../router";
 import { THEME_LABELS, useTheme } from "../theme";
+import { AtlasMark } from "../components/Logo";
 
 /* Live means "you can connect it today". Everything else is labelled as not
    built — the same honesty rule the rest of the page runs on, applied to the
@@ -88,7 +89,7 @@ export function LandingPage({
       <header className="landing__nav">
         <div className="landing__nav-left">
           <a className="landing__brand" {...linkProps({ name: "home" }, navigate)}>
-            <span className="rail__glyph" aria-hidden />
+            <AtlasMark className="brandmark" />
             Atlas
           </a>
           <nav className="landing__nav-links">

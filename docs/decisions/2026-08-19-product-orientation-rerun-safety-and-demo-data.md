@@ -120,9 +120,13 @@ Ordered by dependency, not by importance. **Two are re-ideations** of decisions 
    - **Page timings on this data, worth knowing before standing in front of someone:** overview ~2.8s, conflicts ~3.9s, review ~2.3s to first content, against remote Supabase. Every screen replays the whole event log; at 55 claims and ~250 events that is a visible pause, not a hang. It is the same cost slice 4 measured on a description write, and it is the first thing that will need attention if the demo grows.
    - **A behaviour worth knowing before demoing it:** ingesting the epic names the feature after **the first child that opened the scope** (`Choose which metric the main graph plots`), not after the epic. That is the documented first-run-wins title rule and re-titling is deliberately deferred — so the feature's *description* is what says it is the dashboard-graph epic. The title says what it was called; the description says what it is for. Slice 4 doing the job it was built for.
 
-6. [ ] **The browser suite stops mutating the workspace it measures** — depends on: 0
-   - Its own workspace. `X-Atlas-Automated` (2026-08-18) fixed *attribution* — its writes no longer masquerade as a person's rulings — but not *mutation*: a confirmation it makes is still real and still irreversible. Until this lands, the two mutating tests stay excluded.
+6. [x] **The browser suite stops mutating the workspace it measures** — *done 2026-08-25* — depends on: 0
+   - Its own workspace. `X-Atlas-Automated` (2026-08-18) fixed *attribution* — its writes no longer masquerade as a person's rulings — but not *mutation*: a confirmation it makes is still real and still irreversible. ~~Until this lands, the two mutating tests stay excluded.~~ **They are no longer excluded: 42/42 pass.**
    - Touches: seed scripts, `frontend/playwright.config.ts`, CI env
+   - **Outcome:** `scripts/seed_test_workspace.py` provisions one workspace (a constant `uuid5`, never an argument), seats two actors who are members of nothing else, and rebuilds its contents before every run via Playwright's `globalSetup`. Its claims are *recorded* extraction output from `tests/evals/golden_set/`, re-stamped and re-validated — a hand-written fixture would have put fabricated `SourceRef`s in the database of a product whose whole argument is that provenance is real. Clearing needs the owner credential (`atlas_app` cannot delete from `event_log` by grant) and refuses to delete anything a human actor wrote.
+   - **Verified:** two consecutive 42/42 runs against live Supabase, with the demo workspace's newest event still dated 2026-08-20 afterwards. 16 pytest tests assert the fixture's shape without a browser.
+   - **Not done, deliberately:** the suite still does not run in CI. That needs a Supabase *owner* credential in GitHub Actions secrets — a security decision belonging with Phase 4 hardening, not a wiring change.
+   - Full argument: `docs/decisions/2026-08-25-browser-suite-fixture-workspace.md`
 
 **Then, and only then, the Phase 1 exit criterion:** the PM measurement itself — still blocked on the PM's exact name, so membership can be seated under the string they type at sign-in.
 

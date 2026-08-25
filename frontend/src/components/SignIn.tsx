@@ -9,6 +9,7 @@
  */
 
 import { useState } from "react";
+import { AtlasMark } from "./Logo";
 
 export function SignIn({
   onSignIn,
@@ -30,7 +31,7 @@ export function SignIn({
         }}
       >
         <div className="signin__mark">
-          <span className="rail__glyph" aria-hidden />
+          <AtlasMark className="brandmark" />
           Atlas
         </div>
         <p className="signin__lede">

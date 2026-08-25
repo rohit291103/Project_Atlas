@@ -518,10 +518,13 @@ kbd {
 .rail__brand {
   display: flex;
   align-items: center;
-  gap: 8px;
+  /* Half a cap height, the standard mark-to-wordmark gap, expressed so it
+     tracks the type like the mark does. */
+  gap: 0.34em;
   padding: var(--space-3) var(--space-3);
+  font-size: var(--text-lg);
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
   border-bottom: 1px solid var(--border);
   /* It is an <a> so it is linkable and middle-clickable, but it is the brand —
      without these it renders in the UA's default link blue with an underline,
@@ -529,22 +532,19 @@ kbd {
   color: var(--text);
   text-decoration: none;
 }
-.rail__glyph {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  border: 1.5px solid var(--accent);
-  position: relative;
+/* The brand mark, sized from the *cap height* of the word beside it rather than
+   from a pixel constant. It used to be a hardcoded 16px square in both lockups,
+   which meant it was taller than the caps at rail size and undersized against
+   the landing page's 20px — a mark can only sit right beside type if it is
+   measured in the same units as the type.
+   `1em` is the arithmetic: the drawing's ink fills 11.5 of its 16-unit box, and
+   1em × 11.5/16 ≈ 0.72em, which is Geist's cap height. Change the font-size and
+   the mark follows. */
+.brandmark {
+  height: 1em;
+  width: auto;
   flex: none;
-}
-.rail__glyph::after {
-  content: "";
-  position: absolute;
-  inset: 3px 0;
-  border: 1.5px solid var(--accent);
-  border-radius: 50%;
-  border-top-color: transparent;
-  border-bottom-color: transparent;
+  color: var(--accent);
 }
 /* --- product switcher ------------------------------------------------------
  *
@@ -2793,7 +2793,7 @@ body.is-resizing {
 .landing__brand {
   display: inline-flex;
   align-items: center;
-  gap: 9px;
+  gap: 0.34em;
   font-size: 20px;
   font-weight: 600;
   letter-spacing: -0.02em;
@@ -4088,10 +4088,14 @@ body.is-resizing {
 .ld-rail__brand {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 0.34em;
   padding: 4px 6px 10px;
   font-size: var(--text-base);
   font-weight: 600;
+  /* The fourth lockup, and it was the last one still missing this. All four
+     now carry one tracking value; a wordmark set three different ways is three
+     wordmarks. */
+  letter-spacing: -0.02em;
   color: var(--text);
 }
 .ld-rail__product,
@@ -5660,10 +5664,16 @@ body.is-resizing {
     stroke-dashoffset: -276.5;
   }
 }
+/* The mark, on its own 16-unit grid, scaled ×4 by a transform on the group.
+   Stroke width is pre-divided by that scale so the drawn weight still lands at
+   2.6 in this box — `vector-effect` would have pinned it to screen pixels
+   instead, which is a different and wrong thing at a size that is responsive. */
 .boot__glyph {
   fill: none;
   stroke: url(#atlas-boot-line);
-  stroke-width: 2.6;
+  stroke-width: 0.65;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .boot__label {
   margin: 0;

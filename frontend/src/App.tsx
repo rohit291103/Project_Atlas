@@ -41,6 +41,7 @@ import { summarize } from "./review";
 import { PUBLIC_ROUTES, UNASSIGNED, linkProps, useRoute } from "./router";
 import type { Route } from "./router";
 import { THEME_LABELS, useTheme } from "./theme";
+import { AtlasMark } from "./components/Logo";
 
 /** Features that predate the product layer still need a home in the rail. They
  * get a real, linkable one rather than being hidden — "not filed yet" is a state
@@ -289,7 +290,7 @@ export function App() {
     <div className="shell">
       <nav className="rail">
         <a className="rail__brand" {...linkProps({ name: "products" }, navigate)}>
-          <span className="rail__glyph" aria-hidden />
+          <AtlasMark className="brandmark" />
           Atlas
         </a>
 

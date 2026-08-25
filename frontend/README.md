@@ -41,3 +41,38 @@ npm run generate:types
 npm run typecheck   # tsc --noEmit
 npm run build       # typecheck + production bundle
 ```
+
+## The browser suite
+
+`tests/ui-smoke.spec.ts` drives a real browser against a *running* app, because
+`tsc` and `vite build` both pass on defects that are only visible once something
+renders the page.
+
+It runs in **its own workspace**, seated and rebuilt by
+`scripts/seed_test_workspace.py`: `globalSetup` runs the seed before every suite,
+so a run always starts from the same claims no matter what the previous run
+confirmed. Nothing it does touches the demo's data. That is why the two tests
+that confirm a claim are no longer excluded.
+
+```bash
+set -a && source .env && set +a          # the seed needs both database URLs
+cd frontend && VITE_API_BASE="" npm run build   # same-origin, as the Dockerfile builds it
+ATLAS_STATIC_DIR=frontend/dist uv run uvicorn atlas.api.app:app --port 8010   # repo root
+cd frontend && ATLAS_UI_PORT=8010 npm run test:ui
+```
+
+Serving the built SPA from the API is the fastest path — same origin, no Vite,
+no CORS. **`VITE_API_BASE=""` is not optional there**: the default is baked in at
+build time as `http://localhost:8000`, so a build without it is served from one
+port and calls another, every request is cross-origin, and the only symptom is
+"Couldn't sign in. Is the API running?" on a form whose credentials are correct. `webServer.reuseExistingServer` adopts whatever is already listening on
+`ATLAS_UI_PORT`, which is what makes that work, and is also why the port is
+explicit: a Vite left running from another session against a *different* API is
+adopted just as silently.
+
+`ATLAS_SKIP_SEED=1` runs against a database this machine cannot seed;
+`ATLAS_TEST_EDITOR` / `ATLAS_TEST_VIEWER` name the actors to sign in as there.
+
+> **Killed runs leave zombie Chromium processes**, and the next run then hangs
+> before its first test with no timeout and no output. `pkill -f playwright;
+> pkill -f chrome-mac` clears it.

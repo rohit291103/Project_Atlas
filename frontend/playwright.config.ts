@@ -26,10 +26,16 @@ const BASE_URL = `http://localhost:${UI_PORT}`;
 
 export default defineConfig({
   testDir: "./tests",
+  /* Rebuild the suite's own workspace first, so every run starts from the same
+   * claims no matter what the previous run confirmed. See tests/global-setup.ts
+   * — and `ATLAS_SKIP_SEED=1` for a run against a database this machine did not
+   * seed. */
+  globalSetup: "./tests/global-setup.ts",
   timeout: 30_000,
-  // One worker, in order. These tests drive a *shared, mutable* event log, so
-  // parallel workers would race each other's confirmations — the first version
-  // of this suite failed exactly that way.
+  // One worker, in order. The workspace is the suite's own now, but it is still
+  // one mutable event log shared by every test in the file, so parallel workers
+  // would race each other's confirmations — the first version of this suite
+  // failed exactly that way.
   workers: 1,
   fullyParallel: false,
   use: {
@@ -41,9 +47,8 @@ export default defineConfig({
     // humanness an authenticated session implies. On 2026-08-16 this suite
     // confirmed 6 real claims as `Rohit` and nothing in the log could tell them
     // apart from rulings he actually made — irreversibly, because the log only
-    // moves forward. It does not stop the suite mutating a shared log (a
-    // dedicated workspace is the fix for that); it stops the mutations lying
-    // about who made them, and keeps them out of roadmap-v2's guard metric.
+    // moves forward. That fixed the *attribution*; `globalSetup` below fixes the
+    // *mutation*, by giving the suite a workspace of its own to mutate.
     extraHTTPHeaders: { "X-Atlas-Automated": "1" },
   },
   webServer: {

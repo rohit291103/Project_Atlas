@@ -39,11 +39,12 @@ Each phase's *concrete* implementation plan gets its own doc in `docs/architectu
 
 **Phase 1 close-out.** Make the loop usable by a non-engineer (a PM) and extend to a second source. Concrete plan: `docs/architecture/Phase1_Architecture.md`. Exit criterion: a PM outside the build team can, *unassisted*, connect two sources, review extracted elements, and confirm/reject them in under 20 minutes. **Primary risk being retired: can a non-engineer actually use this?** — not "does more get built."
 
-**Construction is complete** (all four slices plus 2A/2B); the exit criterion is not met, because it was never a construction criterion. Three things remain, and only one is code:
+**Construction is complete** (all four slices plus 2A/2B, and the seven-slice follow-on list of 2026-08-19, closed 2026-08-25); the exit criterion is not met, because it was never a construction criterion. Two things remain, and neither is code:
 
 1. **Frontend review by the user** — the whole UI, landing through conflicts, dark and light.
 2. **The PM measurement** — a PM outside the build team, unassisted, under 20 minutes. Blocked only on the PM's exact name, so membership can be seated under the string they type at sign-in.
-3. **Actor provenance** (in progress) — `Event.actor` gains an actor *kind* separating human from automated, enforced at the schema boundary, plus a dedicated workspace for the browser suite. This sits *before* the PM measurement deliberately: that session produces the first real confirmation data, every roadmap-v2 metric reads confirmation data, and Phase 2's spec export reads *confirmed* nodes. Rationale: `docs/decisions/2026-08-18-roadmap-v2-spec-export-and-proof.md` §9.
+
+**Actor provenance is done** (2026-08-18 / 2026-08-25) — `Event.actor` gained an actor *kind* separating human from automated, enforced at the schema boundary, and the browser suite gained a workspace of its own so its confirmations stop landing in the demo's log (`docs/decisions/2026-08-25-browser-suite-fixture-workspace.md`). It sat *before* the PM measurement deliberately: that session produces the first real confirmation data, every roadmap-v2 metric reads confirmation data, and Phase 2's spec export reads *confirmed* nodes. Rationale: `docs/decisions/2026-08-18-roadmap-v2-spec-export-and-proof.md` §9.
 
 **Next, per roadmap v2:** Phase 2 is **spec export + the proof** — confirmed nodes → Markdown → inline provenance, with unresolved conflicts surfaced as open disagreements rather than silently resolved; then a blind, pre-registered, N≥5 measurement of agent output quality with the spec vs. without, run first against the internal `ripgrep` golden set. Don't start it until Phase 1's exit criterion is actually measured.
 

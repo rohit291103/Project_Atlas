@@ -65,6 +65,7 @@ import {
   IconPanel,
   IconSources,
 } from "../icons";
+import { AtlasMark } from "../Logo";
 
 type ClaimType = "requirement" | "decision" | "constraint" | "open question";
 
@@ -432,7 +433,7 @@ export function ReviewDemo() {
         <div className="ld-app">
           <nav className="ld-rail" aria-hidden>
             <span className="ld-rail__brand">
-              <span className="rail__glyph" />
+              <AtlasMark className="brandmark" />
               Atlas
             </span>
             <span className="ld-rail__product">
