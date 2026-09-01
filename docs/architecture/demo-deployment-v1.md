@@ -74,28 +74,70 @@ docker run -p 8000:8000 --env-file .env atlas   # local smoke test
 process holds no source credential of its own. It only ever uses a credential a
 person connected through the UI, decrypted per request.
 
-### Railway — the chosen host, 2026-08-26
+### Render free tier — the chosen host, 2026-08-26
 
-`railway.json` at the repo root pins the three things that are not defaults:
-the **Dockerfile** builder (Railway would otherwise try Nixpacks and guess at a
-Python app with a frontend bolted on), **`numReplicas: 1`**, and a healthcheck.
+Cost was the deciding constraint, and the landscape has moved: **Fly.io has no
+free tier for new accounts** (a 2-VM-hour / 7-day trial, then a card),
+**Koyeb closed its free Starter** after being acquired, and Railway's "free" is
+a $5 monthly credit. Render still has a real free tier that takes a Dockerfile
+and no credit card.
 
-Railway deploys from the GitHub remote, so **the deploy is a `git push`** —
-anything uncommitted is not in it. That is the whole footgun of this host and
-it is worth saying once: the running site is `origin/main`, not the working
-tree.
+`render.yaml` at the repo root is a Blueprint: one `web` service, `runtime:
+docker`, `plan: free`, healthcheck on `/`, and the four variables declared with
+`sync: false` so Render prompts for them rather than this file carrying them.
 
-1. **Push.** `git push origin main`. Railway builds what GitHub has.
-2. **New project → Deploy from GitHub repo** → `rohit291103/Project_Atlas`.
-   It reads `railway.json` and builds the Dockerfile; no build settings to fill
-   in.
-3. **Set the four variables** (Variables tab, or `railway variables --set`).
-   They are listed in the table above. **`SUPABASE_DB_URL` is the `atlas_app`
-   URL, never the admin one.**
-4. **Generate a domain** (Settings → Networking → Generate Domain). Railway
-   injects `PORT`; the image's `CMD` already reads `${PORT}`, so nothing else
-   binds.
-5. **Smoke-test the four things that actually break**, below.
+**Region is `singapore`, and that is not arbitrary.** Supabase is in
+`aws-1-ap-northeast-2` (Seoul). This app replays the whole event log per
+request, so every extra 100ms of database round-trip is paid several times on
+one page load — Oregon would cross the Pacific twice for the same work.
+
+1. **Push.** Render deploys from GitHub, so **the deploy is a `git push`** —
+   anything uncommitted is not in it. The running site is `origin/main`, never
+   the working tree. That is this host's one footgun.
+2. **New → Blueprint**, point it at `rohit291103/Project_Atlas`. It reads
+   `render.yaml`; there are no build settings to fill in.
+3. **Paste the four variables** when prompted. `SUPABASE_DB_URL` is the
+   **`atlas_app`** URL, never the admin one.
+4. **Smoke-test the four things that actually break**, below.
+
+#### The free tier's one real cost, and how to live with it
+
+A free instance **spins down after 15 minutes without inbound traffic**, and the
+next request wakes it in roughly 50 seconds. There is no setting that turns this
+off; the paid Starter instance (~$7/mo) is the only fix.
+
+It is survivable, but only if it is planned for:
+
+- **Before a live demo, open the URL a minute early** and leave the tab up. A
+  warm instance behaves normally.
+- **The PM measurement is the case that actually hurts.** Someone opening a cold
+  link, unassisted, waits 50 seconds at a blank page and reasonably concludes it
+  is broken — and that measurement *is* the Phase 1 exit criterion. Warm it
+  immediately before sending the link, or pay for the month it happens in.
+- **Ingestion is safer than it looks.** A pull runs in-process for 4–7 minutes,
+  which sounds like a spin-down risk, but the Sources screen is polling
+  throughout, so the traffic that keeps the instance awake is the same traffic
+  that shows the run's progress. It is only unattended runs that are exposed —
+  and there are none.
+
+#### Why not Cloud Run, which is also free
+
+Cloud Run throttles CPU to near-zero once a response is sent. UI-triggered
+ingestion runs *after* the response, in-process via `BackgroundTasks` (an
+explicit CLAUDE.md Non-Goal, so there is no worker to move it to), and a 4–7
+minute run would be starved or killed. `--no-cpu-throttling` fixes it and
+changes the billing model, which spends the free tier. The same reasoning rules
+out Vercel and Netlify functions, whose request timeouts are shorter than a
+single ingestion.
+
+**If sleeping becomes the problem**, the always-on free option is an **Oracle
+Cloud Always Free** ARM VM — genuinely free, never sleeps — at the cost of
+running the container yourself behind Caddy or nginx for TLS. TLS is not
+optional there: the session cookie's `Secure` flag is derived from the request
+scheme.
+
+`railway.json` is also in the repo and is correct, if the paid path is ever
+taken.
 
 **Why the healthcheck is `/` and not a `/health` endpoint.** `/` serves the SPA
 index, which proves two things at once: the process is up, *and* the bundle
@@ -105,8 +147,14 @@ Postgres turns a Supabase blip into a container restart loop, which makes an
 outage worse rather than shorter — and restarting this process cannot fix a
 managed database anyway.
 
-**Do not enable autoscaling or raise replicas.** See below; it is an
-architectural constraint, not a cost preference.
+**One instance, always.** Free plans give one by construction, so on Render this
+costs nothing to honour — but it is an architectural constraint rather than a
+consequence of the plan, and it must survive any later upgrade. UI-triggered
+ingestion runs in-process with no broker; a second instance is the moment
+CLAUDE.md's Non-Goal fires.
+
+**`PORT` needs no handling.** Render injects it and the image's `CMD` already
+reads `${PORT}`.
 
 ### After the first deploy, check these four
 
@@ -120,11 +168,9 @@ in the order they happen:
 | `GET /products` | `401 application/json` | Not the auth wall — if this 500s, the database is unreachable (pooler URL, or the `atlas_app` password). |
 | Sign in, then reload | Still signed in | The session cookie lost its `Secure` flag or its host. Confirm `--proxy-headers` survived and that the SPA and API are on one origin. |
 
-**Other hosts.** Any container host works; the image needs no volume, sidecar or
-second process. *Fly.io:* `fly launch --no-deploy`, `fly secrets set` the four,
-`fly deploy`, one machine with auto-stop off. *Render:* a Web Service, "Docker"
-environment, the four as secrets, instance count 1 — and **not** the free tier,
-which sleeps after 15 minutes and wakes in ~50 seconds.
+**Any container host works** — the image needs no volume, sidecar or second
+process. What a replacement must provide: one instance, a CPU that keeps running
+between requests (see Cloud Run above), and HTTPS terminated in front of it.
 
 Two settings are not optional on either:
 
