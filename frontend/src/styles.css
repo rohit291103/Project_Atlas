@@ -119,8 +119,20 @@
    *
    * The ramp's third stop is `--accent` itself — the product's real interaction
    * colour — so the gradient resolves into the palette rather than sitting
-   * beside it. When the deferred brandkit pass lands, `--brand-1` and
-   * `--brand-2` are the whole swap. */
+   * beside it.
+   *
+   * **Settled 2026-08-22, at the brandkit pass: magenta → violet stays.** Four
+   * ramps were rendered into the real hero in both themes — this one, steel →
+   * blue, ember → violet → blue, and cyan → blue. Cyan was built and reviewed on
+   * the running page, and rejected on look: it reads as an instrument, and the
+   * page is not trying to look like an instrument. Steel was too quiet (the CTA
+   * lost its punch, the headline's second line stopped reading as a turn) and
+   * ember muddied to mauve through the middle of the arc.
+   *
+   * The known cost of this ramp is that magenta → violet is a well-worn gesture
+   * in AI software; it is kept with that understood, because it is the one that
+   * makes the page work. Recorded in `docs/ux/brand-and-logo-brief-v1.md` §6 so
+   * the trade is legible rather than rediscovered. */
   --brand-1: #ff4d9d;
   --brand-2: #a855f7;
   --brand-3: var(--accent);
@@ -178,6 +190,8 @@
     --paper-dim: #79705d;
     --paper-mark: rgba(224, 163, 60, 0.3);
 
+  /* Deepened for white: the dark theme's stops are too pale to hold a headline
+     or a filled button on a light ground. Same arc, more ink in it. */
   --brand-1: #d81b7e;
   --brand-2: #7c2fd4;
   --brand-glow: color-mix(in srgb, var(--brand-2) 14%, transparent);
@@ -218,6 +232,8 @@
   --paper-dim: #79705d;
   --paper-mark: rgba(224, 163, 60, 0.3);
 
+  /* Deepened for white: the dark theme's stops are too pale to hold a headline
+     or a filled button on a light ground. Same arc, more ink in it. */
   --brand-1: #d81b7e;
   --brand-2: #7c2fd4;
   --brand-glow: color-mix(in srgb, var(--brand-2) 14%, transparent);

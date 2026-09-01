@@ -163,22 +163,62 @@ day, fully covered by the browser suite — while the code-level rename
 Dockerfile) touches eleven more files and changes the deployment contract. The
 first is cheap at any time; the second should never happen close to a demo.
 
-## 6. What still needs deciding after the mark exists
+## 6. The brand tokens — settled 2026-08-22
 
-Per `docs/tracker.md`'s *Next up*, the brand pass owns three things and only one
-of them is the logo:
+`docs/tracker.md` carried one *Next up* item since 2026-08-16: **brand tokens
+(accent, logo, wordmark) at the deferred brandkit pass**, with the note that it
+*wants a decision, not a commit*. All three are now decided.
 
-1. **The mark** — this document.
-2. **`--brand-1` and `--brand-2`.** The magenta/violet ramp is a placeholder,
-   and the stylesheet says so at the token: *"When the deferred brandkit pass
-   lands, `--brand-1` and `--brand-2` are the whole swap."* Nothing else in the
-   product depends on them.
-3. **The wordmark** — how "Atlas" is set beside the mark. Specified in §7.
+### 6.1 `--brand-1` / `--brand-2` — magenta → violet, kept
 
-`--accent` is **not** in scope. It means "interactive" on every surface in the
-app, and changing it for brand reasons would move a functional signal.
+Four ramps were built into the real hero and reviewed in both themes:
 
----
+| Ramp | Verdict |
+|---|---|
+| **magenta `#ff4d9d` → violet `#a855f7`** | **Kept.** |
+| steel `#8fa4c8` → blue `#5c6ff0` | Too quiet. The CTA lost its punch and the headline's second line stopped reading as a turn. |
+| ember `#d9803a` → violet `#8a6fd6` | Orange and blue are complements, so the middle of the arc muddies to mauve; the terminal's `$` prompts also went a colour confusable with `--conflict`. |
+| cyan `#22c8d8` → blue `#4d7ef5` | Built, shipped to the running page, reviewed, reverted. It reads as an *instrument* — and the landing page is not trying to look like an instrument. |
+
+**Light:** `--brand-1: #d81b7e`, `--brand-2: #7c2fd4` — deepened, because the
+dark theme's stops are too pale to hold a headline or a filled button on white.
+
+**The known cost, stated so it is not rediscovered:** magenta → violet is a
+well-worn gesture in AI software, and this is a product whose whole claim is
+that it does not make things up. The ramp is kept with that understood, because
+it is the one that makes the page work — and because it is confined to the
+marketing surface (see §6.1a), where looking confident matters more than looking
+unusual. If it is ever revisited, cyan → blue is the candidate that came closest
+and the values are above.
+
+### 6.1a Why the landing page does not match the app
+
+This is deliberate and predates the brand pass — `LandingPage.tsx`'s header
+states it: *marketing surfaces and work surfaces want opposite things from the
+same design system.* The app spends its colour budget on status and conflict and
+nothing else, which is right for a screen a PM sits in for twenty minutes and
+far too quiet for a page a stranger gives eight seconds.
+
+The ramp is declared on `.landing`, so it **reaches nothing behind the sign-in
+wall**. What connects the two halves is that the ramp's third stop is `--accent`
+itself: the marketing gesture resolves into the colour the product's primary
+button actually is, rather than promising a differently-coloured application.
+The mark is the other join — it is drawn in `--accent` on both sides of the wall.
+
+### 6.2 `--accent` — deliberately unchanged
+
+`--accent` (`#6b7bff` dark / `#4453e0` light) means **interactive** on every
+surface in the application: the focus ring, the primary button, the active rail
+row, every link. It is a *functional* signal that happens to be a colour.
+
+Moving it for brand reasons would move that signal, and there is no brand
+argument strong enough to pay for it — the ramp already ends on it, so the
+accent is what the brand gesture *resolves into*, and it is doing brand work
+without giving up its job. **Recorded as a decision, not an omission.**
+
+### 6.3 Logo and wordmark
+
+Done: §3 and §7. Nothing about the brand pass remains open.
 
 ## 7. The wordmark — how "Atlas" is set
 

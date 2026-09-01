@@ -74,11 +74,57 @@ docker run -p 8000:8000 --env-file .env atlas   # local smoke test
 process holds no source credential of its own. It only ever uses a credential a
 person connected through the UI, decrypted per request.
 
-**Fly.io:** `fly launch --no-deploy` (it will detect the Dockerfile), then
-`fly secrets set` the four variables, then `fly deploy`. Keep it at one machine.
+### Railway — the chosen host, 2026-08-26
 
-**Render:** a Web Service from this repo, environment "Docker", the four
-variables as environment secrets, instance count 1.
+`railway.json` at the repo root pins the three things that are not defaults:
+the **Dockerfile** builder (Railway would otherwise try Nixpacks and guess at a
+Python app with a frontend bolted on), **`numReplicas: 1`**, and a healthcheck.
+
+Railway deploys from the GitHub remote, so **the deploy is a `git push`** —
+anything uncommitted is not in it. That is the whole footgun of this host and
+it is worth saying once: the running site is `origin/main`, not the working
+tree.
+
+1. **Push.** `git push origin main`. Railway builds what GitHub has.
+2. **New project → Deploy from GitHub repo** → `rohit291103/Project_Atlas`.
+   It reads `railway.json` and builds the Dockerfile; no build settings to fill
+   in.
+3. **Set the four variables** (Variables tab, or `railway variables --set`).
+   They are listed in the table above. **`SUPABASE_DB_URL` is the `atlas_app`
+   URL, never the admin one.**
+4. **Generate a domain** (Settings → Networking → Generate Domain). Railway
+   injects `PORT`; the image's `CMD` already reads `${PORT}`, so nothing else
+   binds.
+5. **Smoke-test the four things that actually break**, below.
+
+**Why the healthcheck is `/` and not a `/health` endpoint.** `/` serves the SPA
+index, which proves two things at once: the process is up, *and* the bundle
+actually shipped (a wrong `ATLAS_STATIC_DIR` fails it, which is what you want).
+It deliberately does **not** touch the database. A healthcheck that probes
+Postgres turns a Supabase blip into a container restart loop, which makes an
+outage worse rather than shorter — and restarting this process cannot fix a
+managed database anyway.
+
+**Do not enable autoscaling or raise replicas.** See below; it is an
+architectural constraint, not a cost preference.
+
+### After the first deploy, check these four
+
+Run against the generated domain. These are the failures that actually happen,
+in the order they happen:
+
+| Probe | Expect | A wrong answer means |
+|---|---|---|
+| `GET /` | `200 text/html` | The SPA bundle did not ship — check `ATLAS_STATIC_DIR` and that stage 1 of the build ran. |
+| `GET /nonsense-api-path` | `404 application/json` | A catch-all crept in; every mistyped API path is now a silent 200. |
+| `GET /products` | `401 application/json` | Not the auth wall — if this 500s, the database is unreachable (pooler URL, or the `atlas_app` password). |
+| Sign in, then reload | Still signed in | The session cookie lost its `Secure` flag or its host. Confirm `--proxy-headers` survived and that the SPA and API are on one origin. |
+
+**Other hosts.** Any container host works; the image needs no volume, sidecar or
+second process. *Fly.io:* `fly launch --no-deploy`, `fly secrets set` the four,
+`fly deploy`, one machine with auto-stop off. *Render:* a Web Service, "Docker"
+environment, the four as secrets, instance count 1 — and **not** the free tier,
+which sleeps after 15 minutes and wakes in ~50 seconds.
 
 Two settings are not optional on either:
 
