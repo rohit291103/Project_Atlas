@@ -1,6 +1,6 @@
 # Decision Log — The "Cursor for PMs" product-decision-engine spec, assessed against Atlas scope
 
-**Date:** 2026-09-01
+**Date:** 2026-09-02
 **Area:** product / architecture
 
 ## Context
@@ -131,7 +131,7 @@ question was actually asked at.
 The original entry logged the readiness score as a *candidate, not scheduled*, and left the
 rest unplaced. On review that was the wrong resting place: an unplaced candidate is exactly
 what §55 of the 2026-08-18 entry turned out to be, and it got re-litigated within two weeks.
-The items are now **placed in phases** in `docs/prd/roadmap-v2.md`, marked `[+2026-09-01]`.
+The items are now **placed in phases** in `docs/prd/roadmap-v2.md`, marked `[+2026-09-02]`.
 The decisions above are unchanged — in particular decision 4 (opportunity scoring rejected
 on the Philosophy) stands exactly as written. What changed is scheduling, not scope.
 

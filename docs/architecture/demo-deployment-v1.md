@@ -216,9 +216,36 @@ few seconds of downtime. It is worth knowing anyway, because it is the rule that
 would make a rolling deploy of a new event type break the running one — which is
 another reason the single-instance shape above is not merely a simplification.
 
-## 5. Before showing it to anyone — the two real risks
+## 5. Before showing it to anyone — the three real risks
 
-Neither is a deployment problem, and both matter more than uptime.
+None is a deployment problem, and all matter more than uptime.
+
+**The database pauses itself after seven idle days, and fails hard.** Supabase's
+free tier suspends a project that has seen no activity for a week; the pooler
+then answers every connection with `FATAL: (ENOTFOUND) tenant/user
+atlas_app.<ref> not found`, `db.<ref>.supabase.co` stops resolving, and every
+request that touches storage fails. **This is not the same risk as the host's
+cold start** (§3, "the free tier's one real cost"): a spun-down web service wakes
+itself in ~50 seconds, and a paused database never wakes on its own. Someone has
+to open the dashboard. It happened on **2026-09-02** — seven days after the last
+live activity on 2026-08-26 — and cost a session to diagnose, because the SPA
+reported it as "Is the API running?" when the API was running fine.
+
+- **Before any demo or the PM measurement, sign in yourself and confirm you get
+  a session.** That is the whole check; it exercises the database. Do it the day
+  before as well as an hour before, because a *paused* project cannot be fixed in
+  the ninety seconds before someone joins.
+- **After resuming, the pooler lags the dashboard by roughly 40 seconds.** The
+  REST endpoint answers first (a `401` from `/rest/v1/` means the project is up),
+  while `tenant/user … not found` is still the answer on 5432. Retry before
+  concluding the restore failed.
+- The API now answers a connection failure with **503 and a message naming the
+  database**, rather than an unhandled 500 (`atlas.api.app._database_unreachable`).
+  That makes the failure legible; it does not make it survivable.
+- The durable fix is a paid tier or scheduled activity. Neither is done, and
+  **for the PM measurement specifically the free tier is the wrong bet** — the
+  measurement is unassisted by definition, so there is nobody to explain a blank
+  screen to the person whose behaviour is the exit criterion.
 
 **A visitor clicking Confirm writes a real, irreversible event.** There is no
 sandbox mode. A confirmation is the product's unit of truth and the log only

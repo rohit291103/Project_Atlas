@@ -67,7 +67,12 @@ export type Disagreement = components["schemas"]["Disagreement"];
  * than no affordance. */
 export const canWrite = (role: Role): boolean => role !== "viewer";
 
-const BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
+/* Exported so a failure can name what it could not reach. A thrown `fetch`
+ * carries no status and no body, so the origin is the only useful thing left
+ * to say — and "is the API running?" pointed at the wrong process the one
+ * time it mattered (2026-09-02: the API was up, its database was paused). */
+export const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
+const BASE = API_BASE;
 
 /** The download address for a product's spec.
  *

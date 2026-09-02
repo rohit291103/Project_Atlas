@@ -21,6 +21,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, create_engine
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -1325,3 +1326,68 @@ def test_a_product_name_cannot_inject_a_download_header(signed_in: TestClient) -
     assert disposition.count('"') == 2
     assert "\n" not in disposition and "\r" not in disposition
     assert ";" not in disposition[disposition.index('"') :]
+
+
+# --- the database being unreachable is not the API being down -----------------
+
+
+@pytest.fixture
+def unreachable_db(
+    seeded: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
+) -> Iterator[TestClient]:
+    """A client whose every DB session raises the way a paused Supabase does.
+
+    `psycopg` raises `OperationalError`; SQLAlchemy re-raises it wrapped, which
+    is the shape the app actually sees.
+    """
+    # The CORS assertion below only means anything with the middleware installed.
+    monkeypatch.setenv("ATLAS_DEV_CORS", "1")
+    app = create_app()
+
+    def _dead_session() -> Iterator[Session]:
+        raise OperationalError("select 1", {}, Exception("connection failed: FATAL: ENOTFOUND"))
+        yield  # pragma: no cover -- generator dependency, never reached
+
+    app.dependency_overrides[get_session] = _dead_session
+    app.dependency_overrides[get_api_settings] = _settings
+    app.dependency_overrides[get_session_factory] = lambda: seeded
+    with TestClient(app, raise_server_exceptions=False) as test_client:
+        yield test_client
+
+
+def test_an_unreachable_database_is_503_not_500(unreachable_db: TestClient) -> None:
+    """A 500 from an unhandled exception skips the CORS middleware, so the
+    browser sees a *network* error and the SPA says "is the API running?" -- the
+    one thing that is definitely not wrong. 503 says whose fault it is."""
+    response = unreachable_db.post("/session", json={"passphrase": PASSPHRASE, "name": ACTOR})
+
+    assert response.status_code == 503
+    assert "database" in response.json()["detail"].lower()
+
+
+def test_the_unreachable_database_message_leaks_no_connection_detail(
+    unreachable_db: TestClient,
+) -> None:
+    """The driver's message names the host, the pooler tenant and the role. None
+    of that belongs in a browser -- it goes to the log instead."""
+    detail = unreachable_db.post("/session", json={"passphrase": PASSPHRASE, "name": ACTOR}).json()[
+        "detail"
+    ]
+
+    for leak in ("FATAL", "ENOTFOUND", "connection failed", "select 1"):
+        assert leak not in detail
+
+
+def test_an_unreachable_database_still_answers_a_cross_origin_request(
+    unreachable_db: TestClient,
+) -> None:
+    """The whole point: the error has to reach the SPA. An unhandled exception
+    never passes back out through `CORSMiddleware`, so the browser reports a
+    network failure and the real message is lost."""
+    response = unreachable_db.post(
+        "/session",
+        json={"passphrase": PASSPHRASE, "name": ACTOR},
+        headers={"Origin": "http://localhost:5173"},
+    )
+
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"

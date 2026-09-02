@@ -21,7 +21,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ApiError, api } from "./api";
+import { API_BASE, ApiError, api } from "./api";
 import type { FeatureScope, Product, Role } from "./api";
 import { IconConflict, IconAbout,
   IconOverview, IconSources } from "./components/icons";
@@ -161,7 +161,9 @@ export function App() {
         navigate({ name: "products" }, true);
       } catch (caught) {
         setSignInError(
-          caught instanceof ApiError ? caught.message : "Couldn't sign in. Is the API running?",
+          caught instanceof ApiError
+            ? caught.message
+            : `Couldn't reach the API at ${API_BASE}. Is it running?`,
         );
       }
     },

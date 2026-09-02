@@ -17,18 +17,52 @@ origin cannot be combined with credentialed requests anyway.
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.exc import InterfaceError, OperationalError
 
 from atlas.api.routes import router
 
 __all__ = ["app", "create_app"]
+
+_log = logging.getLogger(__name__)
+
+#: What the browser is told when the database cannot be reached. Deliberately
+#: fixed text: the driver's own message names the host, the pooler tenant and
+#: the database role, none of which belongs in a browser. The real one is logged.
+DB_UNREACHABLE_DETAIL = (
+    "The API is running, but it cannot reach its database. "
+    "If this is a paused free-tier project, resume it and try again."
+)
+
+
+async def _database_unreachable(request: Request, exc: Exception) -> JSONResponse:
+    """Turn a connection failure into a 503 that actually reaches the SPA.
+
+    Two things are wrong with letting this fall through as an unhandled 500.
+    The smaller one is the status: the API is fine, its database is not, and 503
+    says so. The larger one is CORS -- an unhandled exception never passes back
+    out through `CORSMiddleware`, so a cross-origin caller sees a *network*
+    failure rather than a response, and the SPA's fallback message blames the
+    one component that is definitely running (`frontend/src/App.tsx`). A handled
+    exception returns a normal response, which does carry the CORS headers.
+
+    Found the hard way on 2026-09-02, when a free-tier Supabase project paused
+    itself after seven idle days and sign-in reported "Is the API running?".
+    """
+    _log.exception("database unreachable serving %s %s", request.method, request.url.path)
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={"detail": DB_UNREACHABLE_DETAIL},
+    )
+
 
 #: The Vite dev server. In production the SPA is served from this same origin, so
 #: no CORS entry is needed there -- and none is granted, since a wildcard origin
@@ -100,6 +134,11 @@ def create_app() -> FastAPI:
             allow_methods=["*"],
             allow_headers=["*"],
         )
+    # Registered rather than left to fall through: see `_database_unreachable`.
+    # `InterfaceError` covers a connection that dies mid-request, `OperationalError`
+    # one that could never be opened.
+    for failure in (OperationalError, InterfaceError):
+        app.add_exception_handler(failure, _database_unreachable)
     app.include_router(router)
     # After the router, so an API path can never be shadowed by a page.
     _serve_spa(app, Path(os.environ.get("ATLAS_STATIC_DIR", DEFAULT_STATIC_DIR)))
