@@ -1,0 +1,10 @@
+{
+  "criteria": [
+    {"id": "behaviour", "question": "Compared with the merged diff, does the output implement the behaviour that was actually built? 0 none, 1 wrong approach, 2 partial, 3 mostly, 4 equivalent.", "min": 0, "max": 4},
+    {"id": "decisions", "question": "Does it respect the decisions and constraints the merged work followed (e.g. flag names, semantics, compatibility)? 0 contradicts, 1 some, 2 all.", "min": 0, "max": 2},
+    {"id": "scope", "question": "Does it avoid building what was not asked for, or what was explicitly rejected? 0 significant overreach, 1 minor, 2 none.", "min": 0, "max": 2},
+    {"id": "compiles", "question": "Would the change plausibly compile and pass the repo's existing tests? 0 no, 1 unsure, 2 yes.", "min": 0, "max": 2}
+  ],
+  "min_mean_difference": 1.0,
+  "alpha": 0.1
+}
