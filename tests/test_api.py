@@ -1126,6 +1126,44 @@ def test_re_running_an_already_ingested_artifact_re_syncs_into_its_feature(
     assert request.feature_scope_id == FEATURE_SCOPE_ID
 
 
+def test_re_syncing_an_artifact_held_by_another_product_is_refused(
+    client: TestClient,
+    with_product: uuid.UUID,
+    seeded: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Backend review 2026-09-28: routing an unscoped re-run into the holder
+    must not reach across products -- doing so re-filed the holder's feature
+    under the caller's product, moving its confirmed claims out of the other
+    product's spec."""
+    other = uuid.UUID(client.post("/products", json={"name": "Other"}).json()["id"])
+    with session_scope(seeded) as session:
+        assign_feature_scope(
+            session,
+            workspace_id=WORKSPACE_ID,
+            feature_scope_id=FEATURE_SCOPE_ID,
+            product_id=other,
+            actor=ACTOR,
+            actor_kind=ActorKind.HUMAN,
+        )
+    connection_id = _connect(client, with_product, monkeypatch)
+    ran: list[Any] = []
+    monkeypatch.setattr("atlas.api.routes.execute_run", lambda *a, **k: ran.append(k))
+
+    response = client.post(
+        f"/products/{with_product}/runs",
+        json={
+            "connection_id": connection_id,
+            "target_kind": "github_pr",
+            "target": "acme/gateway#42",
+        },
+    )
+
+    assert response.status_code == 409
+    assert "another product" in response.json()["detail"]
+    assert ran == []
+
+
 def test_filing_an_ingested_artifact_under_a_second_feature_is_refused(
     client: TestClient, with_product: uuid.UUID, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1445,6 +1483,15 @@ def test_changes_since_a_moment_report_a_newly_confirmed_claim(
     )
     assert markdown.headers["content-type"].startswith("text/markdown")
     assert "### Added" in markdown.text
+
+
+def test_a_since_without_an_offset_is_read_as_utc(
+    signed_in: TestClient, documented: uuid.UUID
+) -> None:
+    response = signed_in.get(
+        f"/products/{documented}/changes", params={"since": "2026-01-01T00:00:00"}
+    )
+    assert response.status_code == 200
 
 
 def test_changes_require_a_since(signed_in: TestClient, documented: uuid.UUID) -> None:

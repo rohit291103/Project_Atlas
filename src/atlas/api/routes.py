@@ -550,6 +550,10 @@ def _spec_changes(
     now = load_projection(session, workspace_id=principal.workspace_id)
     if product_id not in now.products:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"no product {product_id}")
+    # A `since` with no offset is read as UTC. Left naive, Postgres would
+    # interpret it in the session's time zone and silently shift the cutoff.
+    if since.tzinfo is None:
+        since = since.replace(tzinfo=UTC)
     then = load_projection(session, workspace_id=principal.workspace_id, as_of=since)
     return now.products[product_id].name, changes(then, now, product_id)
 
@@ -941,6 +945,16 @@ def start_ingestion(
             source, already
         )
         if held is not None:
+            # Never across products: re-syncing into another product's feature
+            # would re-file it under this one (the run carries `product_id`),
+            # moving its confirmed claims out of the other product's spec. An
+            # unfiled holder is fine -- nothing is taken from anyone.
+            if held.product_id is not None and held.product_id != product_id:
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT,
+                    f"{already} is already in '{held.title}', in another product. "
+                    f"Re-sync it from there.",
+                )
             if feature_scope_id is not None and feature_scope_id != held.id:
                 raise HTTPException(
                     status.HTTP_409_CONFLICT,

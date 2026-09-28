@@ -476,6 +476,35 @@ def test_reconcile_drops_an_edge_whose_endpoints_collapse_into_one_node() -> Non
     assert reconciled.edges == []
 
 
+def test_a_node_with_a_source_the_existing_claim_lacks_is_not_dropped() -> None:
+    """Backend review 2026-09-28: matching on *any* shared excerpt discarded the
+    new node's other source_refs -- silent provenance loss. A node is the
+    existing claim only when every one of its sources is already on it; otherwise
+    it is written, and a possible duplicate stays visible for review."""
+    existing = _node()
+    corroborated = _node()
+    corroborated = corroborated.model_copy(
+        update={
+            "source_refs": [
+                *corroborated.source_refs,
+                SourceRef(
+                    source_type=SourceType.JIRA_TICKET,
+                    external_id="PA-7",
+                    url="https://acme.atlassian.net/browse/PA-7",
+                    excerpt="limit per IP",
+                    workspace_id=WORKSPACE,
+                ),
+            ]
+        }
+    )
+
+    reconciled = reconcile(
+        ExtractionResult(nodes=[corroborated]), Projection(nodes={existing.id: existing})
+    )
+
+    assert reconciled.nodes == [corroborated]
+
+
 def test_the_same_excerpt_under_a_different_type_is_a_different_claim() -> None:
     existing = _node()
     other = _node(type=NodeType.REQUIREMENT)

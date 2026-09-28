@@ -165,3 +165,46 @@ def test_the_question_is_in_the_prompt_after_the_context() -> None:
 def test_a_blank_question_is_refused() -> None:
     with pytest.raises(AnswerError):
         _run(ask("   ", assemble(make_projection([make_node()]), PRODUCT_ID), _call({})))
+
+
+# --- the model call's tool surface (backend review 2026-09-28) -----------------
+
+
+def test_the_qa_gate_denies_every_tool() -> None:
+    """Q&A needs no tools, so the gate is the authority and it denies all of
+    them -- including ones the deny-list does not name, such as `Task`."""
+    from atlas.qa import _deny_all
+
+    async def run() -> list[str]:
+        return [
+            str((await _deny_all(name, {}, None)).behavior)  # type: ignore[arg-type]
+            for name in ("Task", "Bash", "WebFetch", "mcp__anything__at_all")
+        ]
+
+    assert asyncio.run(run()) == ["deny"] * 4
+
+
+def test_the_model_call_streams_its_prompt_so_the_gate_is_consulted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A string prompt silently bypasses `can_use_tool` (see test_extraction's
+    streaming-seam test); the call must hand `query` a stream, with the gate set."""
+    from atlas import qa
+
+    seen: dict[str, Any] = {}
+
+    async def fake_query(*, prompt: Any, options: Any) -> Any:
+        seen["prompt"] = prompt
+        seen["options"] = options
+        if False:
+            yield None
+
+    monkeypatch.setattr(qa, "query", fake_query)
+
+    async def run() -> str:
+        return await qa.model_call()("hello")
+
+    asyncio.run(run())
+
+    assert not isinstance(seen["prompt"], str)
+    assert seen["options"].can_use_tool is qa._deny_all

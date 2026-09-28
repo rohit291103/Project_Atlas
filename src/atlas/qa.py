@@ -31,10 +31,19 @@ from __future__ import annotations
 import json
 import re
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Any
 
+from claude_agent_sdk import (
+    AssistantMessage,
+    ClaudeAgentOptions,
+    PermissionResultDeny,
+    TextBlock,
+    ToolPermissionContext,
+    query,
+)
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from atlas.assembly import RULED, Claim, ProductDocument
@@ -188,14 +197,35 @@ def _evidence(cited: tuple[Citation, ...]) -> Evidence:
     return Evidence.SUPPORTED if len(artifacts) >= 2 else Evidence.THIN
 
 
-def model_call(model: str = DEFAULT_MODEL) -> AnswerCall:
-    """The real call: Claude via the Agent SDK with every tool denied -- a
-    single reasoning turn over the context, nothing it can reach or change."""
-    from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, TextBlock, query
+async def _deny_all(
+    tool_name: str, tool_input: dict[str, Any], context: ToolPermissionContext
+) -> PermissionResultDeny:
+    """The permission gate, and the authority: Q&A needs no tool, so every tool
+    -- named in the deny-list or not (`Task`, an MCP tool, one added to the SDK
+    later) -- is refused. Same layering as `extraction.agent._agent_call`: the
+    deny-list is the first layer, this is the one that cannot be bypassed."""
+    return PermissionResultDeny(message=f"Q&A uses no tools; {tool_name} refused")
 
+
+async def _stream(prompt: str) -> AsyncIterator[dict[str, Any]]:
+    """The prompt as streaming input. Required, not stylistic: the SDK consults
+    `can_use_tool` only in streaming mode, so a plain string prompt would
+    silently bypass `_deny_all` (the defect `extraction.agent._as_stream`
+    exists for)."""
+    yield {
+        "type": "user",
+        "session_id": "",
+        "message": {"role": "user", "content": prompt},
+        "parent_tool_use_id": None,
+    }
+
+
+def model_call(model: str = DEFAULT_MODEL) -> AnswerCall:
+    """The real call: Claude via the Agent SDK, one turn, every tool denied."""
     options = ClaudeAgentOptions(
         model=model,
         system_prompt=SYSTEM_PROMPT,
+        can_use_tool=_deny_all,
         disallowed_tools=[
             "Bash",
             "Edit",
@@ -207,6 +237,7 @@ def model_call(model: str = DEFAULT_MODEL) -> AnswerCall:
             "WebFetch",
             "WebSearch",
             "TodoWrite",
+            "Task",
         ],
         setting_sources=[],
         max_turns=1,
@@ -214,7 +245,7 @@ def model_call(model: str = DEFAULT_MODEL) -> AnswerCall:
 
     async def call(prompt: str) -> str:
         text = ""
-        async for message in query(prompt=prompt, options=options):
+        async for message in query(prompt=_stream(prompt), options=options):
             if isinstance(message, AssistantMessage):
                 text = "".join(b.text for b in message.content if isinstance(b, TextBlock)) or text
         return text

@@ -387,10 +387,13 @@ def _claim_keys(node: Node) -> set[_ClaimKey]:
 def reconcile(result: ExtractionResult, existing: Projection) -> ExtractionResult:
     """Drop what the scope already holds, so re-running ingestion is idempotent.
 
-    Engineering Philosophy §5. A new node that shares any claim key with a node
-    already in the log -- *whatever its status* -- is that node, and is not
-    created again. So a confirmed claim stays confirmed and a rejected one stays
-    rejected across a re-run; neither is resurrected as a fresh draft beside it.
+    Engineering Philosophy §5. A new node whose claim keys are *all* already on
+    one node in the log -- *whatever its status* -- is that node, and is not
+    created again. All, not any: a node carrying a source the existing claim
+    lacks is written, because dropping it would discard that source_ref, and a
+    possible duplicate a reviewer can see beats provenance nobody can. So a
+    confirmed claim stays confirmed and a rejected one stays rejected across a
+    re-run; neither is resurrected as a fresh draft beside it.
 
     Edges are remapped onto the surviving ids. An edge is dropped when it
     already exists (in either direction for `conflicts_with`, which is
@@ -411,7 +414,8 @@ def reconcile(result: ExtractionResult, existing: Projection) -> ExtractionResul
     remap: dict[uuid.UUID, uuid.UUID] = {}
     kept: list[Node] = []
     for node in result.nodes:
-        match = next((index[key] for key in _claim_keys(node) if key in index), None)
+        owners = {index.get(key) for key in _claim_keys(node)}
+        match = owners.pop() if len(owners) == 1 else None
         if match is not None:
             remap[node.id] = match
             continue
