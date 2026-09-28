@@ -61,6 +61,8 @@ export type ProductDocument = components["schemas"]["ProductDocument"];
 export type DocumentSection = components["schemas"]["FeatureSection"];
 export type DocumentClaim = components["schemas"]["Claim"];
 export type Disagreement = components["schemas"]["Disagreement"];
+export type Readiness = components["schemas"]["Readiness"];
+export type ReadinessGap = components["schemas"]["Gap"];
 
 /** A viewer may read the extracted draft but not rule on it (TRD §9). The UI
  * hides what the API would refuse — an affordance that always 403s is worse

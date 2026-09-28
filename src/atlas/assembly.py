@@ -27,6 +27,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from enum import StrEnum
 
 from atlas.models.schema import (
     Node,
@@ -34,6 +35,7 @@ from atlas.models.schema import (
     NodeType,
     RelationType,
     SourceRef,
+    SourceType,
 )
 from atlas.storage.projections import Projection
 
@@ -97,6 +99,14 @@ class Claim:
     #: Which feature this claim belongs to. Only interesting when a disagreement
     #: reaches across two of them, which is the case worth not hiding.
     feature_title: str
+    #: Evidence density (roadmap v2 2A, [+2026-09-02]): how many *distinct*
+    #: artifacts back this claim. Two excerpts from one PR are one source -- the
+    #: count is of independent places a reader could go and check, not of quotes.
+    source_count: int
+    #: Which systems those artifacts live in, sorted -- "across 2 systems" is the
+    #: stronger half of the claim, since two tools agreeing is harder to fake
+    #: than one tool repeating itself.
+    systems: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -129,6 +139,8 @@ class FeatureSection:
     #: cannot be omitted and read as zero -- and so the generated TypeScript
     #: types mark it present rather than possibly-undefined.
     unreviewed: int
+    #: Which claims those are, so a readiness gap can point at real nodes.
+    unreviewed_node_ids: tuple[uuid.UUID, ...]
 
 
 @dataclass(frozen=True)
@@ -139,6 +151,9 @@ class ProductDocument:
     name: str
     description: str | None
     features: tuple[FeatureSection, ...]
+    #: Computed once, in `assemble`, so the page and the export cannot score two
+    #: different assemblies. Forward reference: `Readiness` is defined below.
+    readiness: Readiness
     generated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     @property
@@ -171,6 +186,7 @@ def assemble(projection: Projection, product_id: uuid.UUID) -> ProductDocument:
         name=product.name,
         description=product.description,
         features=sections,
+        readiness=_readiness(sections),
     )
 
 
@@ -240,17 +256,35 @@ def _section(
         if left.feature_scope_id == scope_id
     )
 
+    unreviewed = sorted(
+        (node for node in mine if node.status is NodeStatus.UNCONFIRMED),
+        key=lambda node: (node.created_at, str(node.id)),
+    )
     return FeatureSection(
         feature_scope_id=scope_id,
         title=scope.title,
         description=scope.description,
         claims=tuple(_claim(node, titles) for node in settled),
         disagreements=disagreements,
-        unreviewed=sum(1 for node in mine if node.status is NodeStatus.UNCONFIRMED),
+        unreviewed=len(unreviewed),
+        unreviewed_node_ids=tuple(node.id for node in unreviewed),
     )
 
 
+#: The system a source type belongs to, for "N sources across M systems".
+_SYSTEMS: dict[SourceType, str] = {
+    SourceType.GITHUB_PR: "github",
+    SourceType.GITHUB_ISSUE: "github",
+    SourceType.GITHUB_COMMIT: "github",
+    SourceType.JIRA_TICKET: "jira",
+    SourceType.NOTION_PAGE: "notion",
+    SourceType.GDOC: "gdoc",
+    SourceType.HUMAN_ASSERTION: "human",
+}
+
+
 def _claim(node: Node, titles: dict[uuid.UUID, str]) -> Claim:
+    distinct = {(ref.source_type, ref.external_id) for ref in node.source_refs}
     return Claim(
         node_id=node.id,
         type=node.type,
@@ -258,7 +292,142 @@ def _claim(node: Node, titles: dict[uuid.UUID, str]) -> Claim:
         status=node.status,
         sources=tuple(node.source_refs),
         feature_title=titles.get(node.feature_scope_id, "Unfiled"),
+        source_count=len(distinct),
+        systems=tuple(sorted({_SYSTEMS[source_type] for source_type, _ in distinct})),
     )
+
+
+# --- Readiness -----------------------------------------------------------------
+
+
+class GapKind(StrEnum):
+    """Something a spec is missing that a reader can go and fix.
+
+    Each kind is a countable fact about confirmed state, never an estimate --
+    that is what separates this from the impact scoring rejected in
+    `docs/decisions/2026-09-02-product-decision-engine-scope-assessment.md` Sec4.
+    """
+
+    NO_FEATURES = "no_features"
+    UNREVIEWED = "unreviewed"
+    DISAGREEMENT = "disagreement"
+    NO_CONSTRAINT = "no_constraint"
+    OPEN_QUESTION = "open_question"
+
+
+#: The checks run against every feature, in the order gaps are reported.
+_FEATURE_CHECKS: tuple[GapKind, ...] = (
+    GapKind.UNREVIEWED,
+    GapKind.DISAGREEMENT,
+    GapKind.NO_CONSTRAINT,
+    GapKind.OPEN_QUESTION,
+)
+
+
+@dataclass(frozen=True)
+class Gap:
+    """One named gap. `node_ids` is what it clicks back to; for
+    `NO_CONSTRAINT` the referent is the feature itself, since the gap is an
+    absence and there is no node to point at."""
+
+    kind: GapKind
+    feature_scope_id: uuid.UUID | None
+    feature_title: str | None
+    node_ids: tuple[uuid.UUID, ...]
+    detail: str
+
+
+@dataclass(frozen=True)
+class Readiness:
+    """How ready a spec is to hand to a coding agent, and why not.
+
+    `score` is `passed / checks` as a percentage -- four checks per feature,
+    equally weighted. Deliberately not a weighted model: weights would be an
+    opinion dressed as a number, and the point is that a reader can recompute
+    the score by hand from the gaps listed beside it.
+    """
+
+    score: int
+    checks: int
+    passed: int
+    gaps: tuple[Gap, ...]
+
+
+def readiness(doc: ProductDocument) -> Readiness:
+    """Score a document and name what it is missing. Pure; predicts nothing."""
+    return _readiness(doc.features)
+
+
+def _readiness(features: tuple[FeatureSection, ...]) -> Readiness:
+    if not features:
+        return Readiness(
+            score=0,
+            checks=0,
+            passed=0,
+            gaps=(
+                Gap(
+                    kind=GapKind.NO_FEATURES,
+                    feature_scope_id=None,
+                    feature_title=None,
+                    node_ids=(),
+                    detail="No features yet — nothing has been ingested for this product.",
+                ),
+            ),
+        )
+
+    gaps: list[Gap] = []
+    for section in features:
+        for kind in _FEATURE_CHECKS:
+            gap = _check(kind, section)
+            if gap is not None:
+                gaps.append(gap)
+
+    checks = len(features) * len(_FEATURE_CHECKS)
+    passed = checks - len(gaps)
+    return Readiness(
+        score=round(100 * passed / checks),
+        checks=checks,
+        passed=passed,
+        gaps=tuple(gaps),
+    )
+
+
+def _check(kind: GapKind, section: FeatureSection) -> Gap | None:
+    def gap(node_ids: tuple[uuid.UUID, ...], detail: str) -> Gap:
+        return Gap(
+            kind=kind,
+            feature_scope_id=section.feature_scope_id,
+            feature_title=section.title,
+            node_ids=node_ids,
+            detail=detail,
+        )
+
+    if kind is GapKind.UNREVIEWED:
+        if section.unreviewed_node_ids:
+            return gap(
+                section.unreviewed_node_ids,
+                f"{section.unreviewed} claim(s) still await review.",
+            )
+    elif kind is GapKind.DISAGREEMENT:
+        if section.disagreements:
+            ids = tuple(
+                dict.fromkeys(
+                    node_id
+                    for d in section.disagreements
+                    for node_id in (d.left.node_id, d.right.node_id)
+                )
+            )
+            return gap(ids, f"{len(section.disagreements)} unresolved disagreement(s).")
+    elif kind is GapKind.NO_CONSTRAINT:
+        if not any(claim.type is NodeType.CONSTRAINT for claim in section.claims):
+            return gap((), "No constraint confirmed — nothing says what this must not do.")
+    elif kind is GapKind.OPEN_QUESTION:
+        questions = tuple(
+            claim.node_id for claim in section.claims if claim.type is NodeType.OPEN_QUESTION
+        )
+        if questions:
+            return gap(questions, f"{len(questions)} confirmed open question(s) unanswered.")
+    return None
 
 
 # --- Markdown ------------------------------------------------------------------
@@ -287,6 +456,19 @@ def to_markdown(doc: ProductDocument) -> str:
         f"unresolved disagreements.*",
         "",
     ]
+
+    # Readiness goes at the head, before any claim, so an agent handed this file
+    # is told what the spec is missing before it reads what the spec says.
+    ready = doc.readiness
+    lines += [
+        f"**Readiness: {ready.score}/100** ({ready.passed} of {ready.checks} checks pass)",
+        "",
+    ]
+    for gap in ready.gaps:
+        where = f"*{gap.feature_title}*: " if gap.feature_title else ""
+        lines.append(f"- {where}{gap.detail}")
+    if ready.gaps:
+        lines.append("")
 
     for section in doc.features:
         lines += [f"## {section.title}", ""]
@@ -351,8 +533,17 @@ def _provenance_lines(claim: Claim) -> list[str]:
     ]
 
 
+def _density(claim: Claim) -> str:
+    """ "(3 sources across 2 systems)" -- said only when there is corroboration,
+    since "(1 source)" on every line is noise that teaches the reader to skip it."""
+    if claim.source_count < 2:
+        return ""
+    systems = len(claim.systems)
+    return f" *({claim.source_count} sources across {systems} system{'s' if systems != 1 else ''})*"
+
+
 def _claim_lines(claim: Claim) -> list[str]:
-    return [f"- {claim.content}", *_provenance_lines(claim), ""]
+    return [f"- {claim.content}{_density(claim)}", *_provenance_lines(claim), ""]
 
 
 def _side_lines(claim: Claim, section_title: str) -> list[str]:

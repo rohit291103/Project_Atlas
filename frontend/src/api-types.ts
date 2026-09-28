@@ -437,6 +437,10 @@ export interface components {
             sources: components["schemas"]["SourceRef"][];
             /** Feature Title */
             feature_title: string;
+            /** Source Count */
+            source_count: number;
+            /** Systems */
+            systems: string[];
         };
         /**
          * ConnectSourceRequest
@@ -687,7 +691,36 @@ export interface components {
             disagreements: components["schemas"]["Disagreement"][];
             /** Unreviewed */
             unreviewed: number;
+            /** Unreviewed Node Ids */
+            unreviewed_node_ids: string[];
         };
+        /**
+         * Gap
+         * @description One named gap. `node_ids` is what it clicks back to; for
+         *     `NO_CONSTRAINT` the referent is the feature itself, since the gap is an
+         *     absence and there is no node to point at.
+         */
+        Gap: {
+            kind: components["schemas"]["GapKind"];
+            /** Feature Scope Id */
+            feature_scope_id: string | null;
+            /** Feature Title */
+            feature_title: string | null;
+            /** Node Ids */
+            node_ids: string[];
+            /** Detail */
+            detail: string;
+        };
+        /**
+         * GapKind
+         * @description Something a spec is missing that a reader can go and fix.
+         *
+         *     Each kind is a countable fact about confirmed state, never an estimate --
+         *     that is what separates this from the impact scoring rejected in
+         *     `docs/decisions/2026-09-02-product-decision-engine-scope-assessment.md` Sec4.
+         * @enum {string}
+         */
+        GapKind: "no_features" | "unreviewed" | "disagreement" | "no_constraint" | "open_question";
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -834,11 +867,31 @@ export interface components {
             description: string | null;
             /** Features */
             features: components["schemas"]["FeatureSection"][];
+            readiness: components["schemas"]["Readiness"];
             /**
              * Generated At
              * Format: date-time
              */
             generated_at?: string;
+        };
+        /**
+         * Readiness
+         * @description How ready a spec is to hand to a coding agent, and why not.
+         *
+         *     `score` is `passed / checks` as a percentage -- four checks per feature,
+         *     equally weighted. Deliberately not a weighted model: weights would be an
+         *     opinion dressed as a number, and the point is that a reader can recompute
+         *     the score by hand from the gaps listed beside it.
+         */
+        Readiness: {
+            /** Score */
+            score: number;
+            /** Checks */
+            checks: number;
+            /** Passed */
+            passed: number;
+            /** Gaps */
+            gaps: components["schemas"]["Gap"][];
         };
         /**
          * RelationType

@@ -30,6 +30,7 @@ import type {
   DocumentSection,
   Disagreement,
   ProductDocument,
+  Readiness,
   Role,
 } from "../api";
 import { Orientation } from "../components/Orientation";
@@ -98,6 +99,14 @@ function Claim({ claim }: { claim: DocumentClaim }) {
             human revision as the extractor's output or the reverse. */}
         {claim.status === "edited" && <span className="about__edited">edited</span>}
       </p>
+      {/* Evidence density, said only when there is corroboration — "1 source"
+          on every line is noise that teaches the reader to skip the line. */}
+      {claim.source_count > 1 && (
+        <p className="about__density">
+          {claim.source_count} sources across {claim.systems.length} system
+          {claim.systems.length === 1 ? "" : "s"}
+        </p>
+      )}
       <Provenance claim={claim} />
     </li>
   );
@@ -223,6 +232,58 @@ function Section({
   );
 }
 
+/** How ready this spec is to hand to a coding agent, and exactly why not.
+ *
+ * The score is computed server-side in `assembly.py` (four equally weighted
+ * checks per feature) and the export carries the same one at its head; this
+ * only renders it. Every gap links to where it can be fixed, because a number
+ * with nothing to click is a grade, not a to-do list. */
+function ReadinessPanel({
+  readiness,
+  productId,
+  navigate,
+}: {
+  readiness: Readiness;
+  productId: string;
+  navigate: (route: Route, replace?: boolean) => void;
+}) {
+  const tone = readiness.score >= 80 ? "ok" : readiness.score >= 50 ? "mid" : "low";
+  return (
+    <section className={`readiness readiness--${tone}`} aria-label="Spec readiness">
+      <div className="readiness__head">
+        <span className="readiness__score">{readiness.score}</span>
+        <span className="readiness__label">
+          Spec readiness
+          <span className="readiness__sub">
+            {readiness.passed} of {readiness.checks} checks pass
+          </span>
+        </span>
+      </div>
+      {readiness.gaps.length > 0 && (
+        <ul className="readiness__gaps">
+          {readiness.gaps.map((gap, index) => {
+            const target: Route =
+              gap.kind === "disagreement"
+                ? { name: "conflicts", productId }
+                : gap.feature_scope_id
+                  ? { name: "feature", productId, featureId: gap.feature_scope_id }
+                  : { name: "sources", productId };
+            return (
+              <li className="readiness__gap" key={`${gap.kind}-${gap.feature_scope_id}-${index}`}>
+                <span className="tag">{gap.kind.replace("_", " ")}</span>
+                <a {...linkProps(target, navigate)}>
+                  {gap.feature_title && <b>{gap.feature_title}: </b>}
+                  {gap.detail}
+                </a>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 /** Hand the confirmed document to whatever comes next — a coding agent, a
  * teammate, a ticket. Copy and download rather than one or the other: pasting
  * into an agent's context is the case this exists for, and a file is what
@@ -336,6 +397,8 @@ export function AboutPage({
           </>
         )}
       </p>
+
+      <ReadinessPanel readiness={doc.readiness} productId={productId} navigate={navigate} />
 
       {doc.features.length === 0 ? (
         <div className="notice">

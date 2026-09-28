@@ -15,7 +15,15 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from atlas.assembly import DOCUMENT_ORDER, FeatureSection, ProductDocument, assemble, to_markdown
+from atlas.assembly import (
+    DOCUMENT_ORDER,
+    FeatureSection,
+    GapKind,
+    ProductDocument,
+    assemble,
+    readiness,
+    to_markdown,
+)
 from atlas.models.schema import (
     Edge,
     IngestionRunPayload,
@@ -48,7 +56,9 @@ def make_node(
     excerpt: str = "We want to ship the thing.",
     url: str = "https://github.com/acme/repo/pull/42",
     created_at: datetime = _CLOCK,
+    sources: list[tuple[SourceType, str]] | None = None,
 ) -> Node:
+    sources = sources if sources is not None else [(SourceType.GITHUB_PR, "42")]
     return Node(
         type=node_type,
         content=content,
@@ -57,12 +67,13 @@ def make_node(
         created_at=created_at,
         source_refs=[
             SourceRef(
-                source_type=SourceType.GITHUB_PR,
-                external_id="42",
+                source_type=source_type,
+                external_id=external_id,
                 url=url,
                 excerpt=excerpt,
                 workspace_id=WORKSPACE_ID,
             )
+            for source_type, external_id in sources
         ],
         workspace_id=WORKSPACE_ID,
         feature_scope_id=scope_id,
@@ -389,3 +400,131 @@ def test_markdown_renders_a_disagreement_as_open() -> None:
     assert "Ships at launch" in rendered
     assert "Deferred" in rendered
     assert "unresolved" in rendered.lower()
+
+
+# --- evidence density (roadmap v2 2A, [+2026-09-02]) ---------------------------
+
+
+def test_evidence_density_counts_distinct_artifacts_and_systems() -> None:
+    """ "3 sources across 2 systems" -- two excerpts from one PR are one source."""
+    node = make_node(
+        sources=[
+            (SourceType.GITHUB_PR, "acme/repo#42"),
+            (SourceType.GITHUB_PR, "acme/repo#42"),
+            (SourceType.GITHUB_ISSUE, "acme/repo#7"),
+            (SourceType.JIRA_TICKET, "PA-12"),
+        ]
+    )
+
+    (claim,) = only_section(assemble(make_projection([node]), PRODUCT_ID)).claims
+
+    assert claim.source_count == 3
+    assert claim.systems == ("github", "jira")
+
+
+def test_markdown_states_evidence_density_only_when_corroborated() -> None:
+    single = make_node(content="One source only")
+    multi = make_node(
+        content="Backed twice",
+        sources=[(SourceType.GITHUB_PR, "acme/repo#42"), (SourceType.JIRA_TICKET, "PA-1")],
+    )
+
+    rendered = to_markdown(assemble(make_projection([single, multi]), PRODUCT_ID))
+
+    assert "2 sources across 2 systems" in rendered
+    assert "1 source" not in rendered
+
+
+# --- readiness score + named gaps (roadmap v2 2A, [+2026-09-02]) ---------------
+
+
+def _ready_feature() -> list[Node]:
+    return [
+        make_node(node_type=NodeType.REQUIREMENT, content="Plot visitors"),
+        make_node(node_type=NodeType.CONSTRAINT, content="No cookies"),
+    ]
+
+
+def test_a_fully_ready_feature_scores_100_with_no_gaps() -> None:
+    result = readiness(assemble(make_projection(_ready_feature()), PRODUCT_ID))
+
+    assert result.score == 100
+    assert result.gaps == ()
+
+
+def test_unreviewed_claims_are_a_named_gap_pointing_at_the_nodes() -> None:
+    draft = make_node(content="guess", status=NodeStatus.UNCONFIRMED)
+
+    result = readiness(assemble(make_projection([*_ready_feature(), draft]), PRODUCT_ID))
+
+    (gap,) = result.gaps
+    assert gap.kind is GapKind.UNREVIEWED
+    assert gap.node_ids == (draft.id,)
+    assert gap.feature_scope_id == SCOPE_ID
+    assert result.score < 100
+
+
+def test_an_unsettled_disagreement_is_a_named_gap() -> None:
+    left = make_node(content="Ships at launch")
+    right = make_node(content="Deferred")
+
+    result = readiness(
+        assemble(
+            make_projection([*_ready_feature(), left, right], edges=[conflict(left, right)]),
+            PRODUCT_ID,
+        )
+    )
+
+    (gap,) = result.gaps
+    assert gap.kind is GapKind.DISAGREEMENT
+    assert set(gap.node_ids) == {left.id, right.id}
+
+
+def test_a_feature_without_a_constraint_is_a_named_gap() -> None:
+    only_requirement = make_node(node_type=NodeType.REQUIREMENT)
+
+    result = readiness(assemble(make_projection([only_requirement]), PRODUCT_ID))
+
+    (gap,) = result.gaps
+    assert gap.kind is GapKind.NO_CONSTRAINT
+    assert gap.feature_scope_id == SCOPE_ID
+
+
+def test_a_confirmed_open_question_is_a_named_gap() -> None:
+    question = make_node(node_type=NodeType.OPEN_QUESTION, content="Which chart lib?")
+
+    result = readiness(assemble(make_projection([*_ready_feature(), question]), PRODUCT_ID))
+
+    (gap,) = result.gaps
+    assert gap.kind is GapKind.OPEN_QUESTION
+    assert gap.node_ids == (question.id,)
+
+
+def test_score_is_the_share_of_checks_passed() -> None:
+    """Deterministic and explainable: 4 checks per feature, score = passed / total."""
+    draft = make_node(content="guess", status=NodeStatus.UNCONFIRMED)
+    question = make_node(node_type=NodeType.OPEN_QUESTION, content="Which chart lib?")
+
+    result = readiness(assemble(make_projection([draft, question]), PRODUCT_ID))
+
+    # unreviewed fails, no-constraint fails, open-question fails, disagreement passes
+    assert (result.passed, result.checks) == (1, 4)
+    assert result.score == 25
+
+
+def test_a_product_with_no_features_is_not_ready() -> None:
+    result = readiness(assemble(make_projection([], scopes=[]), PRODUCT_ID))
+
+    assert result.score == 0
+    assert [gap.kind for gap in result.gaps] == [GapKind.NO_FEATURES]
+
+
+def test_readiness_is_stated_at_the_head_of_the_markdown() -> None:
+    """An agent receiving the spec is told what the spec is missing, first."""
+    only_requirement = make_node(node_type=NodeType.REQUIREMENT, content="Plot visitors")
+
+    rendered = to_markdown(assemble(make_projection([only_requirement]), PRODUCT_ID))
+
+    head = rendered.split("## Main graph metric")[0]
+    assert "Readiness: 75/100" in head
+    assert "no constraint" in head.lower()

@@ -51,7 +51,7 @@ Phase 0 is complete (extraction proven on the 4 `BurntSushi/ripgrep` golden PRs)
 Nothing active.
 
 ### Next up
-**Phase 2A now has named scope** — the readiness score and evidence density, placed 2026-09-02 (`roadmap-v2.md`, marked `[+2026-09-02]`). It is *not started and must not be*: Phase 1's exit criterion is unmeasured, and CLAUDE.md's gate on Phase 2 stands.
+**Phase 2A construction is complete (2026-09-28).** The readiness score and evidence density were built on the user's explicit instruction to ship ahead of the Phase 1 measurement ("complete dev work for all phases"). That overrides CLAUDE.md's gate on Phase 2 for *construction only*. 2B (the proof) still needs the pre-registered rubric, and Phase 1's exit criterion is still unmeasured.
 
 Nothing is queued for **Phase 1**. The `brandkit` pass — the last deliberately-unfinished piece of the visual system — closed 2026-08-22 (`docs/ux/brand-and-logo-brief-v1.md`): the mark is drawn and in the product, the wordmark is specified and set in type, `--brand-1`/`--brand-2` **stay magenta → violet** (cyan → blue was built, shipped to the running page and reverted on look), and `--accent` was **deliberately left alone** because it means *interactive* on every surface and moving it for brand reasons would move a functional signal.
 
@@ -172,6 +172,8 @@ What remains in Phase 1 is the two things under *Snapshot* that need a person, n
 Nothing active.
 
 ### Next up
+
+**2026-09-28: Phase 2A done: spec readiness score, named gaps and evidence density** (`src/atlas/assembly.py`). `readiness()` runs four equally weighted checks per feature: unreviewed claims, unsettled disagreements, no confirmed constraint, and confirmed open questions. The score is `passed / checks`, and every gap carries the node ids it points at (`NO_CONSTRAINT` points at the feature, since the gap is an absence). A product with no features scores 0 with a `NO_FEATURES` gap. The score is computed once in `assemble` and carried on `ProductDocument.readiness`, so the About page and the Markdown head cannot disagree. `Claim.source_count` counts distinct artifacts, not excerpts, and `Claim.systems` lists the source systems. Density is rendered only when a claim has 2 or more sources. It needed no migration and no new event type. There are 11 new tests (10 in assembly, 1 over the wire), and 551 pass. **Not verified in a browser:** the live Supabase project is paused again ("tenant/user not found" on the pooler), so the user has to resume it from the dashboard first.
 
 **The full ordered task list, with dependencies and what each touches, lives in `docs/decisions/2026-08-19-product-orientation-rerun-safety-and-demo-data.md` § Implementation slices.** Summary of the order:
 

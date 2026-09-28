@@ -1225,6 +1225,24 @@ def test_confirming_a_claim_puts_it_in_the_document_with_its_excerpt(
     assert source["url"] == "https://github.com/acme/gateway/pull/42"
 
 
+def test_a_document_carries_readiness_and_evidence_density(
+    signed_in: TestClient, documented: uuid.UUID
+) -> None:
+    """Roadmap v2 2A [+2026-09-02]: the score and its gaps travel with the
+    document, and the export states the same score at its head."""
+    doc = signed_in.get(f"/products/{documented}/document").json()
+
+    readiness = doc["readiness"]
+    assert 0 <= readiness["score"] < 100
+    kinds = {gap["kind"] for gap in readiness["gaps"]}
+    assert "unreviewed" in kinds
+    unreviewed = next(gap for gap in readiness["gaps"] if gap["kind"] == "unreviewed")
+    assert len(unreviewed["node_ids"]) == 2
+
+    spec = signed_in.get(f"/products/{documented}/spec").text
+    assert f"Readiness: {readiness['score']}/100" in spec
+
+
 def test_a_document_carries_the_authored_descriptions(
     signed_in: TestClient, documented: uuid.UUID
 ) -> None:

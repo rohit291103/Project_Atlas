@@ -6238,6 +6238,67 @@ body.is-resizing {
 .about__feature {
   margin-bottom: var(--space-6);
 }
+.about__density {
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+  margin: var(--space-1) 0 0;
+}
+
+/* Spec readiness — a deterministic score over confirmed state, with every gap
+   linking to where it is fixed. Tone only shades the number; the gaps carry the
+   meaning, so nothing depends on colour alone. */
+.readiness {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  margin: 0 0 var(--space-6);
+}
+.readiness__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.readiness__score {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+.readiness--ok .readiness__score { color: var(--text); }
+.readiness--mid .readiness__score,
+.readiness--low .readiness__score { color: var(--conflict); }
+.readiness__label {
+  display: flex;
+  flex-direction: column;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+.readiness__sub {
+  font-size: var(--text-xs);
+  font-weight: normal;
+  color: var(--text-dim);
+}
+.readiness__gaps {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+}
+.readiness__gap {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  padding: var(--space-1) 0;
+}
+.readiness__gap .tag { flex: none; }
+.readiness__gap a {
+  color: var(--text);
+  text-decoration: none;
+  min-width: 0;
+}
+.readiness__gap a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .about__feature-name {
   display: flex;
   align-items: baseline;
