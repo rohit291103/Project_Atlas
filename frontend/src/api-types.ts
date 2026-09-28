@@ -217,6 +217,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/products/{product_id}/ask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask Product
+         * @description Ask a question about this product; answered from confirmed claims only,
+         *     with citations (Phase 3). Reading, so any member may ask. Every guarantee --
+         *     no citation to an unseen claim, evidence computed rather than trusted --
+         *     lives in `qa.py`; a response that fails it is a 502, not an answer.
+         */
+        post: operations["ask_product_products__product_id__ask_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/feature-scopes": {
         parameters: {
             query?: never;
@@ -481,6 +504,39 @@ export interface components {
             /** Content */
             content: string;
         };
+        /** Answer */
+        Answer: {
+            /** Question */
+            question: string;
+            /** Answer */
+            answer: string;
+            /** Citations */
+            citations: components["schemas"]["Citation"][];
+            evidence: components["schemas"]["Evidence"];
+        };
+        /** AskRequest */
+        AskRequest: {
+            /** Question */
+            question: string;
+        };
+        /** Citation */
+        Citation: {
+            /** Label */
+            label: string;
+            /**
+             * Node Id
+             * Format: uuid
+             */
+            node_id: string;
+            /** Content */
+            content: string;
+            /** Feature Title */
+            feature_title: string;
+            /** Sources */
+            sources: components["schemas"]["SourceRef"][];
+            /** Disputed */
+            disputed: boolean;
+        };
         /**
          * Claim
          * @description One claim as it appears in a document, with its provenance attached.
@@ -696,6 +752,11 @@ export interface components {
             /** Content */
             content: string;
         };
+        /**
+         * Evidence
+         * @enum {string}
+         */
+        Evidence: "supported" | "thin" | "conflicting" | "none";
         /**
          * FeatureScope
          * @description The projected identity of one feature scope: what its UUID *means*.
@@ -1661,6 +1722,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FeedbackReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ask_product_products__product_id__ask_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AskRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Answer"];
                 };
             };
             /** @description Validation Error */

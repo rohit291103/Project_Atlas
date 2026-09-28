@@ -50,6 +50,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response, status
 from fastapi.responses import PlainTextResponse
+from pydantic import Field
 from sqlalchemy.orm import Session
 
 from atlas.api.deps import (
@@ -99,6 +100,7 @@ from atlas.pipeline import (
     execute_run,
     start_run,
 )
+from atlas.qa import MAX_QUESTION, Answer, AnswerError, ask, model_call
 from atlas.storage import confirmations, connections, products
 from atlas.storage.connections import ConnectionView, SecretError
 from atlas.storage.projections import (
@@ -601,6 +603,31 @@ def get_feedback(
     if product_id not in projection.products:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"no product {product_id}")
     return feedback_report(log, node_ids=projection.for_product(product_id).nodes.keys())
+
+
+class AskRequest(AtlasModel):
+    question: str = Field(min_length=1, max_length=MAX_QUESTION)
+
+
+@router.post("/products/{product_id}/ask", response_model=Answer)
+async def ask_product(
+    product_id: uuid.UUID,
+    body: AskRequest,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> Answer:
+    """Ask a question about this product; answered from confirmed claims only,
+    with citations (Phase 3). Reading, so any member may ask. Every guarantee --
+    no citation to an unseen claim, evidence computed rather than trusted --
+    lives in `qa.py`; a response that fails it is a 502, not an answer."""
+    projection = load_projection(session, workspace_id=principal.workspace_id)
+    if product_id not in projection.products:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"no product {product_id}")
+    document = assemble(projection, product_id)
+    try:
+        return await ask(body.question, document, model_call())
+    except AnswerError as refused:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(refused)) from None
 
 
 @router.get("/feature-scopes", response_model=list[FeatureScopeRow])

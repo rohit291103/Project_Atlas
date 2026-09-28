@@ -26,6 +26,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, api, canWrite, specUrl } from "../api";
 import type {
+  Answer,
   DocumentClaim,
   DocumentSection,
   Disagreement,
@@ -285,6 +286,83 @@ function ReadinessPanel({
   );
 }
 
+const EVIDENCE_LABEL: Record<string, string> = {
+  supported: "Backed by more than one source",
+  thin: "Backed by a single source",
+  conflicting: "The sources disagree",
+  none: "Not answered by anything confirmed",
+};
+
+/** Ask about the product (Phase 3 Q&A). Answered server-side from confirmed
+ * claims only; the evidence line is computed from the cited claims, not the
+ * model's opinion of itself, which is why it can be shown this plainly. */
+function Ask({ productId }: { productId: string }) {
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState<Answer | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!question.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      setAnswer(await api.ask(productId, question.trim()));
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : "Couldn't get an answer.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="ask" aria-label="Ask about this product">
+      <form className="ask__form" onSubmit={(event) => void submit(event)}>
+        <input
+          className="ask__input"
+          value={question}
+          maxLength={500}
+          placeholder="Ask about this product — answered from confirmed claims only"
+          onChange={(event) => setQuestion(event.target.value)}
+        />
+        <button type="submit" className="action action--sm" disabled={busy || !question.trim()}>
+          {busy ? "Asking…" : "Ask"}
+        </button>
+      </form>
+      {error && <div className="notice notice--error">{error}</div>}
+      {answer && (
+        <div className="ask__answer">
+          <p className={`ask__evidence ask__evidence--${answer.evidence}`}>
+            {EVIDENCE_LABEL[answer.evidence] ?? answer.evidence}
+          </p>
+          <p className="about__claim-text">{answer.answer}</p>
+          {answer.citations.length > 0 && (
+            <ol className="changes__list">
+              {answer.citations.map((citation) => (
+                <li key={citation.label}>
+                  <b>[{citation.label}]</b> {citation.content}
+                  {citation.sources.map((source, index) => (
+                    <a
+                      key={source.id ?? index}
+                      href={source.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="about__link ask__source"
+                    >
+                      {source.external_id} ↗
+                    </a>
+                  ))}
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 /** How far back "what changed" looks. Fixed presets rather than a date
  * picker: the question a PM or an agent asks is "since last week", and every
  * preset is one replay of the log, so none costs more than another. */
@@ -510,6 +588,7 @@ export function AboutPage({
       </p>
 
       <ReadinessPanel readiness={doc.readiness} productId={productId} navigate={navigate} />
+      {confirmed > 0 && <Ask productId={productId} />}
       {confirmed > 0 && <Changes productId={productId} />}
 
       {doc.features.length === 0 ? (

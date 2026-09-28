@@ -65,6 +65,7 @@ export type Readiness = components["schemas"]["Readiness"];
 export type ReadinessGap = components["schemas"]["Gap"];
 export type SpecChanges = components["schemas"]["SpecChanges"];
 export type FeedbackReport = components["schemas"]["FeedbackReport"];
+export type Answer = components["schemas"]["Answer"];
 export type Tally = components["schemas"]["Tally"];
 
 /** A viewer may read the extracted draft but not rule on it (TRD §9). The UI
@@ -182,6 +183,9 @@ export const api = {
     return response.text();
   },
 
+  /** Ask about the product; answered from confirmed claims, with citations. */
+  ask: (productId: string, question: string) =>
+    post<Answer>(`/products/${productId}/ask`, { question }),
   /** The feedback loop: acceptance at first human read, and where it is weak. */
   feedback: (productId: string) => request<FeedbackReport>(`/products/${productId}/feedback`),
 

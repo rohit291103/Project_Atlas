@@ -1477,3 +1477,47 @@ def test_feedback_reports_a_first_human_ruling(
 
 def test_feedback_for_an_unknown_product_is_404(signed_in: TestClient) -> None:
     assert signed_in.get(f"/products/{uuid.uuid4()}/feedback").status_code == 404
+
+
+# --- Q&A (`/products/{id}/ask`) ------------------------------------------------
+
+
+def test_ask_answers_from_confirmed_claims_with_citations(
+    signed_in: TestClient, documented: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    nodes = signed_in.get(f"/feature-scopes/{FEATURE_SCOPE_ID}").json()["nodes"]
+    node = next(item for item in nodes if item["type"] == "requirement")
+    signed_in.post(f"/nodes/{node['id']}/confirm")
+
+    async def call(prompt: str) -> str:
+        assert "rate-limit per client IP" in prompt
+        return '{"answer": "Per client IP [C1].", "citations": ["C1"]}'
+
+    monkeypatch.setattr("atlas.api.routes.model_call", lambda: call)
+
+    answer = signed_in.post(
+        f"/products/{documented}/ask", json={"question": "How is it limited?"}
+    ).json()
+
+    assert answer["citations"][0]["node_id"] == node["id"]
+    assert answer["evidence"] == "thin"
+
+
+def test_an_answer_that_fails_the_gate_is_a_502(
+    signed_in: TestClient, documented: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    nodes = signed_in.get(f"/feature-scopes/{FEATURE_SCOPE_ID}").json()["nodes"]
+    signed_in.post(f"/nodes/{nodes[0]['id']}/confirm")
+
+    async def call(prompt: str) -> str:
+        return '{"answer": "Made up [C9].", "citations": ["C9"]}'
+
+    monkeypatch.setattr("atlas.api.routes.model_call", lambda: call)
+
+    response = signed_in.post(f"/products/{documented}/ask", json={"question": "?"})
+
+    assert response.status_code == 502
+
+
+def test_a_blank_question_is_a_422(signed_in: TestClient, documented: uuid.UUID) -> None:
+    assert signed_in.post(f"/products/{documented}/ask", json={"question": ""}).status_code == 422
