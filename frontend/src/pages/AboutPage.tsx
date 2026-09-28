@@ -32,6 +32,7 @@ import type {
   ProductDocument,
   Readiness,
   Role,
+  SpecChanges,
 } from "../api";
 import { Orientation } from "../components/Orientation";
 import { Loading } from "../components/Loading";
@@ -284,6 +285,116 @@ function ReadinessPanel({
   );
 }
 
+/** How far back "what changed" looks. Fixed presets rather than a date
+ * picker: the question a PM or an agent asks is "since last week", and every
+ * preset is one replay of the log, so none costs more than another. */
+const SINCE_PRESETS: [string, number][] = [
+  ["24 hours", 1],
+  ["7 days", 7],
+  ["30 days", 30],
+];
+
+/** Spec versioning (Phase 3): what changed in the confirmed spec since a
+ * moment. The server replays the log as of then and compares; this renders the
+ * delta and copies it as Markdown for an agent already holding the old spec. */
+function Changes({ productId }: { productId: string }) {
+  const [days, setDays] = useState(7);
+  const [changes, setChanges] = useState<SpecChanges | null>(null);
+  const [copied, setCopied] = useState(false);
+  const since = new Date(Date.now() - days * 86_400_000).toISOString();
+
+  useEffect(() => {
+    let live = true;
+    api
+      .changes(productId, since)
+      .then((result) => live && setChanges(result))
+      .catch(() => live && setChanges(null));
+    return () => {
+      live = false;
+    };
+    // `since` is derived from `days`; depending on it would refetch on every
+    // render, since each render computes a new timestamp.
+  }, [productId, days]);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(await api.specChanges(productId, since));
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* Clipboard denied: nothing useful to say beyond the button not changing. */
+    }
+  };
+
+  const total = changes
+    ? changes.added.length +
+      changes.removed.length +
+      changes.reworded.length +
+      changes.disagreements_opened.length +
+      changes.disagreements_resolved.length
+    : 0;
+
+  return (
+    <section className="changes" aria-label="What changed">
+      <div className="changes__head">
+        <h2 className="about__heading changes__title">What changed in the last</h2>
+        <div className="qviews" role="tablist" aria-label="How far back">
+          {SINCE_PRESETS.map(([label, value]) => (
+            <button
+              type="button"
+              key={value}
+              role="tab"
+              aria-selected={value === days}
+              className={`qview${value === days ? " is-active" : ""}`}
+              onClick={() => setDays(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {total > 0 && (
+          <button type="button" className="action action--sm" onClick={() => void copy()}>
+            {copied ? "Copied" : "Copy changes"}
+          </button>
+        )}
+      </div>
+      {changes && (
+        <p className="changes__summary">
+          {total === 0 ? (
+            "Nothing in the spec changed."
+          ) : (
+            <>
+              {changes.added.length > 0 && <span>+{changes.added.length} added</span>}
+              {changes.reworded.length > 0 && <span>{changes.reworded.length} reworded</span>}
+              {changes.removed.length > 0 && <span>−{changes.removed.length} removed</span>}
+              {changes.disagreements_opened.length > 0 && (
+                <span>{changes.disagreements_opened.length} newly disputed</span>
+              )}
+              {changes.disagreements_resolved.length > 0 && (
+                <span>{changes.disagreements_resolved.length} settled</span>
+              )}
+            </>
+          )}
+          {changes.readiness_before !== changes.readiness_after && (
+            <span>
+              readiness {changes.readiness_before} → {changes.readiness_after}
+            </span>
+          )}
+        </p>
+      )}
+      {changes && changes.added.length > 0 && (
+        <ul className="changes__list">
+          {changes.added.map((claim) => (
+            <li key={claim.node_id}>
+              <span className="tag">{TYPE_TAGS[claim.type] ?? claim.type}</span> {claim.content}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 /** Hand the confirmed document to whatever comes next — a coding agent, a
  * teammate, a ticket. Copy and download rather than one or the other: pasting
  * into an agent's context is the case this exists for, and a file is what
@@ -399,6 +510,7 @@ export function AboutPage({
       </p>
 
       <ReadinessPanel readiness={doc.readiness} productId={productId} navigate={navigate} />
+      {confirmed > 0 && <Changes productId={productId} />}
 
       {doc.features.length === 0 ? (
         <div className="notice">

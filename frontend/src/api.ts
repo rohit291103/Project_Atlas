@@ -63,6 +63,7 @@ export type DocumentClaim = components["schemas"]["Claim"];
 export type Disagreement = components["schemas"]["Disagreement"];
 export type Readiness = components["schemas"]["Readiness"];
 export type ReadinessGap = components["schemas"]["Gap"];
+export type SpecChanges = components["schemas"]["SpecChanges"];
 
 /** A viewer may read the extracted draft but not rule on it (TRD §9). The UI
  * hides what the API would refuse — an affordance that always 403s is worse
@@ -160,6 +161,21 @@ export const api = {
      shape) is identical. */
   spec: async (productId: string): Promise<string> => {
     const response = await fetch(specUrl(productId), { credentials: "include" });
+    if (!response.ok) throw new ApiError(response.status, await errorMessage(response));
+    return response.text();
+  },
+
+  /** What changed in the spec since a moment — the log replayed twice. */
+  changes: (productId: string, since: string) =>
+    request<SpecChanges>(
+      `/products/${productId}/changes?since=${encodeURIComponent(since)}`,
+    ),
+  /* The same delta as Markdown, for an agent already holding the old spec. */
+  specChanges: async (productId: string, since: string): Promise<string> => {
+    const response = await fetch(
+      `${BASE}/products/${productId}/spec/changes?since=${encodeURIComponent(since)}`,
+      { credentials: "include" },
+    );
     if (!response.ok) throw new ApiError(response.status, await errorMessage(response));
     return response.text();
   },

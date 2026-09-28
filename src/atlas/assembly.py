@@ -550,3 +550,156 @@ def _side_lines(claim: Claim, section_title: str) -> list[str]:
     ruling = "confirmed" if claim.status in RULED else "unreviewed"
     where = "" if claim.feature_title == section_title else f", in *{claim.feature_title}*"
     return [f"- **{claim.content}** ({ruling}{where})", *_provenance_lines(claim), ""]
+
+
+# --- Spec versioning ------------------------------------------------------------
+#
+# A version of a spec is the document assembled from the log *as of* a moment
+# (`load_projection(..., as_of=...)`). Nothing is snapshotted: the log already is
+# the history, and a stored copy would be a second source of truth that no event
+# invalidates. So "what changed since v1" is two assemblies and one comparison.
+
+
+@dataclass(frozen=True)
+class ClaimChange:
+    """A claim that stayed in the spec but was reworded by a human edit."""
+
+    node_id: uuid.UUID
+    feature_title: str
+    type: NodeType
+    before: str
+    after: str
+
+
+@dataclass(frozen=True)
+class SpecChanges:
+    """What moved between two versions of one product's spec."""
+
+    #: Newly settled -- confirmed, edited, or no longer in dispute.
+    added: tuple[Claim, ...]
+    #: No longer settled and not now contested either -- in practice, ruled out.
+    #: A claim that moved into a disagreement is reported there instead, since
+    #: "it is now disputed" is the news and "it vanished" would be misleading.
+    removed: tuple[Claim, ...]
+    reworded: tuple[ClaimChange, ...]
+    disagreements_opened: tuple[Disagreement, ...]
+    disagreements_resolved: tuple[Disagreement, ...]
+    readiness_before: int
+    readiness_after: int
+
+    @property
+    def unchanged(self) -> bool:
+        return not (
+            self.added
+            or self.removed
+            or self.reworded
+            or self.disagreements_opened
+            or self.disagreements_resolved
+        )
+
+
+def compare(before: ProductDocument, after: ProductDocument) -> SpecChanges:
+    """Diff two assemblies of the same product. Pure; order follows `after`."""
+    old = _settled(before)
+    new = _settled(after)
+    old_disputes = _disputes(before)
+    new_disputes = _disputes(after)
+    contested_now = {
+        node_id for d in new_disputes.values() for node_id in (d.left.node_id, d.right.node_id)
+    }
+
+    return SpecChanges(
+        added=tuple(claim for node_id, claim in new.items() if node_id not in old),
+        removed=tuple(
+            claim
+            for node_id, claim in old.items()
+            if node_id not in new and node_id not in contested_now
+        ),
+        reworded=tuple(
+            ClaimChange(
+                node_id=node_id,
+                feature_title=claim.feature_title,
+                type=claim.type,
+                before=old[node_id].content,
+                after=claim.content,
+            )
+            for node_id, claim in new.items()
+            if node_id in old and old[node_id].content != claim.content
+        ),
+        disagreements_opened=tuple(
+            d for edge_id, d in new_disputes.items() if edge_id not in old_disputes
+        ),
+        disagreements_resolved=tuple(
+            d for edge_id, d in old_disputes.items() if edge_id not in new_disputes
+        ),
+        readiness_before=before.readiness.score,
+        readiness_after=after.readiness.score,
+    )
+
+
+def _settled(doc: ProductDocument) -> dict[uuid.UUID, Claim]:
+    return {claim.node_id: claim for section in doc.features for claim in section.claims}
+
+
+def _disputes(doc: ProductDocument) -> dict[uuid.UUID, Disagreement]:
+    return {d.edge_id: d for section in doc.features for d in section.disagreements}
+
+
+def changes_to_markdown(changes: SpecChanges, *, name: str = "", since: str = "") -> str:
+    """Render a spec diff for a reader -- or an agent -- already holding the old
+    version. Provenance is carried on every added claim, exactly as in the full
+    export: a claim new to the spec has to show where it came from, and
+    `_provenance_lines` never edits the excerpt."""
+    title = f"# Spec changes{f' — {name}' if name else ''}"
+    lines = [title, ""]
+    if since:
+        lines += [f"*Changes since {since}.*", ""]
+    lines += [f"**Readiness: {changes.readiness_before} → {changes.readiness_after}/100**", ""]
+    if changes.unchanged:
+        return "\n".join([*lines, "Nothing in the spec has changed."]) + "\n"
+
+    if changes.added:
+        lines += ["### Added", ""]
+        for claim in changes.added:
+            lines += [
+                f"- [{_HEADINGS[claim.type]}, *{claim.feature_title}*] {claim.content}",
+                *_provenance_lines(claim),
+                "",
+            ]
+    if changes.reworded:
+        lines += ["### Reworded", ""]
+        for change in changes.reworded:
+            lines += [f"- ~~{change.before}~~ → {change.after} (*{change.feature_title}*)", ""]
+    if changes.removed:
+        lines += ["### Removed", ""]
+        lines += [f"- ~~{claim.content}~~ (*{claim.feature_title}*)" for claim in changes.removed]
+        lines.append("")
+    if changes.disagreements_opened:
+        lines += ["### Newly disputed", ""]
+        for d in changes.disagreements_opened:
+            lines += [f"- {d.left.content} **vs.** {d.right.content}", ""]
+    if changes.disagreements_resolved:
+        lines += ["### Disputes settled", ""]
+        for d in changes.disagreements_resolved:
+            lines += [f"- {d.left.content} **vs.** {d.right.content}", ""]
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def changes(before: Projection, after: Projection, product_id: uuid.UUID) -> SpecChanges:
+    """What changed in one product's spec between two replays of the log.
+
+    A product absent from `before` (created since) diffs against an empty spec,
+    so everything it now holds reads as added rather than raising.
+    """
+    current = assemble(after, product_id)
+    if product_id in before.products:
+        previous = assemble(before, product_id)
+    else:
+        previous = ProductDocument(
+            product_id=product_id,
+            name=current.name,
+            description=None,
+            features=(),
+            readiness=_readiness(()),
+        )
+    return compare(previous, current)

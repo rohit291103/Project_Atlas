@@ -835,3 +835,22 @@ def test_the_same_id_under_a_different_source_is_a_different_artifact() -> None:
     projection = replay([ingestion_run()])
 
     assert projection.scope_holding(SourceType.JIRA_TICKET, "BurntSushi/ripgrep#111") is None
+
+
+def test_load_projection_as_of_replays_only_what_had_happened_by_then(
+    session_factory: sessionmaker[Session],
+) -> None:
+    """Spec versioning (Phase 3): a past version of a spec is the log replayed to
+    a moment. Nothing is snapshotted, because the log already is the history."""
+    early, late = make_node(), make_node()
+    cutoff = datetime(2026, 9, 1, tzinfo=UTC)
+    with session_scope(session_factory) as session:
+        _write(session, node_created(early)).timestamp = cutoff - timedelta(days=1)
+        _write(session, node_created(late)).timestamp = cutoff + timedelta(days=1)
+
+    with session_scope(session_factory) as session:
+        then = load_projection(session, workspace_id=WORKSPACE_ID, as_of=cutoff)
+        now = load_projection(session, workspace_id=WORKSPACE_ID)
+
+    assert then.nodes.keys() == {early.id}
+    assert now.nodes.keys() == {early.id, late.id}

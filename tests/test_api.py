@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import uuid
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -1417,3 +1418,41 @@ def test_an_unreachable_database_still_answers_a_cross_origin_request(
     )
 
     assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+
+
+# --- spec versioning (`/products/{id}/changes`, `/spec/changes`) ----------------
+
+
+def test_changes_since_a_moment_report_a_newly_confirmed_claim(
+    signed_in: TestClient, documented: uuid.UUID
+) -> None:
+    """Phase 3: "what changed since v1" is the log replayed twice and compared."""
+    since = datetime.now(UTC) - timedelta(seconds=1)
+    nodes = signed_in.get(f"/feature-scopes/{FEATURE_SCOPE_ID}").json()["nodes"]
+    node = next(item for item in nodes if item["type"] == "requirement")
+    signed_in.post(f"/nodes/{node['id']}/confirm")
+
+    changes = signed_in.get(
+        f"/products/{documented}/changes", params={"since": since.isoformat()}
+    ).json()
+
+    assert [claim["content"] for claim in changes["added"]] == [
+        "The gateway must rate-limit per client IP."
+    ]
+
+    markdown = signed_in.get(
+        f"/products/{documented}/spec/changes", params={"since": since.isoformat()}
+    )
+    assert markdown.headers["content-type"].startswith("text/markdown")
+    assert "### Added" in markdown.text
+
+
+def test_changes_require_a_since(signed_in: TestClient, documented: uuid.UUID) -> None:
+    assert signed_in.get(f"/products/{documented}/changes").status_code == 422
+
+
+def test_changes_for_an_unknown_product_are_404(signed_in: TestClient) -> None:
+    response = signed_in.get(
+        f"/products/{uuid.uuid4()}/changes", params={"since": "2026-01-01T00:00:00Z"}
+    )
+    assert response.status_code == 404

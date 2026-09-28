@@ -607,14 +607,24 @@ def load_projection(
     *,
     workspace_id: uuid.UUID,
     feature_scope_id: uuid.UUID | None = None,
+    as_of: datetime | None = None,
 ) -> Projection:
     """Read the event_log for one workspace and replay it into a `Projection`.
 
     Filtering by workspace happens in SQL; the optional feature-scope narrowing
     happens on the replayed result (feature scope lives inside the Node payload,
     not on the event row).
+
+    `as_of` replays only events stamped at or before that moment -- the state
+    the product was in then, which is what a past version of a spec *is*
+    (Phase 3 spec versioning). It bounds by `timestamp` rather than `sequence`
+    because a person asks "as of Tuesday", not "as of event 312"; replay order
+    within the bound is still `sequence`.
     """
-    stmt = select(EventLog).where(EventLog.workspace_id == workspace_id).order_by(EventLog.sequence)
+    stmt = select(EventLog).where(EventLog.workspace_id == workspace_id)
+    if as_of is not None:
+        stmt = stmt.where(EventLog.timestamp <= as_of)
+    stmt = stmt.order_by(EventLog.sequence)
     projection = replay(session.execute(stmt).scalars())
     if feature_scope_id is not None:
         projection = projection.for_feature_scope(feature_scope_id)

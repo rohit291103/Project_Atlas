@@ -151,6 +151,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/products/{product_id}/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Spec Changes
+         * @description What changed in this product's spec since a moment (Phase 3 versioning).
+         *
+         *     `since` is required: "changes" with no baseline is the whole document, and
+         *     that endpoint already exists.
+         */
+        get: operations["get_spec_changes_products__product_id__changes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/products/{product_id}/spec/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Spec Changes
+         * @description The same changes as Markdown, for a coding agent already holding the
+         *     previous spec: it needs the delta, with provenance on what is new.
+         */
+        get: operations["export_spec_changes_products__product_id__spec_changes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/feature-scopes": {
         parameters: {
             query?: never;
@@ -441,6 +485,24 @@ export interface components {
             source_count: number;
             /** Systems */
             systems: string[];
+        };
+        /**
+         * ClaimChange
+         * @description A claim that stayed in the spec but was reworded by a human edit.
+         */
+        ClaimChange: {
+            /**
+             * Node Id
+             * Format: uuid
+             */
+            node_id: string;
+            /** Feature Title */
+            feature_title: string;
+            type: components["schemas"]["NodeType"];
+            /** Before */
+            before: string;
+            /** After */
+            after: string;
         };
         /**
          * ConnectSourceRequest
@@ -1091,6 +1153,26 @@ export interface components {
          */
         SourceType: "github_pr" | "github_issue" | "github_commit" | "jira_ticket" | "notion_page" | "gdoc" | "human_assertion";
         /**
+         * SpecChanges
+         * @description What moved between two versions of one product's spec.
+         */
+        SpecChanges: {
+            /** Added */
+            added: components["schemas"]["Claim"][];
+            /** Removed */
+            removed: components["schemas"]["Claim"][];
+            /** Reworded */
+            reworded: components["schemas"]["ClaimChange"][];
+            /** Disagreements Opened */
+            disagreements_opened: components["schemas"]["Disagreement"][];
+            /** Disagreements Resolved */
+            disagreements_resolved: components["schemas"]["Disagreement"][];
+            /** Readiness Before */
+            readiness_before: number;
+            /** Readiness After */
+            readiness_after: number;
+        };
+        /**
          * StartRunRequest
          * @description Pull one target into a feature -- a new one, or one that already exists.
          *
@@ -1357,6 +1439,73 @@ export interface operations {
     export_product_spec_products__product_id__spec_get: {
         parameters: {
             query?: never;
+            header?: never;
+            path: {
+                product_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                    "text/markdown": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_spec_changes_products__product_id__changes_get: {
+        parameters: {
+            query: {
+                since: string;
+            };
+            header?: never;
+            path: {
+                product_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpecChanges"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_spec_changes_products__product_id__spec_changes_get: {
+        parameters: {
+            query: {
+                since: string;
+            };
             header?: never;
             path: {
                 product_id: string;

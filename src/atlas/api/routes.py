@@ -64,7 +64,14 @@ from atlas.api.deps import (
     issue_session,
     verify_passphrase,
 )
-from atlas.assembly import ProductDocument, assemble, to_markdown
+from atlas.assembly import (
+    ProductDocument,
+    SpecChanges,
+    assemble,
+    changes,
+    changes_to_markdown,
+    to_markdown,
+)
 from atlas.models.schema import (
     AtlasModel,
     DescriptionStr,
@@ -521,6 +528,53 @@ def export_product_spec(
         to_markdown(document),
         media_type="text/markdown; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{_spec_filename(document.name)}"'},
+    )
+
+
+def _spec_changes(
+    session: Session, principal: Principal, product_id: uuid.UUID, since: datetime
+) -> tuple[str, SpecChanges]:
+    """Two replays of the log -- as of `since`, and now -- compared in
+    `assembly.changes`. No snapshot is stored: the log already is the history."""
+    now = load_projection(session, workspace_id=principal.workspace_id)
+    if product_id not in now.products:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"no product {product_id}")
+    then = load_projection(session, workspace_id=principal.workspace_id, as_of=since)
+    return now.products[product_id].name, changes(then, now, product_id)
+
+
+@router.get("/products/{product_id}/changes", response_model=SpecChanges)
+def get_spec_changes(
+    product_id: uuid.UUID,
+    since: datetime,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> SpecChanges:
+    """What changed in this product's spec since a moment (Phase 3 versioning).
+
+    `since` is required: "changes" with no baseline is the whole document, and
+    that endpoint already exists.
+    """
+    return _spec_changes(session, principal, product_id, since)[1]
+
+
+@router.get(
+    "/products/{product_id}/spec/changes",
+    response_class=PlainTextResponse,
+    responses={200: {"content": {"text/markdown": {}}}},
+)
+def export_spec_changes(
+    product_id: uuid.UUID,
+    since: datetime,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> PlainTextResponse:
+    """The same changes as Markdown, for a coding agent already holding the
+    previous spec: it needs the delta, with provenance on what is new."""
+    name, delta = _spec_changes(session, principal, product_id, since)
+    return PlainTextResponse(
+        changes_to_markdown(delta, name=name, since=f"{since:%Y-%m-%d %H:%M} UTC"),
+        media_type="text/markdown; charset=utf-8",
     )
 
 

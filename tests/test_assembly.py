@@ -21,6 +21,9 @@ from atlas.assembly import (
     GapKind,
     ProductDocument,
     assemble,
+    changes,
+    changes_to_markdown,
+    compare,
     readiness,
     to_markdown,
 )
@@ -528,3 +531,101 @@ def test_readiness_is_stated_at_the_head_of_the_markdown() -> None:
     head = rendered.split("## Main graph metric")[0]
     assert "Readiness: 75/100" in head
     assert "no constraint" in head.lower()
+
+
+# --- spec versioning: what changed between two points in the log (Phase 3) -----
+
+
+def _doc(nodes: list[Node], edges: list[Edge] | None = None) -> ProductDocument:
+    return assemble(make_projection(nodes, edges=edges), PRODUCT_ID)
+
+
+def test_a_newly_confirmed_claim_is_reported_as_added() -> None:
+    draft = make_node(content="Plot visitors", status=NodeStatus.UNCONFIRMED)
+    confirmed = draft.model_copy(update={"status": NodeStatus.CONFIRMED})
+
+    changes = compare(_doc([draft]), _doc([confirmed]))
+
+    assert [claim.content for claim in changes.added] == ["Plot visitors"]
+    assert changes.removed == () and changes.reworded == ()
+
+
+def test_a_claim_ruled_out_is_reported_as_removed() -> None:
+    confirmed = make_node(content="Ship at launch")
+    rejected = confirmed.model_copy(update={"status": NodeStatus.REJECTED})
+
+    changes = compare(_doc([confirmed]), _doc([rejected]))
+
+    assert [claim.content for claim in changes.removed] == ["Ship at launch"]
+
+
+def test_an_edit_is_reported_with_both_wordings() -> None:
+    before = make_node(content="Plot visitors")
+    after = before.model_copy(
+        update={"content": "Plot unique visitors", "status": NodeStatus.EDITED}
+    )
+
+    (change,) = compare(_doc([before]), _doc([after])).reworded
+
+    assert (change.before, change.after) == ("Plot visitors", "Plot unique visitors")
+
+
+def test_opened_and_resolved_disagreements_are_reported() -> None:
+    left = make_node(content="Ships at launch")
+    right = make_node(content="Deferred")
+    edge = conflict(left, right)
+    right_rejected = right.model_copy(update={"status": NodeStatus.REJECTED})
+
+    opened = compare(_doc([left, right]), _doc([left, right], [edge]))
+    resolved = compare(_doc([left, right], [edge]), _doc([left, right_rejected], [edge]))
+
+    assert [d.edge_id for d in opened.disagreements_opened] == [edge.id]
+    assert [d.edge_id for d in resolved.disagreements_resolved] == [edge.id]
+
+
+def test_a_claim_becoming_contested_is_not_reported_as_removed() -> None:
+    """It moved from the body into a disagreement; the disagreement is the news."""
+    left = make_node(content="Ships at launch")
+    right = make_node(content="Deferred", status=NodeStatus.UNCONFIRMED)
+
+    changes = compare(_doc([left, right]), _doc([left, right], [conflict(left, right)]))
+
+    assert changes.removed == ()
+    assert len(changes.disagreements_opened) == 1
+
+
+def test_readiness_movement_is_reported() -> None:
+    requirement = make_node(node_type=NodeType.REQUIREMENT)
+    constraint = make_node(node_type=NodeType.CONSTRAINT, content="No cookies")
+
+    changes = compare(_doc([requirement]), _doc([requirement, constraint]))
+
+    assert (changes.readiness_before, changes.readiness_after) == (75, 100)
+
+
+def test_no_change_is_reported_as_unchanged() -> None:
+    node = make_node()
+
+    assert compare(_doc([node]), _doc([node])).unchanged
+
+
+def test_changes_render_as_markdown_an_agent_can_act_on() -> None:
+    draft = make_node(content="Plot visitors", status=NodeStatus.UNCONFIRMED)
+    gone = make_node(content="Ship at launch")
+    confirmed = draft.model_copy(update={"status": NodeStatus.CONFIRMED})
+    rejected = gone.model_copy(update={"status": NodeStatus.REJECTED})
+
+    rendered = changes_to_markdown(compare(_doc([draft, gone]), _doc([confirmed, rejected])))
+
+    assert "### Added" in rendered and "Plot visitors" in rendered
+    assert "### Removed" in rendered and "Ship at launch" in rendered
+    assert "https://github.com/acme/repo/pull/42" in rendered
+
+
+def test_changes_since_before_the_product_existed_reports_everything_added() -> None:
+    node = make_node(content="Plot visitors")
+
+    result = changes(Projection(), make_projection([node]), PRODUCT_ID)
+
+    assert [claim.content for claim in result.added] == ["Plot visitors"]
+    assert result.readiness_before == 0
