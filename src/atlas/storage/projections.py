@@ -602,6 +602,18 @@ def replay(events: Iterable[_ReplayableEvent]) -> Projection:
     )
 
 
+def load_log(
+    session: Session, *, workspace_id: uuid.UUID, as_of: datetime | None = None
+) -> list[EventLog]:
+    """One workspace's event log, in append order -- what every projection and
+    every log-reading report (`feedback.py`) folds over. Filtered in SQL, so RLS
+    and the workspace bound apply before a row reaches Python."""
+    stmt = select(EventLog).where(EventLog.workspace_id == workspace_id)
+    if as_of is not None:
+        stmt = stmt.where(EventLog.timestamp <= as_of)
+    return list(session.execute(stmt.order_by(EventLog.sequence)).scalars())
+
+
 def load_projection(
     session: Session,
     *,
@@ -621,11 +633,7 @@ def load_projection(
     because a person asks "as of Tuesday", not "as of event 312"; replay order
     within the bound is still `sequence`.
     """
-    stmt = select(EventLog).where(EventLog.workspace_id == workspace_id)
-    if as_of is not None:
-        stmt = stmt.where(EventLog.timestamp <= as_of)
-    stmt = stmt.order_by(EventLog.sequence)
-    projection = replay(session.execute(stmt).scalars())
+    projection = replay(load_log(session, workspace_id=workspace_id, as_of=as_of))
     if feature_scope_id is not None:
         projection = projection.for_feature_scope(feature_scope_id)
     return projection

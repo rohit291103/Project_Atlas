@@ -64,6 +64,8 @@ export type Disagreement = components["schemas"]["Disagreement"];
 export type Readiness = components["schemas"]["Readiness"];
 export type ReadinessGap = components["schemas"]["Gap"];
 export type SpecChanges = components["schemas"]["SpecChanges"];
+export type FeedbackReport = components["schemas"]["FeedbackReport"];
+export type Tally = components["schemas"]["Tally"];
 
 /** A viewer may read the extracted draft but not rule on it (TRD §9). The UI
  * hides what the API would refuse — an affordance that always 403s is worse
@@ -179,6 +181,9 @@ export const api = {
     if (!response.ok) throw new ApiError(response.status, await errorMessage(response));
     return response.text();
   },
+
+  /** The feedback loop: acceptance at first human read, and where it is weak. */
+  feedback: (productId: string) => request<FeedbackReport>(`/products/${productId}/feedback`),
 
   featureScopes: () => request<FeatureScope[]>("/feature-scopes"),
   featureScope: (id: string) => request<FeatureScopeDetail>(`/feature-scopes/${id}`),

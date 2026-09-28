@@ -24,13 +24,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE, ApiError, api } from "./api";
 import type { FeatureScope, Product, Role } from "./api";
 import { IconConflict, IconAbout,
-  IconOverview, IconSources } from "./components/icons";
+  IconOverview, IconQuality, IconSources } from "./components/icons";
 import { Loading } from "./components/Loading";
 import { ProductSwitcher } from "./components/ProductSwitcher";
 import { landingProductId, rememberProduct } from "./lastProduct";
 import { Tour } from "./components/Tour";
 import { hasSeenTour, markTourSeen, tourFeature, tourSteps } from "./tour";
 import { AboutPage } from "./pages/AboutPage";
+import { QualityPage } from "./pages/QualityPage";
 import { ConflictsPage } from "./pages/ConflictsPage";
 import { LandingPage } from "./pages/LandingPage";
 import { ProductsPage } from "./pages/ProductsPage";
@@ -376,6 +377,19 @@ export function App() {
                 )}
               </a>
             )}
+
+            {/* Last, because it is about the tool rather than the product: how
+                well extraction is doing, read off the reviewers' own rulings. */}
+            {isRealProduct && (
+              <a
+                className={`rail__nav-item${route.name === "quality" ? " is-active" : ""}`}
+                aria-current={route.name === "quality" ? "page" : undefined}
+                {...linkProps({ name: "quality", productId: activeShelf.product.id }, navigate)}
+              >
+                <IconQuality className="rail__nav-icon" />
+                <span className="rail__nav-text">Quality</span>
+              </a>
+            )}
           </div>
         )}
 
@@ -627,6 +641,9 @@ function Screen({
         navigate={navigate}
       />
     );
+  }
+  if (route.name === "quality") {
+    return <QualityPage key={route.productId} productId={route.productId} />;
   }
   if (route.name === "about") {
     return (

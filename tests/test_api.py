@@ -1456,3 +1456,24 @@ def test_changes_for_an_unknown_product_are_404(signed_in: TestClient) -> None:
         f"/products/{uuid.uuid4()}/changes", params={"since": "2026-01-01T00:00:00Z"}
     )
     assert response.status_code == 404
+
+
+# --- the feedback loop (`/products/{id}/feedback`) ------------------------------
+
+
+def test_feedback_reports_a_first_human_ruling(
+    signed_in: TestClient, documented: uuid.UUID
+) -> None:
+    nodes = signed_in.get(f"/feature-scopes/{FEATURE_SCOPE_ID}").json()["nodes"]
+    signed_in.post(f"/nodes/{nodes[0]['id']}/reject")
+
+    report = signed_in.get(f"/products/{documented}/feedback").json()
+
+    assert report["overall"]["rejected"] == 1
+    assert report["overall"]["acceptance_rate"] == 0.0
+    assert report["guard_passes"] is True
+    assert len(report["rejections"]) == 1
+
+
+def test_feedback_for_an_unknown_product_is_404(signed_in: TestClient) -> None:
+    assert signed_in.get(f"/products/{uuid.uuid4()}/feedback").status_code == 404

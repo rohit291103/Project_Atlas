@@ -6517,3 +6517,60 @@ body.is-resizing {
   font-size: var(--text-xs);
   color: var(--text-dim);
 }
+
+/* Extraction quality — the feedback loop's page. Reuses the About page's
+   reading measure and readiness headline; only the table and week bars are new. */
+.quality__headline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-4) 0 var(--space-6);
+}
+.quality__block {
+  margin: 0 0 var(--space-6);
+}
+.quality__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+.quality__table th,
+.quality__table td {
+  text-align: right;
+  padding: var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+.quality__table th[scope="row"],
+.quality__table thead th:first-child {
+  text-align: left;
+  font-weight: var(--weight-medium);
+}
+.quality__table thead th {
+  color: var(--text-dim);
+  font-weight: var(--weight-medium);
+}
+.quality__weeks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: var(--text-sm);
+}
+.quality__weeks li {
+  display: grid;
+  grid-template-columns: 6rem 1fr 6rem;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+}
+.quality__week {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+}
+.quality__bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--accent);
+  min-width: 2px;
+}

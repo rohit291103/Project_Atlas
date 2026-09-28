@@ -72,6 +72,7 @@ from atlas.assembly import (
     changes_to_markdown,
     to_markdown,
 )
+from atlas.feedback import FeedbackReport, feedback_report
 from atlas.models.schema import (
     AtlasModel,
     DescriptionStr,
@@ -100,7 +101,15 @@ from atlas.pipeline import (
 )
 from atlas.storage import confirmations, connections, products
 from atlas.storage.connections import ConnectionView, SecretError
-from atlas.storage.projections import FeatureScope, Product, Run, ScopeCounts, load_projection
+from atlas.storage.projections import (
+    FeatureScope,
+    Product,
+    Run,
+    ScopeCounts,
+    load_log,
+    load_projection,
+    replay,
+)
 from atlas.storage.rbac import find_membership, workspace_session
 
 router = APIRouter()
@@ -576,6 +585,22 @@ def export_spec_changes(
         changes_to_markdown(delta, name=name, since=f"{since:%Y-%m-%d %H:%M} UTC"),
         media_type="text/markdown; charset=utf-8",
     )
+
+
+@router.get("/products/{product_id}/feedback", response_model=FeedbackReport)
+def get_feedback(
+    product_id: uuid.UUID,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> FeedbackReport:
+    """The feedback loop for one product (Phase 3): the guard metric, spec
+    acceptance rate at first human read, where extraction is weakest, and the
+    literal edits and rejections. All computed in `feedback.py` from the log."""
+    log = load_log(session, workspace_id=principal.workspace_id)
+    projection = replay(log)
+    if product_id not in projection.products:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"no product {product_id}")
+    return feedback_report(log, node_ids=projection.for_product(product_id).nodes.keys())
 
 
 @router.get("/feature-scopes", response_model=list[FeatureScopeRow])

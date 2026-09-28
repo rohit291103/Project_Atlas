@@ -94,3 +94,12 @@ export const IconExternal = ({ className }: IconProps) => (
     <path d="M11.5 9.5V13h-9V4h3.5" />
   </svg>
 );
+
+/** Quality — a rising line. The screen asks whether extraction is getting
+ * better, and the Phase 3 exit criterion is literally a trend. */
+export const IconQuality = ({ className }: IconProps) => (
+  <svg {...base} className={className}>
+    <path d="M2 13.5h12" />
+    <path d="M3 11 6.5 7.5l2.5 2L13.5 4" />
+  </svg>
+);

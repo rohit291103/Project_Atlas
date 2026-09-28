@@ -195,6 +195,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/products/{product_id}/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Feedback
+         * @description The feedback loop for one product (Phase 3): the guard metric, spec
+         *     acceptance rate at first human read, where extraction is weakest, and the
+         *     literal edits and rejections. All computed in `feedback.py` from the log.
+         */
+        get: operations["get_feedback_products__product_id__feedback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/feature-scopes": {
         parameters: {
             query?: never;
@@ -584,6 +606,22 @@ export interface components {
             /** Last Used At */
             last_used_at?: string | null;
         };
+        /**
+         * Correction
+         * @description An extracted claim a human rewrote at first read -- prompt signal.
+         */
+        Correction: {
+            /**
+             * Node Id
+             * Format: uuid
+             */
+            node_id: string;
+            type: components["schemas"]["NodeType"];
+            /** Extracted */
+            extracted: string;
+            /** Corrected */
+            corrected: string;
+        };
         /** CreateProductRequest */
         CreateProductRequest: {
             /** Name */
@@ -755,6 +793,28 @@ export interface components {
             unreviewed: number;
             /** Unreviewed Node Ids */
             unreviewed_node_ids: string[];
+        };
+        /** FeedbackReport */
+        FeedbackReport: {
+            /** Human Share */
+            human_share: number | null;
+            overall: components["schemas"]["Tally"];
+            /** By Type */
+            by_type: {
+                [key: string]: components["schemas"]["Tally"];
+            };
+            /** By Source */
+            by_source: {
+                [key: string]: components["schemas"]["Tally"];
+            };
+            /** Weekly */
+            weekly: components["schemas"]["WeeklyTally"][];
+            /** Edits */
+            edits: components["schemas"]["Correction"][];
+            /** Rejections */
+            rejections: components["schemas"]["Rejection"][];
+            /** Guard Passes */
+            guard_passes: boolean;
         };
         /**
          * Gap
@@ -956,6 +1016,23 @@ export interface components {
             passed: number;
             /** Gaps */
             gaps: components["schemas"]["Gap"][];
+        };
+        /**
+         * Rejection
+         * @description An extracted claim a human ruled out at first read, with its excerpt, so
+         *     a reader can see whether the model misread the source or overreached it.
+         */
+        Rejection: {
+            /**
+             * Node Id
+             * Format: uuid
+             */
+            node_id: string;
+            type: components["schemas"]["NodeType"];
+            /** Content */
+            content: string;
+            /** Excerpt */
+            excerpt: string;
         };
         /**
          * RelationType
@@ -1199,6 +1276,26 @@ export interface components {
             limit: number;
         };
         /**
+         * Tally
+         * @description First human rulings over some set of extracted claims.
+         *
+         *     Derived values are plain fields rather than properties so they serialize:
+         *     the API returns this dataclass as-is, and a property would silently never
+         *     reach the browser.
+         */
+        Tally: {
+            /** Kept */
+            kept: number;
+            /** Edited */
+            edited: number;
+            /** Rejected */
+            rejected: number;
+            /** Ruled */
+            ruled: number;
+            /** Acceptance Rate */
+            acceptance_rate: number | null;
+        };
+        /**
          * ToolCallRecord
          * @description One tool call an extraction run made -- or was refused (TRD Sec9 audit).
          *
@@ -1236,6 +1333,17 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** WeeklyTally */
+        WeeklyTally: {
+            /** Week */
+            week: string;
+            /** Kept */
+            kept: number;
+            /** Ruled */
+            ruled: number;
+            /** Acceptance Rate */
+            acceptance_rate: number | null;
         };
     };
     responses: never;
@@ -1522,6 +1630,37 @@ export interface operations {
                 content: {
                     "text/plain": string;
                     "text/markdown": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_feedback_products__product_id__feedback_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedbackReport"];
                 };
             };
             /** @description Validation Error */

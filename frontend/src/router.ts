@@ -26,6 +26,7 @@ export type Route =
   | { name: "about"; productId: string }
   | { name: "sources"; productId: string }
   | { name: "conflicts"; productId: string }
+  | { name: "quality"; productId: string }
   | { name: "feature"; productId: string; featureId: string };
 
 export function parse(pathname: string): Route {
@@ -38,6 +39,7 @@ export function parse(pathname: string): Route {
   if (parts[2] === "about") return { name: "about", productId };
   if (parts[2] === "sources") return { name: "sources", productId };
   if (parts[2] === "conflicts") return { name: "conflicts", productId };
+  if (parts[2] === "quality") return { name: "quality", productId };
   if (parts[2] === "f" && parts[3]) return { name: "feature", productId, featureId: parts[3] };
   return { name: "product", productId };
 }
@@ -58,6 +60,8 @@ export function href(route: Route): string {
       return `/p/${route.productId}/sources`;
     case "conflicts":
       return `/p/${route.productId}/conflicts`;
+    case "quality":
+      return `/p/${route.productId}/quality`;
     case "feature":
       return `/p/${route.productId}/f/${route.featureId}`;
   }
