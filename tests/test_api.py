@@ -1099,12 +1099,37 @@ def test_the_header_cannot_be_used_to_claim_humanness(
     ]
 
 
-def test_re_running_an_already_ingested_artifact_is_refused(
+def test_re_running_an_already_ingested_artifact_re_syncs_into_its_feature(
     client: TestClient, with_product: uuid.UUID, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The guard from 2026-08-19. `acme/gateway#42` is in the seed, so this is a
-    real re-run: it would duplicate every claim that artifact produced, and the
-    copies would be identical except for their ids."""
+    """Phase 3 replaced the 2026-08-19 refusal: ingestion is idempotent per
+    feature scope, so a re-run is routed into the scope that already holds the
+    artifact -- the one place it cannot duplicate."""
+    connection_id = _connect(client, with_product, monkeypatch)
+    captured: list[Any] = []
+    monkeypatch.setattr(
+        "atlas.api.routes.execute_run", lambda *a, **k: captured.append(k["request"])
+    )
+
+    response = client.post(
+        f"/products/{with_product}/runs",
+        json={
+            "connection_id": connection_id,
+            "target_kind": "github_pr",
+            "target": "acme/gateway#42",
+        },
+    )
+
+    assert response.status_code == 202
+    (request,) = captured
+    assert request.feature_scope_id == FEATURE_SCOPE_ID
+
+
+def test_filing_an_ingested_artifact_under_a_second_feature_is_refused(
+    client: TestClient, with_product: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The one way a re-run could still duplicate. The refusal names where the
+    artifact already is, so a PM can go look rather than guess."""
     connection_id = _connect(client, with_product, monkeypatch)
 
     response = client.post(
@@ -1113,28 +1138,11 @@ def test_re_running_an_already_ingested_artifact_is_refused(
             "connection_id": connection_id,
             "target_kind": "github_pr",
             "target": "acme/gateway#42",
+            "feature_scope_id": str(uuid.uuid4()),
         },
     )
 
     assert response.status_code == 409
-    assert "already ingested" in response.json()["detail"]
-
-
-def test_the_refusal_names_the_feature_the_artifact_is_already_in(
-    client: TestClient, with_product: uuid.UUID, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """So a PM can go look at it rather than guess why they were stopped."""
-    connection_id = _connect(client, with_product, monkeypatch)
-
-    response = client.post(
-        f"/products/{with_product}/runs",
-        json={
-            "connection_id": connection_id,
-            "target_kind": "github_pr",
-            "target": "acme/gateway#42",
-        },
-    )
-
     assert "Rate-limit the gateway per client IP" in response.json()["detail"]
 
 

@@ -217,6 +217,7 @@ class RunView(AtlasModel):
     artifacts: int = 0
     nodes: int = 0
     edges: int = 0
+    unchanged: int = 0
 
     @classmethod
     def of(cls, run: Run) -> RunView:
@@ -235,6 +236,7 @@ class RunView(AtlasModel):
             artifacts=run.artifacts,
             nodes=run.nodes,
             edges=run.edges,
+            unchanged=run.unchanged,
         )
 
 
@@ -809,22 +811,20 @@ def start_ingestion(
         # us. Refuse rather than send the credential somewhere unvetted.
         raise HTTPException(status.HTTP_409_CONFLICT, str(unsupported)) from None
 
-    # Refuse a re-run of an artifact already in this workspace. Re-ingesting
-    # duplicates every claim it produced, and the copies are identical except for
-    # their ids, so a reviewer could confirm one and reject the other. A hard
-    # block rather than a warning: the legitimate case (a genuinely updated PR) is
-    # served by ingesting into a *new* scope, while the illegitimate one silently
-    # doubles a reviewer's queue. Removed, not loosened, when Phase 3's
-    # incremental sync makes ingestion actually idempotent
-    # (`docs/decisions/2026-08-19-product-orientation-rerun-safety-and-demo-data.md`).
+    # A re-run of an artifact already in this workspace is a **re-sync** into
+    # the feature that holds it (Phase 3, 2026-09-28). Ingestion is idempotent
+    # per feature scope (`pipeline.reconcile`), so the one way a re-run could
+    # still duplicate is by landing in a *different* scope -- which is why an
+    # unnamed scope is resolved to the holder here, and naming a different one
+    # is refused. Replaces the 2026-08-19 hard block, as that decision planned.
     #
-    # An epic or a label yields no id here -- it names many artifacts, none of
-    # them individually -- so those re-runs are not blocked. Known gap, stated in
-    # `artifact_external_id`.
+    # An epic or a label names no single artifact, so it cannot be resolved this
+    # way: re-running one without choosing its feature opens a new one.
     try:
         already = artifact_external_id(body.target_kind, body.target)
     except TargetError as bad:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(bad)) from None
+    feature_scope_id = body.feature_scope_id
     if already is not None:
         source = (
             SourceType.GITHUB_PR
@@ -835,18 +835,20 @@ def start_ingestion(
             source, already
         )
         if held is not None:
-            raise HTTPException(
-                status.HTTP_409_CONFLICT,
-                f"{already} is already ingested into '{held.title}'. Re-running it would "
-                f"duplicate every claim it produced; ingest into a new feature instead.",
-            )
+            if feature_scope_id is not None and feature_scope_id != held.id:
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT,
+                    f"{already} is already in '{held.title}'. Re-sync it there rather than "
+                    f"filing the same artifact under a second feature.",
+                )
+            feature_scope_id = held.id
 
     request = RunRequest(
         workspace_id=principal.workspace_id,
         actor=principal.actor,
         target_kind=body.target_kind,
         target=body.target,
-        feature_scope_id=body.feature_scope_id or uuid.uuid4(),
+        feature_scope_id=feature_scope_id or uuid.uuid4(),
         product_id=product_id,
         connection_id=connection.id,
         limit=max(1, min(body.limit, MAX_LIMIT)),

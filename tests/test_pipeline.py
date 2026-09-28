@@ -17,11 +17,14 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from atlas.extraction.agent import ExtractionError, ExtractionResult
 from atlas.models.schema import (
+    ActorKind,
     CreatedBy,
-    EventType,
+    Edge,
     IngestionRunPayload,
     Node,
+    NodeStatus,
     NodeType,
+    RelationType,
     RunState,
     RunTargetKind,
     SourceRef,
@@ -35,10 +38,12 @@ from atlas.pipeline import (
     UnsupportedHostError,
     artifact_external_id,
     parse_target,
+    reconcile,
     run_ingestion,
 )
+from atlas.storage.confirmations import reject_node
 from atlas.storage.db import Base, get_engine, get_sessionmaker
-from atlas.storage.projections import load_projection
+from atlas.storage.projections import Projection, load_projection
 from atlas.storage.tables import EventLog
 
 WORKSPACE = uuid.UUID(int=0)
@@ -329,24 +334,45 @@ def test_the_github_target_regex_cannot_smuggle_jql() -> None:
             parse_target(RunTargetKind.JIRA_LABEL, hostile)
 
 
-# --- re-running the same artifact (2026-08-19) ---------------------------------
+# --- re-running the same artifact: idempotent (Phase 3) ------------------------
 #
-# This documents a defect rather than a guarantee. Engineering Philosophy §5
-# ("Re-running ingestion must never duplicate or corrupt existing data") reads as
-# binding from Phase 1 onward, and nothing enforces it: node ids are minted per
-# run and the projection accumulates runs into a scope rather than reconciling
-# them. Real idempotency is Phase 3, with incremental sync, so that node identity
-# is designed once rather than twice.
-#
-# Until then the API refuses the second run outright (see `test_api.py` --
-# a hard block, `docs/decisions/2026-08-19-...` decision 5). These tests sit
-# *below* that block, on `pipeline` itself, so the underlying behaviour has a
-# recorded baseline the Phase 3 fix can be measured against. When idempotency
-# lands, these are the tests that must change, and changing them is the signal
-# that the guarantee became real.
+# Engineering Philosophy §5: "Re-running ingestion must never duplicate or
+# corrupt existing data." Until 2026-09-28 these tests documented the opposite --
+# every re-run duplicated every claim, and the API refused the second run as a
+# stopgap. Identity is now decided once, in `pipeline.reconcile`: an extracted
+# node is the claim already in the scope when it has the same type and quotes the
+# same excerpt of the same artifact. Excerpts are literal source text, so this
+# survives the LLM rewording the claim between runs.
 
 
-def test_re_running_the_same_artifact_duplicates_every_claim(
+def _node(excerpt: str = "rate-limit by client IP", **overrides: Any) -> Node:
+    fields: dict[str, Any] = {
+        "type": NodeType.GOAL,
+        "content": "Let a user rate-limit by client IP.",
+        "confidence_score": 0.9,
+        "created_by": CreatedBy.SYSTEM,
+        "source_refs": [
+            SourceRef(
+                source_type=SourceType.GITHUB_PR,
+                external_id="acme/web#42",
+                url="https://github.com/acme/web/pull/42",
+                excerpt=excerpt,
+                workspace_id=WORKSPACE,
+            )
+        ],
+        "workspace_id": WORKSPACE,
+        "feature_scope_id": SCOPE,
+    }
+    fields.update(overrides)
+    return Node(**fields)
+
+
+def _nodes(session_factory: sessionmaker[Session]) -> list[Node]:
+    with session_factory() as session:
+        return list(load_projection(session, workspace_id=WORKSPACE).nodes.values())
+
+
+def test_re_running_the_same_artifact_creates_no_duplicate(
     session_factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _stub_github(monkeypatch, lambda **kwargs: (_payload(), _result()))
@@ -354,32 +380,153 @@ def test_re_running_the_same_artifact_duplicates_every_claim(
     run_ingestion(session_factory, request=_request(), credential=GitHubCredential(TOKEN))
     run_ingestion(session_factory, request=_request(), credential=GitHubCredential(TOKEN))
 
-    assert _types(session_factory).count("node_created") == 2
+    assert _types(session_factory).count("node_created") == 1
 
 
-def test_the_duplicate_claims_are_indistinguishable_except_by_id(
+def test_a_reworded_claim_with_the_same_excerpt_is_the_same_claim(
     session_factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Why the block is a block and not a warning: the copies say the same thing,
-    cite the same excerpt and carry the same confidence, so a reviewer has no way
-    to tell which one they already ruled on -- and could confirm one while
-    rejecting the other."""
+    """The LLM does not phrase a claim the same way twice; the excerpt is what
+    stays put, because it is literal source text."""
+    wordings = iter(["Rate-limit per client IP.", "Limit requests by the caller's IP."])
+    _stub_github(
+        monkeypatch,
+        lambda **kwargs: (_payload(), ExtractionResult(nodes=[_node(content=next(wordings))])),
+    )
+
+    run_ingestion(session_factory, request=_request(), credential=GitHubCredential(TOKEN))
+    run_ingestion(session_factory, request=_request(), credential=GitHubCredential(TOKEN))
+
+    assert len(_nodes(session_factory)) == 1
+
+
+def test_a_ruling_survives_a_re_run(
+    session_factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The failure the old stopgap existed to prevent: a reviewer's ruling
+    silently stranded on a copy they can no longer tell apart from the new one."""
     _stub_github(monkeypatch, lambda **kwargs: (_payload(), _result()))
+    run_ingestion(session_factory, request=_request(), credential=GitHubCredential(TOKEN))
+    (node,) = _nodes(session_factory)
+    with session_factory() as session:
+        reject_node(session, node=node, actor="Priya", actor_kind=ActorKind.HUMAN)
+        session.commit()
+
+    run_ingestion(session_factory, request=_request(), credential=GitHubCredential(TOKEN))
+
+    (after,) = _nodes(session_factory)
+    assert after.id == node.id
+    assert after.status is NodeStatus.REJECTED
+
+
+def test_a_new_claim_on_a_re_run_is_added(
+    session_factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runs = iter([[_node()], [_node(), _node(excerpt="also cap bursts at 100/s")]])
+    _stub_github(monkeypatch, lambda **kwargs: (_payload(), ExtractionResult(nodes=next(runs))))
+
+    run_ingestion(session_factory, request=_request(), credential=GitHubCredential(TOKEN))
+    run_ingestion(session_factory, request=_request(), credential=GitHubCredential(TOKEN))
+
+    excerpts = sorted(node.source_refs[0].excerpt for node in _nodes(session_factory))
+    assert excerpts == ["also cap bursts at 100/s", "rate-limit by client IP"]
+
+
+def test_edges_are_remapped_onto_surviving_nodes_and_not_duplicated(
+    session_factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def extraction(**kwargs: Any) -> tuple[IngestionRunPayload, ExtractionResult]:
+        goal = _node()
+        constraint = _node(excerpt="no cookies", type=NodeType.CONSTRAINT, content="No cookies")
+        edge = Edge(
+            from_node_id=constraint.id,
+            to_node_id=goal.id,
+            relation_type=RelationType.SUPPORTS,
+            confidence_score=0.8,
+        )
+        return _payload(), ExtractionResult(nodes=[goal, constraint], edges=[edge])
+
+    _stub_github(monkeypatch, extraction)
 
     run_ingestion(session_factory, request=_request(), credential=GitHubCredential(TOKEN))
     run_ingestion(session_factory, request=_request(), credential=GitHubCredential(TOKEN))
 
     with session_factory() as session:
-        created = [
-            row.payload
-            for row in session.execute(select(EventLog).order_by(EventLog.sequence)).scalars()
-            if row.event_type is EventType.NODE_CREATED
-        ]
+        projection = load_projection(session, workspace_id=WORKSPACE)
+    (edge,) = projection.edges.values()
+    assert {edge.from_node_id, edge.to_node_id} <= set(projection.nodes)
 
-    first, second = created
-    assert first["id"] != second["id"]
-    assert first["content"] == second["content"]
-    assert first["source_refs"][0]["excerpt"] == second["source_refs"][0]["excerpt"]
+
+def test_reconcile_drops_an_edge_whose_endpoints_collapse_into_one_node() -> None:
+    """Two new nodes can both match one existing claim; an edge between them
+    would become a self-reference, which `Edge` itself forbids."""
+    existing = _node()
+    first, second = _node(), _node()
+    edge = Edge(
+        from_node_id=first.id,
+        to_node_id=second.id,
+        relation_type=RelationType.SUPPORTS,
+        confidence_score=0.8,
+    )
+    projection = Projection(nodes={existing.id: existing})
+
+    reconciled = reconcile(ExtractionResult(nodes=[first, second], edges=[edge]), projection)
+
+    assert reconciled.nodes == []
+    assert reconciled.edges == []
+
+
+def test_the_same_excerpt_under_a_different_type_is_a_different_claim() -> None:
+    existing = _node()
+    other = _node(type=NodeType.REQUIREMENT)
+
+    reconciled = reconcile(
+        ExtractionResult(nodes=[other]), Projection(nodes={existing.id: existing})
+    )
+
+    assert reconciled.nodes == [other]
+
+
+# --- incremental sync: an unchanged artifact is not re-extracted ---------------
+
+
+def test_the_previous_content_hash_is_handed_to_extraction(
+    session_factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: list[str | None] = []
+
+    def extraction(**kwargs: Any) -> tuple[IngestionRunPayload, ExtractionResult]:
+        seen.append(kwargs.get("previous_hash"))
+        return _payload().model_copy(update={"content_hash": "h1"}), _result()
+
+    _stub_github(monkeypatch, extraction)
+
+    run_ingestion(session_factory, request=_request(), credential=GitHubCredential(TOKEN))
+    run_ingestion(session_factory, request=_request(), credential=GitHubCredential(TOKEN))
+
+    assert seen == [None, "h1"]
+
+
+def test_an_unchanged_artifact_writes_no_run_and_is_counted_as_unchanged(
+    session_factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    results = iter(
+        [
+            (_payload().model_copy(update={"content_hash": "h1"}), _result()),
+            (
+                _payload().model_copy(update={"content_hash": "h1"}),
+                ExtractionResult(unchanged=True),
+            ),
+        ]
+    )
+    _stub_github(monkeypatch, lambda **kwargs: next(results))
+
+    run_ingestion(session_factory, request=_request(), credential=GitHubCredential(TOKEN))
+    outcome = run_ingestion(session_factory, request=_request(), credential=GitHubCredential(TOKEN))
+
+    assert _types(session_factory).count("ingestion_run") == 1
+    assert outcome.state is RunState.SUCCEEDED
+    assert outcome.unchanged == 1
 
 
 def test_a_single_artifact_target_names_the_id_it_would_be_stored_under() -> None:
@@ -399,8 +546,6 @@ def test_a_malformed_target_names_no_id_because_it_never_parses() -> None:
 
 def test_a_multi_artifact_target_names_no_single_id() -> None:
     """An epic or a label expands to many artifacts, none of which the target
-    names, so there is nothing to compare and the block does not apply. This is a
-    known gap in the guard, not an oversight -- re-running an epic still
-    duplicates, and only real idempotency (Phase 3) closes it."""
+    names. Re-running one is safe regardless: `reconcile` works per artifact."""
     assert artifact_external_id(RunTargetKind.JIRA_EPIC, "SCRUM-1") is None
     assert artifact_external_id(RunTargetKind.JIRA_LABEL, "checkout") is None

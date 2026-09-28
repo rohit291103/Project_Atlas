@@ -429,6 +429,11 @@ class IngestionRunPayload(AtlasModel):
     #: what lets the Sources screen say "this run produced these two features"
     #: instead of listing a run with nothing to show for it.
     run_id: uuid.UUID | None = None
+    #: sha256 of the artifact's content as the agent was seeded with it (Phase 3
+    #: incremental sync). The next run over the same artifact hands it back, and
+    #: an unchanged artifact is not re-extracted at all. Optional: runs written
+    #: before 2026-09-28 carry none, and simply get re-extracted once.
+    content_hash: str | None = None
 
 
 class RunStartedPayload(AtlasModel):
@@ -470,6 +475,9 @@ class RunFinishedPayload(AtlasModel):
     run_id: uuid.UUID
     nodes: int = Field(ge=0)
     edges: int = Field(ge=0)
+    #: Artifacts found unchanged since their last run and so not re-extracted
+    #: (Phase 3 incremental sync). Defaults to 0 so older events replay.
+    unchanged: int = Field(default=0, ge=0)
 
 
 class RunFailedPayload(AtlasModel):

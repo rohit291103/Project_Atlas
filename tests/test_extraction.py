@@ -412,3 +412,53 @@ def test_make_agent_call_streams_prompt_and_shares_gate_across_calls(
         assert isinstance(prompt, AsyncIterator)
     # Same options object both times => same can_use_tool gate => shared per-run budget.
     assert captured_options[0] is captured_options[1]
+
+
+# --- incremental sync: an unchanged artifact never reaches the agent -----------
+
+
+def test_an_unchanged_pull_request_is_not_re_extracted(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Phase 3: the hash of the seed prompt is the artifact's fingerprint. When it
+    matches the last run's, the agent is never called -- no tokens, no drafts."""
+    from datetime import UTC, datetime
+
+    from atlas.extraction import prompts
+    from atlas.extraction.agent import content_hash, extract_from_pull_request
+    from atlas.ingestion.github import PullRequest
+
+    pr = PullRequest(
+        number=42,
+        title="Rate limiting",
+        body="adds a per-IP token-bucket limiter",
+        state="open",
+        url="https://github.com/acme/web/pull/42",
+        author="priya",
+        created_at=datetime(2026, 9, 1, tzinfo=UTC),
+        merged_at=None,
+        comments=(),
+    )
+
+    class Client:
+        def fetch_pull_request(self, owner: str, repo: str, number: int) -> PullRequest:
+            return pr
+
+    async def must_not_run(**kwargs: Any) -> ExtractionResult:
+        raise AssertionError("the agent ran over an unchanged artifact")
+
+    monkeypatch.setattr("atlas.extraction.agent.run_extraction", must_not_run)
+
+    run, result = run_await(
+        extract_from_pull_request(
+            client=Client(),  # type: ignore[arg-type]
+            owner="acme",
+            repo="web",
+            number=42,
+            workspace_id=uuid.uuid4(),
+            feature_scope_id=uuid.uuid4(),
+            previous_hash=content_hash(prompts.build_seed_prompt(pr)),
+        )
+    )
+
+    assert result.unchanged
+    assert result.nodes == []
+    assert run.content_hash == content_hash(prompts.build_seed_prompt(pr))

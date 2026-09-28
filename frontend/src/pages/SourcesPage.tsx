@@ -604,8 +604,11 @@ function RunHistory({
                 <span>started by {run.started_by}</span>
                 {run.state === "succeeded" && (
                   <span>
-                    {run.artifacts} artifact{run.artifacts === 1 ? "" : "s"} · {run.nodes} claim
+                    {run.artifacts} artifact{run.artifacts === 1 ? "" : "s"} · {run.nodes} new claim
                     {run.nodes === 1 ? "" : "s"}
+                    {/* A re-sync over an unchanged artifact skips extraction
+                        entirely; say so, or "0 artifacts" reads as a failure. */}
+                    {run.unchanged > 0 && <> · {run.unchanged} unchanged</>}
                   </span>
                 )}
                 {/* Offered for any run that produced something, whether or not

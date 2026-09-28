@@ -771,6 +771,8 @@ export interface components {
             product_id?: string | null;
             /** Run Id */
             run_id?: string | null;
+            /** Content Hash */
+            content_hash?: string | null;
         };
         /**
          * Node
@@ -992,6 +994,11 @@ export interface components {
              * @default 0
              */
             edges: number;
+            /**
+             * Unchanged
+             * @default 0
+             */
+            unchanged: number;
         };
         /**
          * ScopeCounts

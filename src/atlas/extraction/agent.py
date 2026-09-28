@@ -24,6 +24,7 @@ Two layers, deliberately split so the gate is testable without an API key:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable, Collection, Sequence
 from dataclasses import dataclass, field
@@ -49,8 +50,8 @@ from atlas.extraction.tools import (
     build_extraction_tools,
     build_jira_extraction_tools,
 )
-from atlas.ingestion.github import GitHubClient
-from atlas.ingestion.jira import JiraClient
+from atlas.ingestion.github import GitHubClient, PullRequest
+from atlas.ingestion.jira import JiraClient, JiraIssue
 from atlas.models.schema import (
     Edge,
     IngestionRunPayload,
@@ -153,6 +154,21 @@ class ExtractionResult:
 
     nodes: list[Node] = field(default_factory=list)
     edges: list[Edge] = field(default_factory=list)
+    #: The artifact's content matched `previous_hash`, so the agent never ran
+    #: (Phase 3 incremental sync). Distinct from an extraction that found
+    #: nothing, which is a real result and is recorded as a run.
+    unchanged: bool = False
+
+
+def content_hash(seed_prompt: str) -> str:
+    """Fingerprint of an artifact as the agent is seeded with it.
+
+    Hashed over the seed prompt *before* the known-nodes block is appended, so it
+    changes when the PR/issue changes and not when other sources feed the scope.
+    Content the agent reaches only through tool calls (a linked issue, a commit)
+    is not covered: a change there alone will not trigger a re-extraction.
+    """
+    return hashlib.sha256(seed_prompt.encode("utf-8")).hexdigest()
 
 
 def build_result(
@@ -486,6 +502,7 @@ async def extract_from_jira_issue(
     workspace_id: uuid.UUID,
     feature_scope_id: uuid.UUID,
     known_nodes: Sequence[Node] = (),
+    previous_hash: str | None = None,
     model: str = DEFAULT_MODEL,
     max_tool_calls: int = MAX_TOOL_CALLS,
 ) -> tuple[IngestionRunPayload, ExtractionResult]:
@@ -499,7 +516,11 @@ async def extract_from_jira_issue(
     """
     issue = await asyncio.to_thread(client.fetch_issue, key)
     project_key = key.split("-", 1)[0]
-    seed_prompt = prompts.build_jira_seed_prompt(issue) + prompts.build_known_nodes_block(
+    base_prompt = prompts.build_jira_seed_prompt(issue)
+    digest = content_hash(base_prompt)
+    if digest == previous_hash:
+        return _jira_run(feature_scope_id, issue, key, [], digest), ExtractionResult(unchanged=True)
+    seed_prompt = base_prompt + prompts.build_known_nodes_block(
         (node.id, node.type.value, node.content, node.source_refs[0].source_type)
         for node in known_nodes
     )
@@ -514,17 +535,27 @@ async def extract_from_jira_issue(
         agent_call=agent_call,
         known_node_ids=[node.id for node in known_nodes],
     )
-    run = IngestionRunPayload(
+    # Built after the run, so the event records what the agent actually did
+    # rather than what it was about to be allowed to do.
+    return _jira_run(feature_scope_id, issue, key, manifest, digest), result
+
+
+def _jira_run(
+    feature_scope_id: uuid.UUID,
+    issue: JiraIssue,
+    key: str,
+    manifest: list[ToolCallRecord],
+    digest: str,
+) -> IngestionRunPayload:
+    return IngestionRunPayload(
         feature_scope_id=feature_scope_id,
         title=issue.summary or key,
         source_type=SourceType.JIRA_TICKET,
         external_id=key,
         url=issue.url,
-        # Built after the run, so the event records what the agent actually did
-        # rather than what it was about to be allowed to do.
         tool_calls=manifest,
+        content_hash=digest,
     )
-    return run, result
 
 
 async def extract_from_pull_request(
@@ -536,6 +567,7 @@ async def extract_from_pull_request(
     workspace_id: uuid.UUID,
     feature_scope_id: uuid.UUID,
     known_nodes: Sequence[Node] = (),
+    previous_hash: str | None = None,
     model: str = DEFAULT_MODEL,
     max_tool_calls: int = MAX_TOOL_CALLS,
 ) -> tuple[IngestionRunPayload, ExtractionResult]:
@@ -558,7 +590,13 @@ async def extract_from_pull_request(
     empty sequence, and the *system* prompt is untouched and still golden-tested).
     """
     pr = await asyncio.to_thread(client.fetch_pull_request, owner, repo, number)
-    seed_prompt = prompts.build_seed_prompt(pr) + prompts.build_known_nodes_block(
+    base_prompt = prompts.build_seed_prompt(pr)
+    digest = content_hash(base_prompt)
+    if digest == previous_hash:
+        return _pr_run(feature_scope_id, pr, owner, repo, [], digest), ExtractionResult(
+            unchanged=True
+        )
+    seed_prompt = base_prompt + prompts.build_known_nodes_block(
         (node.id, node.type.value, node.content, node.source_refs[0].source_type)
         for node in known_nodes
     )
@@ -573,7 +611,19 @@ async def extract_from_pull_request(
         agent_call=agent_call,
         known_node_ids=[node.id for node in known_nodes],
     )
-    run = IngestionRunPayload(
+    # Built after the run, so the event records what the agent actually did.
+    return _pr_run(feature_scope_id, pr, owner, repo, manifest, digest), result
+
+
+def _pr_run(
+    feature_scope_id: uuid.UUID,
+    pr: PullRequest,
+    owner: str,
+    repo: str,
+    manifest: list[ToolCallRecord],
+    digest: str,
+) -> IngestionRunPayload:
+    return IngestionRunPayload(
         feature_scope_id=feature_scope_id,
         title=pr.title,
         source_type=SourceType.GITHUB_PR,
@@ -581,7 +631,6 @@ async def extract_from_pull_request(
         # number (unique only within one repo) would not identify its source.
         external_id=f"{owner}/{repo}#{pr.number}",
         url=pr.url,
-        # Built after the run, so the event records what the agent actually did.
         tool_calls=manifest,
+        content_hash=digest,
     )
-    return run, result

@@ -53,6 +53,7 @@ from atlas.ingestion.github import GitHubClient, GitHubError
 from atlas.ingestion.jira import JiraClient, JiraError
 from atlas.models.schema import (
     ActorKind,
+    Edge,
     EventType,
     IngestionRunPayload,
     Node,
@@ -62,7 +63,7 @@ from atlas.models.schema import (
     RunState,
     RunTargetKind,
 )
-from atlas.storage.projections import load_projection
+from atlas.storage.projections import Projection, load_projection
 from atlas.storage.rbac import workspace_session
 from atlas.storage.tables import append_event
 
@@ -77,6 +78,7 @@ __all__ = [
     "TargetError",
     "UnsupportedHostError",
     "execute_run",
+    "reconcile",
     "record_extraction",
     "resolve_jira_keys",
     "run_ingestion",
@@ -241,6 +243,8 @@ class RunOutcome:
     artifacts: int = 0
     nodes: int = 0
     edges: int = 0
+    #: Artifacts skipped because they had not changed since their last run.
+    unchanged: int = 0
     error: str | None = None
 
 
@@ -367,6 +371,77 @@ def record_extraction(
         )
 
 
+#: What makes two extracted nodes the same claim: its type, and a literal excerpt
+#: of a specific artifact. Not the content -- the LLM rewords a claim between
+#: runs, but the excerpt is source text and the eval harness holds it verbatim.
+_ClaimKey = tuple[str, str, str, str]
+
+
+def _claim_keys(node: Node) -> set[_ClaimKey]:
+    return {
+        (node.type.value, ref.source_type.value, ref.external_id, ref.excerpt)
+        for ref in node.source_refs
+    }
+
+
+def reconcile(result: ExtractionResult, existing: Projection) -> ExtractionResult:
+    """Drop what the scope already holds, so re-running ingestion is idempotent.
+
+    Engineering Philosophy §5. A new node that shares any claim key with a node
+    already in the log -- *whatever its status* -- is that node, and is not
+    created again. So a confirmed claim stays confirmed and a rejected one stays
+    rejected across a re-run; neither is resurrected as a fresh draft beside it.
+
+    Edges are remapped onto the surviving ids. An edge is dropped when it
+    already exists (in either direction for `conflicts_with`, which is
+    symmetric), or when both its ends collapse into the same existing node.
+
+    Nodes the log holds that this run did *not* re-extract are left alone:
+    ingestion is read-only into the log as much as into the source, and a claim
+    a human ruled on does not vanish because the model missed it the second time.
+
+    Pure: no session, no I/O. Concurrent runs into one scope can still race past
+    it -- there is one API worker today, and a lock is the queue's job.
+    """
+    index: dict[_ClaimKey, uuid.UUID] = {}
+    for node in existing.nodes.values():
+        for key in _claim_keys(node):
+            index.setdefault(key, node.id)
+
+    remap: dict[uuid.UUID, uuid.UUID] = {}
+    kept: list[Node] = []
+    for node in result.nodes:
+        match = next((index[key] for key in _claim_keys(node) if key in index), None)
+        if match is not None:
+            remap[node.id] = match
+            continue
+        kept.append(node)
+        for key in _claim_keys(node):
+            index.setdefault(key, node.id)
+
+    seen = {_edge_key(edge) for edge in existing.edges.values()}
+    edges: list[Edge] = []
+    for edge in result.edges:
+        from_id = remap.get(edge.from_node_id, edge.from_node_id)
+        to_id = remap.get(edge.to_node_id, edge.to_node_id)
+        if from_id == to_id:
+            continue
+        moved = edge.model_copy(update={"from_node_id": from_id, "to_node_id": to_id})
+        edge_key = _edge_key(moved)
+        if edge_key in seen:
+            continue
+        seen.add(edge_key)
+        edges.append(moved)
+    return ExtractionResult(nodes=kept, edges=edges)
+
+
+def _edge_key(edge: Edge) -> tuple[str, uuid.UUID, uuid.UUID]:
+    ends = (edge.from_node_id, edge.to_node_id)
+    if edge.relation_type.value == "conflicts_with":
+        ends = (min(ends, key=str), max(ends, key=str))
+    return (edge.relation_type.value, *ends)
+
+
 def start_run(session: Session, request: RunRequest) -> uuid.UUID:
     """Record that a run was accepted, and return its id.
 
@@ -428,6 +503,22 @@ def _known_nodes(session_factory: sessionmaker[Session], request: RunRequest) ->
         )
 
 
+def _previous_hash(
+    session_factory: sessionmaker[Session], request: RunRequest, external_id: str
+) -> str | None:
+    """The content hash the last run over this artifact recorded, in this scope."""
+    with workspace_session(session_factory, request.workspace_id) as session:
+        scope = load_projection(
+            session,
+            workspace_id=request.workspace_id,
+            feature_scope_id=request.feature_scope_id,
+        ).feature_scopes.get(request.feature_scope_id)
+    if scope is None:
+        return None
+    hashes = [run.content_hash for run in scope.runs if run.external_id == external_id]
+    return hashes[-1] if hashes else None
+
+
 async def execute_run(
     session_factory: sessionmaker[Session],
     *,
@@ -443,14 +534,14 @@ async def execute_run(
     and the run would look interrupted rather than failed -- which is a worse
     answer than the one this actually knows.
     """
-    artifacts = nodes = edges = 0
+    artifacts = nodes = edges = unchanged = 0
     try:
         if isinstance(credential, GitHubCredential):
-            artifacts, nodes, edges = await _run_github(
+            artifacts, nodes, edges, unchanged = await _run_github(
                 session_factory, run_id=run_id, request=request, credential=credential
             )
         else:
-            artifacts, nodes, edges = await _run_jira(
+            artifacts, nodes, edges, unchanged = await _run_jira(
                 session_factory, run_id=run_id, request=request, credential=credential
             )
     except (GitHubError, JiraError, ExtractionError, TargetError, ValueError) as expected:
@@ -467,15 +558,20 @@ async def execute_run(
         append_event(
             session,
             event_type=EventType.INGESTION_RUN_FINISHED,
-            payload=RunFinishedPayload(run_id=run_id, nodes=nodes, edges=edges).model_dump(
-                mode="json"
-            ),
+            payload=RunFinishedPayload(
+                run_id=run_id, nodes=nodes, edges=edges, unchanged=unchanged
+            ).model_dump(mode="json"),
             actor=request.actor,
             actor_kind=ActorKind.AUTOMATED,
             workspace_id=request.workspace_id,
         )
     return RunOutcome(
-        run_id=run_id, state=RunState.SUCCEEDED, artifacts=artifacts, nodes=nodes, edges=edges
+        run_id=run_id,
+        state=RunState.SUCCEEDED,
+        artifacts=artifacts,
+        nodes=nodes,
+        edges=edges,
+        unchanged=unchanged,
     )
 
 
@@ -503,7 +599,7 @@ async def _run_github(
     run_id: uuid.UUID,
     request: RunRequest,
     credential: GitHubCredential,
-) -> tuple[int, int, int]:
+) -> tuple[int, int, int, int]:
     owner, repo, number = parse_target(request.target_kind, request.target)
     client = GitHubClient(credential.token)
     try:
@@ -515,11 +611,14 @@ async def _run_github(
             workspace_id=request.workspace_id,
             feature_scope_id=request.feature_scope_id,
             known_nodes=_known_nodes(session_factory, request),
+            previous_hash=_previous_hash(session_factory, request, f"{owner}/{repo}#{number}"),
         )
     finally:
         client.close()
-    _write(session_factory, request, run, result, run_id)
-    return 1, len(result.nodes), len(result.edges)
+    if result.unchanged:
+        return 0, 0, 0, 1
+    written = _write(session_factory, request, run, result, run_id)
+    return 1, len(written.nodes), len(written.edges), 0
 
 
 async def _run_jira(
@@ -528,11 +627,11 @@ async def _run_jira(
     run_id: uuid.UUID,
     request: RunRequest,
     credential: JiraCredential,
-) -> tuple[int, int, int]:
+) -> tuple[int, int, int, int]:
     client = JiraClient(
         base_url=credential.base_url, email=credential.email, api_token=credential.api_token
     )
-    nodes = edges = 0
+    artifacts = nodes = edges = unchanged = 0
     try:
         keys = resolve_jira_keys(
             client,
@@ -549,11 +648,16 @@ async def _run_jira(
                 workspace_id=request.workspace_id,
                 feature_scope_id=request.feature_scope_id,
                 known_nodes=_known_nodes(session_factory, request),
+                previous_hash=_previous_hash(session_factory, request, key),
             )
-            _write(session_factory, request, run, result, run_id)
-            nodes += len(result.nodes)
-            edges += len(result.edges)
-        return len(keys), nodes, edges
+            if result.unchanged:
+                unchanged += 1
+                continue
+            written = _write(session_factory, request, run, result, run_id)
+            artifacts += 1
+            nodes += len(written.nodes)
+            edges += len(written.edges)
+        return artifacts, nodes, edges, unchanged
     finally:
         client.close()
 
@@ -564,8 +668,10 @@ def _write(
     run: IngestionRunPayload,
     result: ExtractionResult,
     run_id: uuid.UUID,
-) -> None:
-    """Persist one artifact's extraction, stamped with the run that pulled it.
+) -> ExtractionResult:
+    """Persist one artifact's extraction, stamped with the run that pulled it,
+    after `reconcile` has dropped whatever the scope already holds. Returns what
+    was actually written, so the run's counts report new claims, not re-seen ones.
 
     `product_id` and `run_id` are attached here rather than inside `extraction/`:
     which product a feature belongs to and which job pulled it are facts about
@@ -574,9 +680,31 @@ def _write(
     """
     stamped = run.model_copy(update={"product_id": request.product_id, "run_id": run_id})
     with workspace_session(session_factory, request.workspace_id) as session:
-        record_extraction(session, result, workspace_id=request.workspace_id, ingestion_run=stamped)
+        # Reconciled against the whole workspace, inside the writing
+        # transaction: an edge may point at a known node in another source, and
+        # reading state in the same transaction that writes keeps the check and
+        # the write together.
+        existing = load_projection(session, workspace_id=request.workspace_id)
+        written = reconcile(result, _in_scope(existing, request.feature_scope_id))
+        record_extraction(
+            session, written, workspace_id=request.workspace_id, ingestion_run=stamped
+        )
         if request.connection_id is not None:
             _touch_connection(session, request)
+    return written
+
+
+def _in_scope(projection: Projection, feature_scope_id: uuid.UUID) -> Projection:
+    """Identity is per feature scope: the same excerpt filed under two features
+    is two features' claim, not one."""
+    return Projection(
+        nodes={
+            node_id: node
+            for node_id, node in projection.nodes.items()
+            if node.feature_scope_id == feature_scope_id
+        },
+        edges=projection.edges,
+    )
 
 
 def _touch_connection(session: Session, request: RunRequest) -> None:

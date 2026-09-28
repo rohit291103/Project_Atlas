@@ -238,6 +238,8 @@ class Run:
     artifacts: int = 0
     nodes: int = 0
     edges: int = 0
+    #: Artifacts skipped as unchanged since their last run (Phase 3 sync).
+    unchanged: int = 0
     #: The feature scopes this run actually fed. Usually one -- an epic's
     #: children all land in the same scope -- but it is a tuple because nothing
     #: in the model forbids a run from opening more than one.
@@ -353,12 +355,11 @@ class Projection:
         The pair is the key, not `external_id` alone: an id is only unique
         *within* its source, which is why `IngestionRunPayload` carries both.
 
-        This exists for the API's re-run block. Re-ingesting an artifact
-        duplicates every claim it produced -- node ids are minted per run and
-        nothing reconciles them -- and the copies are indistinguishable except by
-        id, so a reviewer could confirm one and reject the other
-        (`tests/test_pipeline.py` records the behaviour). Returning the scope
-        rather than a bool lets the refusal say *where* the artifact already is.
+        The API uses it to route a re-run into the scope that already holds the
+        artifact: `pipeline.reconcile` makes ingestion idempotent *per scope*, so
+        that is the one place a re-run cannot duplicate. Returning the scope
+        rather than a bool lets a refusal (filing it under a second feature) say
+        *where* the artifact already is.
 
         Real idempotency is Phase 3, with incremental sync. This is the guard.
         """
@@ -537,6 +538,7 @@ def replay(events: Iterable[_ReplayableEvent]) -> Projection:
                 outcome=RunState.SUCCEEDED,
                 nodes=done.nodes,
                 edges=done.edges,
+                unchanged=done.unchanged,
             )
         elif event_type == EventType.INGESTION_RUN_FAILED:
             broke = RunFailedPayload.model_validate(event.payload)
