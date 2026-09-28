@@ -125,12 +125,14 @@ test("the rail shows one product's features, not every product's", async ({ page
   // this product is), then the loop the product runs — connect, then review.
   // About joined between Overview and Sources on 2026-08-21; the order is
   // asserted rather than the set, because it is a deliberate reading order and
-  // not an accident of the order the screens were built in.
+  // not an accident of the order the screens were built in. Quality joined
+  // last on 2026-09-28: it is about the tool rather than the product.
   await expect(page.locator(".rail__nav-item")).toHaveText([
     /^Overview$/,
     /^About$/,
     /^Sources$/,
     /^Conflicts\d*$/,
+    /^Quality$/,
   ]);
 
   /* One section label in the rail, not three.
@@ -983,4 +985,63 @@ test("the spec export downloads as Markdown containing the confirmed claims", as
   // The export and the page are one assembly rendered twice; if this fails, the
   // confirmed-only filter has been reimplemented somewhere it should not be.
   expect(markdown).toContain(claim.replace(/\s*edited$/, ""));
+});
+
+/* --- 2026-09-28: readiness, versioning, Q&A, quality ----------------------
+ *
+ * Read-only again. The Ask box is checked for presence and wiring only: a real
+ * question would spend tokens on every run, and the answer's guarantees are
+ * pinned server-side in tests/test_qa.py.
+ */
+
+test("About states the spec's readiness and links every gap somewhere", async ({ page }) => {
+  await signIn(page, EDITOR);
+  await page.locator('[data-tour="nav-about"]').click();
+  await page.waitForSelector(".about__provenance-note", { timeout: 40000 });
+
+  const panel = page.locator(".readiness");
+  await expect(panel).toBeVisible();
+  await expect(panel.locator(".readiness__score")).toHaveText(/^\d{1,3}$/);
+  await expect(panel.locator(".readiness__sub")).toContainText(/\d+ of \d+ checks pass/);
+  // A number with nothing to click is a grade, not a to-do list.
+  const gaps = panel.locator(".readiness__gap a");
+  for (let index = 0; index < (await gaps.count()); index++) {
+    await expect(gaps.nth(index)).toHaveAttribute("href", /^\/p\//);
+  }
+});
+
+test("About offers what changed and a question box once something is confirmed", async ({
+  page,
+}) => {
+  await signIn(page, EDITOR);
+  await page.locator('[data-tour="nav-about"]').click();
+  await page.waitForSelector(".about__provenance-note", { timeout: 40000 });
+  if ((await page.locator(".about__claim").count()) === 0) test.skip();
+
+  const changes = page.locator(".changes");
+  await expect(changes).toBeVisible();
+  await changes.getByRole("tab", { name: "30 days" }).click();
+  await expect(changes.getByRole("tab", { name: "30 days" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(changes.locator(".changes__summary")).toBeVisible();
+
+  const ask = page.locator(".ask");
+  await expect(ask.locator(".ask__input")).toBeVisible();
+  // Disabled until there is a question, so an empty click cannot spend a call.
+  await expect(ask.getByRole("button", { name: "Ask" })).toBeDisabled();
+});
+
+test("Quality reads the rulings and states the guard above the numbers", async ({ page }) => {
+  await signIn(page, EDITOR);
+  const link = page.locator(".rail__nav-item", { hasText: "Quality" });
+  await expect(link).toBeVisible();
+  await link.click();
+  await expect(page).toHaveURL(/\/quality$/);
+
+  await expect(page.locator("h1")).toHaveText("Extraction quality", { timeout: 40000 });
+  await expect(page.locator(".about__provenance-note")).toContainText("first read");
+  // Either a headline rate or the honest empty state -- never a blank page.
+  await expect(page.locator(".quality__headline, .notice").first()).toBeVisible();
 });

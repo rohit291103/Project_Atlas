@@ -83,17 +83,23 @@ export function QualityPage({ productId }: { productId: string }) {
         Only a claim's first ruling counts, and only when a person made it.
       </p>
 
-      {!report.guard_passes && (
-        <div className="notice notice--error">
-          {percent(report.human_share)} of rulings here were made by a person. Until that is
-          100%, none of the numbers below should be quoted.
-        </div>
-      )}
-
+      {/* Two cases, one message each. With no human first rulings at all there
+          are no numbers below to warn about, so the guard's warning would
+          contradict the empty state it sits on top of. */}
       {overall.ruled === 0 ? (
-        <div className="notice">Nothing has been ruled on yet.</div>
+        <div className="notice">
+          {report.guard_passes
+            ? "Nothing has been ruled on yet."
+            : "No claim has been ruled on by a person yet. Every ruling here was automated, so there is nothing to measure."}
+        </div>
       ) : (
         <>
+          {!report.guard_passes && (
+            <div className="notice notice--error">
+              {percent(report.human_share)} of rulings here were made by a person. Until that is
+              100%, none of the numbers below should be quoted.
+            </div>
+          )}
           <section className="quality__headline">
             <span className="readiness__score">{percent(overall.acceptance_rate)}</span>
             <span className="readiness__label">
