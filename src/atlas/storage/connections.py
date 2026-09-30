@@ -38,7 +38,18 @@ from datetime import datetime
 
 from cryptography.fernet import Fernet, InvalidToken
 from pydantic import Field
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, LargeBinary, Text, Uuid, delete, select
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    LargeBinary,
+    Text,
+    Uuid,
+    delete,
+    select,
+)
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, Session, mapped_column
 from sqlalchemy.sql import func
@@ -135,7 +146,17 @@ class Connection(Base):
     """
 
     __tablename__ = "connection"
-    __table_args__ = (Index("ix_connection_workspace_product", "workspace_id", "product_id"),)
+    __table_args__ = (
+        Index("ix_connection_workspace_product", "workspace_id", "product_id"),
+        # Every source but Google Docs carries a per-product secret. A docs
+        # connection uses Atlas's own service account from the environment and
+        # must hold none (2026-09-28) -- enforced here as well as in
+        # `create_connection`, so no write path can produce the other shape.
+        CheckConstraint(
+            "(source_type = 'gdoc') = (secret_ciphertext IS NULL)",
+            name="ck_connection_secret_matches_source",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(_UUID, primary_key=True, default=uuid.uuid4)
     workspace_id: Mapped[uuid.UUID] = mapped_column(
@@ -157,11 +178,12 @@ class Connection(Base):
     account: Mapped[str] = mapped_column(Text, nullable=False)
     host: Mapped[str] = mapped_column(Text, nullable=False)
     scope: Mapped[str] = mapped_column(Text, nullable=False)
-    secret_ciphertext: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    #: `None` exactly when `source_type` is `gdoc` (see the check constraint).
+    secret_ciphertext: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     #: Last few characters of the credential, so a PM can tell two tokens apart
     #: without either being shown. Stored rather than derived, because deriving
     #: it would mean decrypting a secret in order to render a list.
-    secret_hint: Mapped[str] = mapped_column(Text, nullable=False)
+    secret_hint: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -199,7 +221,7 @@ class ConnectionView(AtlasModel):
             account=connection.account,
             host=connection.host,
             scope=connection.scope,
-            secret_hint=connection.secret_hint,
+            secret_hint=connection.secret_hint or "",
             created_at=connection.created_at,
             created_by=connection.created_by,
             last_used_at=connection.last_used_at,
@@ -215,7 +237,7 @@ def create_connection(
     account: str,
     host: str,
     scope: str,
-    secret: str,
+    secret: str | None,
     actor: str,
     actor_kind: ActorKind,
     key: str,
@@ -226,7 +248,10 @@ def create_connection(
     exists with no record of who made it is an audit hole, and the two must
     therefore succeed or fail together.
     """
-    if not secret.strip():
+    if source_type is SourceType.GDOC:
+        if secret is not None:
+            raise ValueError("a Google Docs connection takes no secret; the key is Atlas's own")
+    elif secret is None or not secret.strip():
         raise ValueError("secret must not be blank or whitespace-only")
     connection = Connection(
         workspace_id=workspace_id,
@@ -235,8 +260,8 @@ def create_connection(
         account=account,
         host=host,
         scope=scope,
-        secret_ciphertext=seal(secret, key),
-        secret_hint=secret[-_HINT_LENGTH:],
+        secret_ciphertext=seal(secret, key) if secret is not None else None,
+        secret_hint=secret[-_HINT_LENGTH:] if secret is not None else None,
         created_by=actor,
     )
     session.add(connection)

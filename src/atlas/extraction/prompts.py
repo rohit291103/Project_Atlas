@@ -21,6 +21,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Iterable
 
+from atlas.ingestion.gdocs import GoogleDoc
 from atlas.ingestion.github import PullRequest
 from atlas.ingestion.jira import JiraIssue
 from atlas.models.schema import SourceType
@@ -39,8 +40,21 @@ _NODE_TYPE_GUIDE = """\
 - rejected_alternative: an option considered and explicitly not taken"""
 
 
-def _build_system_prompt(*, reads: str, references: str, tool_list: str) -> str:
-    """The shared prompt, with only the source-specific spans templated."""
+def _build_system_prompt(
+    *, reads: str, references: str, tool_list: str, follow: str | None = None
+) -> str:
+    """The shared prompt, with only the source-specific spans templated.
+
+    `follow` replaces rule 3 wholesale for a source with no tools to follow
+    references with (a Google Doc). Left `None`, rule 3 renders exactly as the
+    Phase 0 evals saw it -- `test_gdocs_extraction.py` pins that.
+    """
+    rule3 = follow or (
+        f"3. Follow references, don't fabricate them. When the text mentions {references}, \
+use the available tools \
+({tool_list}) to read the real content \
+before extracting from it. Use at most a handful of tool calls."
+    )
     return f"""\
 You are Atlas, an extraction agent. You read the raw content of {reads} \
 and its linked context, and you distil it into a small set of typed, \
@@ -59,10 +73,7 @@ Rules you must follow exactly:
 or summary. If you cannot point to literal text, do not create the Node.
 2. Extract a draft, not a fact. Prefer omitting a weak claim over guessing. \
 Assess your confidence for each Node and Edge as low, medium, or high.
-3. Follow references, don't fabricate them. When the text mentions {references}, \
-use the available tools \
-({tool_list}) to read the real content \
-before extracting from it. Use at most a handful of tool calls.
+{rule3}
 4. Flag conflicts, don't resolve them. If two sources disagree on the same \
 point, emit both Nodes and a `conflicts_with` Edge between them.
 5. ONE CLAIM, ONE NODE. Never emit two Nodes that assert the same thing in \
@@ -91,6 +102,17 @@ JIRA_SYSTEM_PROMPT = _build_system_prompt(
     references="a linked \
 issue key, an epic, or another ticket",
     tool_list="`fetch_linked_issue`, `search_project`",
+)
+
+
+GDOC_SYSTEM_PROMPT = _build_system_prompt(
+    reads="a Google Doc -- a PRD, a design doc, meeting notes or customer interview notes",
+    references="",
+    tool_list="",
+    follow="3. Read only what you are given. This source has no tools: if the text \
+refers to another document, extract only what this text itself says and never \
+guess at the rest. In interview notes, a customer's own words are the strongest \
+provenance there is -- quote them exactly as the excerpt.",
 )
 
 
@@ -141,6 +163,24 @@ def build_jira_seed_prompt(issue: JiraIssue) -> str:
         lines += ["", "Comments:"]
         lines += [f"- [{comment.author or 'unknown'}] {comment.body}" for comment in issue.comments]
     return "\n".join(lines)
+
+
+def build_gdoc_seed_prompt(doc: GoogleDoc) -> str:
+    """The initial user turn for a Google Doc: its whole text, verbatim. The
+    agent can quote only what is here, so nothing is trimmed or reflowed."""
+    return "\n".join(
+        [
+            f"Extract knowledge from this Google Doc ({doc.title}).",
+            f"URL: {doc.url}",
+            # Spelled out because the agent writes each source_ref itself, and
+            # `gdoc` is not a value it could infer from the text.
+            f'Cite it in every source_ref as source_type "gdoc", external_id '
+            f'"{doc.id}", url "{doc.url}".',
+            "",
+            "Document text:",
+            doc.text or "(empty document)",
+        ]
+    )
 
 
 def build_known_nodes_block(

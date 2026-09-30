@@ -73,6 +73,7 @@ from atlas.assembly import (
     changes_to_markdown,
     to_markdown,
 )
+from atlas.config import ApiSettings
 from atlas.feedback import FeedbackReport, feedback_report
 from atlas.models.schema import (
     AtlasModel,
@@ -92,6 +93,7 @@ from atlas.pipeline import (
     MAX_LIMIT,
     Credential,
     GitHubCredential,
+    GoogleDocsCredential,
     JiraCredential,
     RunRequest,
     TargetError,
@@ -179,7 +181,9 @@ class ConnectSourceRequest(AtlasModel):
     source_type: SourceType
     host: NonBlankStr
     scope: NonBlankStr
-    secret: NonBlankStr
+    #: Required for GitHub and Jira. Google Docs takes none: its credential is
+    #: Atlas's own service account, and the PM grants access by sharing docs.
+    secret: str | None = None
     email: str | None = None
 
 
@@ -722,15 +726,45 @@ def _normalize_host(host: str) -> str:
     return host.strip().removeprefix("https://").removeprefix("http://").rstrip("/")
 
 
-def _credential_from(body: ConnectSourceRequest, host: str) -> Credential:
+#: Which target kinds each source's connection may pull.
+_TARGET_KINDS: dict[SourceType, frozenset[RunTargetKind]] = {
+    SourceType.GITHUB_PR: frozenset({RunTargetKind.GITHUB_PR}),
+    SourceType.JIRA_TICKET: frozenset(
+        {RunTargetKind.JIRA_ISSUE, RunTargetKind.JIRA_EPIC, RunTargetKind.JIRA_LABEL}
+    ),
+    SourceType.GDOC: frozenset({RunTargetKind.GDOC}),
+}
+
+
+def _google_credential(settings: ApiSettings) -> GoogleDocsCredential:
+    if settings.google_service_account is None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Google Docs isn't set up on this Atlas yet (ATLAS_GOOGLE_SERVICE_ACCOUNT).",
+        )
+    return GoogleDocsCredential(service_account=settings.google_service_account)
+
+
+def _credential_from(body: ConnectSourceRequest, host: str, settings: ApiSettings) -> Credential:
     """Turn a connect request into the credential its connector expects.
 
-    GitHub authenticates a token; Jira authenticates email + token. Refusing the
+    GitHub authenticates a token; Jira authenticates email + token; Google Docs
+    uses Atlas's own account and takes nothing from the form. Refusing a
     mismatched pairing here means a half-filled connection is a 422 at the door
     rather than a run that fails an hour later with an auth error.
     """
+    if body.source_type is SourceType.GDOC:
+        if body.secret:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "Google Docs takes no token — share the doc with Atlas instead",
+            )
+        return _google_credential(settings)
+    if not (body.secret or "").strip():
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "a token is required")
+    secret = body.secret or ""
     if body.source_type is SourceType.GITHUB_PR:
-        return GitHubCredential(token=body.secret)
+        return GitHubCredential(token=secret)
     if not (body.email or "").strip():
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -740,7 +774,7 @@ def _credential_from(body: ConnectSourceRequest, host: str) -> Credential:
         return JiraCredential(
             base_url=f"https://{host}",
             email=body.email or "",
-            api_token=body.secret,
+            api_token=secret,
         )
     except TargetError as unsupported:
         # An SSRF control, surfaced as a form error: the host becomes the base
@@ -791,7 +825,9 @@ def connect_source(
     host = _normalize_host(body.host)
     if not host:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "host must not be blank")
-    credential = _credential_from(body, host)
+    if body.source_type is SourceType.GDOC:
+        host = "docs.google.com"
+    credential = _credential_from(body, host, settings)
     try:
         access = check_access(credential, scope=body.scope)
     except TargetError as bad:
@@ -810,10 +846,14 @@ def connect_source(
         workspace_id=principal.workspace_id,
         product_id=product_id,
         source_type=body.source_type,
-        account=(body.email or "").strip() or "token",
+        account=(
+            credential.service_account["client_email"]
+            if isinstance(credential, GoogleDocsCredential)
+            else (body.email or "").strip() or "token"
+        ),
         host=host,
         scope=body.scope,
-        secret=body.secret,
+        secret=None if isinstance(credential, GoogleDocsCredential) else body.secret,
         actor=principal.actor,
         actor_kind=principal.actor_kind,
         key=settings.secret_key,
@@ -823,6 +863,21 @@ def connect_source(
         access_label=access.label,
         access_detail=access.detail,
     )
+
+
+class GoogleDocsAccount(AtlasModel):
+    #: The address a PM shares docs with, or `None` if this Atlas has no Google
+    #: account configured. Public by nature -- it is an email -- and nothing
+    #: else about the key is ever returned.
+    account: str | None
+
+
+@router.get("/sources/google-docs", response_model=GoogleDocsAccount)
+def google_docs_account(principal: PrincipalDep, settings: SettingsDep) -> GoogleDocsAccount:
+    """Who to share docs with -- shown before connecting, because sharing is
+    the step that grants access."""
+    info = settings.google_service_account
+    return GoogleDocsAccount(account=info["client_email"] if info else None)
 
 
 @router.delete("/connections/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -904,22 +959,36 @@ def start_ingestion(
     if connection is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"no connection {body.connection_id}")
 
-    try:
-        secret = connections.unseal(connection.secret_ciphertext, settings.secret_key)
-    except SecretError as broken:
-        raise HTTPException(status.HTTP_409_CONFLICT, str(broken)) from None
-    try:
-        credential: Credential = (
-            GitHubCredential(token=secret)
-            if connection.source_type is SourceType.GITHUB_PR
-            else JiraCredential(
-                base_url=f"https://{connection.host}", email=connection.account, api_token=secret
-            )
+    if body.target_kind not in _TARGET_KINDS[connection.source_type]:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"a {connection.source_type.value} connection cannot pull a "
+            f"{body.target_kind.value} target",
         )
-    except TargetError as unsupported:
-        # A row written before the host allowlist existed, or edited underneath
-        # us. Refuse rather than send the credential somewhere unvetted.
-        raise HTTPException(status.HTTP_409_CONFLICT, str(unsupported)) from None
+
+    credential: Credential
+    if connection.source_type is SourceType.GDOC:
+        credential = _google_credential(settings)
+    else:
+        try:
+            secret = connections.unseal(connection.secret_ciphertext or b"", settings.secret_key)
+        except SecretError as broken:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(broken)) from None
+        try:
+            credential = (
+                GitHubCredential(token=secret)
+                if connection.source_type is SourceType.GITHUB_PR
+                else JiraCredential(
+                    base_url=f"https://{connection.host}",
+                    email=connection.account,
+                    api_token=secret,
+                )
+            )
+        except TargetError as unsupported:
+            # A row written before the host allowlist existed, or edited
+            # underneath us. Refuse rather than send the credential somewhere
+            # unvetted.
+            raise HTTPException(status.HTTP_409_CONFLICT, str(unsupported)) from None
 
     # A re-run of an artifact already in this workspace is a **re-sync** into
     # the feature that holds it (Phase 3, 2026-09-28). Ingestion is idempotent
@@ -936,11 +1005,7 @@ def start_ingestion(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(bad)) from None
     feature_scope_id = body.feature_scope_id
     if already is not None:
-        source = (
-            SourceType.GITHUB_PR
-            if body.target_kind is RunTargetKind.GITHUB_PR
-            else SourceType.JIRA_TICKET
-        )
+        source = connection.source_type
         held = load_projection(session, workspace_id=principal.workspace_id).scope_holding(
             source, already
         )

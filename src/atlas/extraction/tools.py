@@ -157,6 +157,11 @@ def _emit_tool() -> SdkMcpTool[Any]:
     return emit_extraction
 
 
+def build_gdoc_extraction_tools() -> list[SdkMcpTool[Any]]:
+    """A doc run reads only the text it is given, so its one tool is emit."""
+    return [_emit_tool()]
+
+
 def build_jira_extraction_tools(client: JiraClient, project_key: str) -> list[SdkMcpTool[Any]]:
     """Read-only Jira fetch tools plus `emit_extraction`, bound to one project.
 

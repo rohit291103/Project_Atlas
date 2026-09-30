@@ -66,6 +66,7 @@ export type ReadinessGap = components["schemas"]["Gap"];
 export type SpecChanges = components["schemas"]["SpecChanges"];
 export type FeedbackReport = components["schemas"]["FeedbackReport"];
 export type Answer = components["schemas"]["Answer"];
+export type GoogleDocsAccount = components["schemas"]["GoogleDocsAccount"];
 export type Tally = components["schemas"]["Tally"];
 
 /** A viewer may read the extracted draft but not rule on it (TRD §9). The UI
@@ -133,12 +134,13 @@ const put = <T,>(path: string, body: unknown) =>
 
 /** What the connect form collects. `secret` only ever travels *outbound* — no
  * response type in this file has a field it could come back in, which is the
- * client-side half of the rule `ConnectionView` enforces on the server. */
+ * client-side half of the rule `ConnectionView` enforces on the server.
+ * Google Docs sends none: its access is granted by sharing, not by a token. */
 export type ConnectSource = {
   source_type: SourceType;
   host: string;
   scope: string;
-  secret: string;
+  secret?: string;
   email?: string;
 };
 
@@ -183,6 +185,8 @@ export const api = {
     return response.text();
   },
 
+  /** The address docs are shared with, or null if Google Docs isn't set up. */
+  googleDocsAccount: () => request<GoogleDocsAccount>("/sources/google-docs"),
   /** Ask about the product; answered from confirmed claims, with citations. */
   ask: (productId: string, question: string) =>
     post<Answer>(`/products/${productId}/ask`, { question }),

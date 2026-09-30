@@ -135,6 +135,7 @@ def test_view_shows_a_fingerprint_and_not_the_credential(session: Session) -> No
 
 def test_create_then_read_back_the_secret(session: Session) -> None:
     connection = _create(session)
+    assert connection.secret_ciphertext is not None
     assert unseal(connection.secret_ciphertext, KEY) == "ghp_supersecrettoken1234"
 
 
@@ -215,3 +216,38 @@ def _event_payloads(session: Session) -> list[dict[str, object]]:
     from atlas.storage.tables import EventLog
 
     return [row.payload for row in session.execute(select(EventLog)).scalars()]
+
+
+# --- Google Docs: the connection with no secret (2026-09-28) --------------------
+
+
+def _gdoc(session: Session, **overrides: object) -> Connection:
+    fields: dict[str, object] = {
+        "source_type": SourceType.GDOC,
+        "account": "atlas-reader@atlas-demo.iam.gserviceaccount.com",
+        "host": "docs.google.com",
+        "scope": "1AbCdEfGhIjKlMnOpQrStUvWxYz0123",
+        "secret": None,
+    }
+    fields.update(overrides)
+    return _create(session, **fields)
+
+
+def test_a_docs_connection_stores_no_secret(session: Session) -> None:
+    """The key is Atlas's own, in the environment; a docs connection records
+    only that this product reads docs shared with that account."""
+    connection = _gdoc(session)
+
+    assert connection.secret_ciphertext is None
+    assert ConnectionView.of(connection).secret_hint == ""
+
+
+def test_a_docs_connection_refuses_a_secret(session: Session) -> None:
+    """A secret handed to a docs connection has nowhere legitimate to go."""
+    with pytest.raises(ValueError, match="no secret"):
+        _gdoc(session, secret="something")
+
+
+def test_github_and_jira_still_require_a_secret(session: Session) -> None:
+    with pytest.raises(ValueError, match="secret"):
+        _create(session, secret=None)

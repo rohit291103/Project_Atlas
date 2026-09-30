@@ -40,6 +40,7 @@ const POLL_MS = 2500;
 const SOURCE_LABEL: Record<string, string> = {
   github_pr: "GitHub",
   jira_ticket: "Jira",
+  gdoc: "Google Docs",
 };
 
 const TARGET_HELP: Record<RunTargetKind, { label: string; placeholder: string; hint: string }> = {
@@ -62,6 +63,11 @@ const TARGET_HELP: Record<RunTargetKind, { label: string; placeholder: string; h
     label: "A label",
     placeholder: "checkout-rewrite",
     hint: "Every issue carrying this label, up to the limit below.",
+  },
+  gdoc: {
+    label: "A doc",
+    placeholder: "https://docs.google.com/document/d/…/edit",
+    hint: "One Google Doc you've shared with Atlas — a PRD, design doc, or interview notes.",
   },
 };
 
@@ -215,7 +221,12 @@ function ConnectionCard({
       </span>
       <span className="card-link__meta">
         <span>{connection.host}</span>
-        <span className="mono-hint">••••{connection.secret_hint}</span>
+        {/* A docs connection holds no secret, so there is nothing to fingerprint. */}
+        {connection.secret_hint ? (
+          <span className="mono-hint">••••{connection.secret_hint}</span>
+        ) : (
+          <span>reads docs shared with {connection.account}</span>
+        )}
         <span>
           {connection.last_used_at
             ? `last used ${new Date(connection.last_used_at).toLocaleDateString()}`
@@ -276,17 +287,31 @@ function ConnectForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isJira = sourceType === "jira_ticket";
+  const isDocs = sourceType === "gdoc";
+  // Who to share with: `undefined` while loading, `null` if this Atlas has no
+  // Google account configured.
+  const [googleAccount, setGoogleAccount] = useState<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    if (!isDocs || googleAccount !== undefined) return;
+    api
+      .googleDocsAccount()
+      .then((result) => setGoogleAccount(result.account ?? null))
+      .catch(() => setGoogleAccount(null));
+  }, [googleAccount, isDocs]);
 
   const submit = useCallback(async () => {
     setBusy(true);
     setError(null);
-    const body: ConnectSource = {
-      source_type: sourceType,
-      host: host.trim(),
-      scope: scope.trim(),
-      secret,
-      ...(isJira ? { email: email.trim() } : {}),
-    };
+    const body: ConnectSource = isDocs
+      ? { source_type: sourceType, host: "docs.google.com", scope: scope.trim() }
+      : {
+          source_type: sourceType,
+          host: host.trim(),
+          scope: scope.trim(),
+          secret,
+          ...(isJira ? { email: email.trim() } : {}),
+        };
     try {
       const created = await api.connectSource(productId, body);
       // Clear the secret from component state the moment it is no longer
@@ -298,7 +323,7 @@ function ConnectForm({
     } finally {
       setBusy(false);
     }
-  }, [email, host, isJira, onConnected, productId, scope, secret, sourceType]);
+  }, [email, host, isDocs, isJira, onConnected, productId, scope, secret, sourceType]);
 
   return (
     <form
@@ -309,7 +334,7 @@ function ConnectForm({
       }}
     >
       <div className="connect__choice">
-        {(["github_pr", "jira_ticket"] as SourceType[]).map((option) => (
+        {(["github_pr", "jira_ticket", "gdoc"] as SourceType[]).map((option) => (
           <button
             key={option}
             type="button"
@@ -317,6 +342,7 @@ function ConnectForm({
             onClick={() => {
               setSourceType(option);
               setHost(option === "github_pr" ? "github.com" : "");
+              setScope("");
             }}
           >
             {SOURCE_LABEL[option]}
@@ -324,6 +350,35 @@ function ConnectForm({
         ))}
       </div>
 
+      {/* Sharing *is* the grant for Google Docs: Atlas can read the docs shared
+          with its address and nothing else, so that address comes first. */}
+      {isDocs && (
+        <>
+          {googleAccount === null ? (
+            <div className="notice notice--error">
+              Google Docs isn't set up on this Atlas yet. Whoever runs it needs to add a Google
+              service account (ATLAS_GOOGLE_SERVICE_ACCOUNT).
+            </div>
+          ) : (
+            <p className="connect__note">
+              Share each doc you want Atlas to read with{" "}
+              <b className="mono-hint">{googleAccount ?? "…"}</b> — Viewer is enough. Atlas reads
+              exactly the docs shared with it and nothing else, and it never writes.
+            </p>
+          )}
+          <label htmlFor="scope">
+            A doc you've shared, to check access
+            <input
+              id="scope"
+              value={scope}
+              placeholder="https://docs.google.com/document/d/…/edit"
+              onChange={(event) => setScope(event.target.value)}
+            />
+          </label>
+        </>
+      )}
+
+      {!isDocs && <>
       <label htmlFor="host">
         {isJira ? "Your Jira site" : "Host"}
         <input
@@ -382,6 +437,7 @@ function ConnectForm({
         )}
         . Whatever you give it, Atlas sees exactly what you already see, and no more.
       </p>
+      </>}
 
       {error && <div className="notice notice--error">{error}</div>}
 
@@ -389,7 +445,11 @@ function ConnectForm({
         <button
           type="submit"
           className="action action--primary"
-          disabled={busy || !host.trim() || !scope.trim() || !secret || (isJira && !email.trim())}
+          disabled={
+            busy ||
+            !scope.trim() ||
+            (isDocs ? !googleAccount : !host.trim() || !secret || (isJira && !email.trim()))
+          }
         >
           {busy ? "Checking access…" : "Connect and check access"}
         </button>
@@ -414,12 +474,17 @@ function RunForm({
 }) {
   const [connectionId, setConnectionId] = useState(connections[0]?.id ?? "");
   const connection = connections.find((candidate) => candidate.id === connectionId);
-  const isJira = connection?.source_type === "jira_ticket";
+  const source = connection?.source_type;
   // Memoised: it is a `useEffect` dependency below, and a fresh array every
   // render would re-run that effect forever.
   const kinds = useMemo<RunTargetKind[]>(
-    () => (isJira ? ["jira_issue", "jira_epic", "jira_label"] : ["github_pr"]),
-    [isJira],
+    () =>
+      source === "jira_ticket"
+        ? ["jira_issue", "jira_epic", "jira_label"]
+        : source === "gdoc"
+          ? ["gdoc"]
+          : ["github_pr"],
+    [source],
   );
   const [kind, setKind] = useState<RunTargetKind>("github_pr");
   const [target, setTarget] = useState("");
@@ -465,8 +530,8 @@ function RunForm({
         <h2>Pull context</h2>
       </div>
       <p className="page-sub">
-        Every pull is deliberate: one pull request, one issue, one epic, one label. Atlas never
-        crawls a repo or a Jira site.
+        Every pull is deliberate: one pull request, one issue, one epic, one label, one doc. Atlas
+        never crawls a repo, a Jira site, or a Drive.
       </p>
 
       <form

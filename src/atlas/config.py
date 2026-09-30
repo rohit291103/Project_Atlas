@@ -1,6 +1,9 @@
+import json
 import os
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
 
 # The single logical workspace every piece of Phase 0 data belongs to.
 #
@@ -93,6 +96,14 @@ class ApiSettings:
     app_passphrase: str
     session_secret: str
     secret_key: str
+    #: Atlas's own Google service account -- **the one deliberate exception** to
+    #: "no ambient source credential" above (2026-09-28, "share with Atlas";
+    #: `docs/decisions/2026-09-28-google-docs-source.md`). Accepted because its
+    #: reach is exactly the docs people have explicitly shared with it, under
+    #: the `documents.readonly` scope -- unlike a GitHub or Jira token, which
+    #: reaches everything its owner can. Optional: unset, Google Docs is simply
+    #: unavailable. `repr=False` keeps the private key out of any log line.
+    google_service_account: dict[str, Any] | None = field(default=None, repr=False)
 
     @classmethod
     def from_env(cls) -> "ApiSettings":
@@ -101,4 +112,23 @@ class ApiSettings:
             app_passphrase=os.environ["ATLAS_APP_PASSPHRASE"],
             session_secret=os.environ["ATLAS_SESSION_SECRET"],
             secret_key=os.environ["ATLAS_SECRET_KEY"],
+            google_service_account=_google_service_account(
+                os.environ.get("ATLAS_GOOGLE_SERVICE_ACCOUNT")
+            ),
         )
+
+
+def _google_service_account(value: str | None) -> dict[str, Any] | None:
+    """The key JSON itself (what a hosting dashboard holds) or a path to it
+    (what a laptop holds). Fails loudly on a malformed value rather than
+    starting with Google Docs silently broken."""
+    if not value or not value.strip():
+        return None
+    raw = value if value.lstrip().startswith("{") else Path(value).read_text()
+    info = json.loads(raw)
+    if not isinstance(info, dict) or not {"client_email", "private_key"} <= info.keys():
+        raise ValueError(
+            "ATLAS_GOOGLE_SERVICE_ACCOUNT is not a service account key "
+            "(expected client_email and private_key)"
+        )
+    return info

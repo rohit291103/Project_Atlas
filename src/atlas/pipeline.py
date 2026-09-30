@@ -38,17 +38,20 @@ import asyncio
 import re
 import uuid
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy.orm import Session, sessionmaker
 
 from atlas.extraction.agent import (
     ExtractionError,
     ExtractionResult,
+    extract_from_gdoc,
     extract_from_jira_issue,
     extract_from_pull_request,
 )
+from atlas.ingestion.gdocs import GoogleDocsClient, GoogleDocsError, parse_doc_id
 from atlas.ingestion.github import GitHubClient, GitHubError
 from atlas.ingestion.jira import JiraClient, JiraError
 from atlas.models.schema import (
@@ -72,6 +75,7 @@ __all__ = [
     "Credential",
     "check_access",
     "GitHubCredential",
+    "GoogleDocsCredential",
     "JiraCredential",
     "RunOutcome",
     "RunRequest",
@@ -167,7 +171,19 @@ class JiraCredential:
             raise UnsupportedHostError("a Jira site must be reached over https")
 
 
-Credential = GitHubCredential | JiraCredential
+@dataclass(frozen=True)
+class GoogleDocsCredential:
+    """Atlas's own Google service account -- the one credential that is the
+    application's rather than a product's ("share with Atlas", 2026-09-28).
+
+    `repr=False` so the private key cannot reach a log line or a traceback by
+    way of an f-string; `_redact` covers the error-message path.
+    """
+
+    service_account: dict[str, Any] = field(repr=False)
+
+
+Credential = GitHubCredential | JiraCredential | GoogleDocsCredential
 
 
 @dataclass(frozen=True)
@@ -225,6 +241,14 @@ def check_access(credential: Credential, *, scope: str) -> AccessSummary:
             label=access.full_name,
             detail=f"{visibility} · {access.open_issues} open issue(s)",
         )
+    if isinstance(credential, GoogleDocsCredential):
+        doc_id = parse_target(RunTargetKind.GDOC, scope)[0]
+        docs = GoogleDocsClient(credential.service_account)
+        try:
+            doc = docs.fetch_document(doc_id)
+        finally:
+            docs.close()
+        return AccessSummary(label=doc.title, detail=f"Shared with {docs.account}")
     client_jira = JiraClient(
         base_url=credential.base_url, email=credential.email, api_token=credential.api_token
     )
@@ -264,6 +288,11 @@ def parse_target(kind: RunTargetKind, target: str) -> tuple[str, ...]:
         if not match:
             raise TargetError(f"{target!r} is not a pull request — expected owner/repo#123")
         return match.group("owner"), match.group("repo"), match.group("number")
+    if kind is RunTargetKind.GDOC:
+        try:
+            return (parse_doc_id(cleaned),)
+        except ValueError as bad:
+            raise TargetError(str(bad)) from None
     if kind in (RunTargetKind.JIRA_ISSUE, RunTargetKind.JIRA_EPIC):
         if not _JIRA_KEY.match(cleaned):
             raise TargetError(
@@ -295,7 +324,7 @@ def artifact_external_id(kind: RunTargetKind, target: str) -> str | None:
     if kind is RunTargetKind.GITHUB_PR:
         owner, repo, number = parts
         return f"{owner}/{repo}#{number}"
-    if kind is RunTargetKind.JIRA_ISSUE:
+    if kind in (RunTargetKind.JIRA_ISSUE, RunTargetKind.GDOC):
         return parts[0]
     return None
 
@@ -483,8 +512,17 @@ def _redact(message: str, credential: Credential) -> str:
     ROLE` password redaction: assume the string might carry it, and make sure it
     does not.
     """
-    secret = credential.token if isinstance(credential, GitHubCredential) else credential.api_token
+    if isinstance(credential, GitHubCredential):
+        secret = credential.token
+    elif isinstance(credential, GoogleDocsCredential):
+        secret = str(credential.service_account.get("private_key", ""))
+    else:
+        secret = credential.api_token
     cleaned = message.replace(secret, "***") if secret else message
+    if "PRIVATE KEY" in cleaned:
+        # Belt and braces: a key reformatted in transit (escaped newlines) would
+        # slip past the exact-match replace above.
+        cleaned = "the Google Docs request failed"
     return cleaned[:_MAX_ERROR] or "ingestion failed"
 
 
@@ -544,11 +582,22 @@ async def execute_run(
             artifacts, nodes, edges, unchanged = await _run_github(
                 session_factory, run_id=run_id, request=request, credential=credential
             )
+        elif isinstance(credential, GoogleDocsCredential):
+            artifacts, nodes, edges, unchanged = await _run_gdoc(
+                session_factory, run_id=run_id, request=request, credential=credential
+            )
         else:
             artifacts, nodes, edges, unchanged = await _run_jira(
                 session_factory, run_id=run_id, request=request, credential=credential
             )
-    except (GitHubError, JiraError, ExtractionError, TargetError, ValueError) as expected:
+    except (
+        GitHubError,
+        JiraError,
+        GoogleDocsError,
+        ExtractionError,
+        TargetError,
+        ValueError,
+    ) as expected:
         return _finish_failed(session_factory, run_id, request, _redact(str(expected), credential))
     except Exception as unexpected:  # noqa: BLE001 - a terminal event is the contract
         # Deliberately broad. Anything at all that gets here would otherwise
@@ -616,6 +665,32 @@ async def _run_github(
             feature_scope_id=request.feature_scope_id,
             known_nodes=_known_nodes(session_factory, request),
             previous_hash=_previous_hash(session_factory, request, f"{owner}/{repo}#{number}"),
+        )
+    finally:
+        client.close()
+    if result.unchanged:
+        return 0, 0, 0, 1
+    written = _write(session_factory, request, run, result, run_id)
+    return 1, len(written.nodes), len(written.edges), 0
+
+
+async def _run_gdoc(
+    session_factory: sessionmaker[Session],
+    *,
+    run_id: uuid.UUID,
+    request: RunRequest,
+    credential: GoogleDocsCredential,
+) -> tuple[int, int, int, int]:
+    (doc_id,) = parse_target(request.target_kind, request.target)
+    client = GoogleDocsClient(credential.service_account)
+    try:
+        run, result = await extract_from_gdoc(
+            client=client,
+            doc_id=doc_id,
+            workspace_id=request.workspace_id,
+            feature_scope_id=request.feature_scope_id,
+            known_nodes=_known_nodes(session_factory, request),
+            previous_hash=_previous_hash(session_factory, request, doc_id),
         )
     finally:
         client.close()

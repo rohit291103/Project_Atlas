@@ -48,8 +48,10 @@ from atlas.extraction import prompts
 from atlas.extraction.tools import (
     EMIT_TOOL,
     build_extraction_tools,
+    build_gdoc_extraction_tools,
     build_jira_extraction_tools,
 )
+from atlas.ingestion.gdocs import GoogleDoc, GoogleDocsClient
 from atlas.ingestion.github import GitHubClient, PullRequest
 from atlas.ingestion.jira import JiraClient, JiraIssue
 from atlas.models.schema import (
@@ -406,6 +408,20 @@ def _make_agent_call(
     )
 
 
+def _make_gdoc_agent_call(
+    *, model: str, max_tool_calls: int, manifest: list[ToolCallRecord] | None = None
+) -> AgentCall:
+    """The same call for a doc: the shared gate, cap and denied built-ins, with
+    emit as the only tool (a doc run reads only the text it is given)."""
+    return _agent_call(
+        tools=build_gdoc_extraction_tools(),
+        system_prompt=prompts.GDOC_SYSTEM_PROMPT,
+        model=model,
+        max_tool_calls=max_tool_calls,
+        manifest=manifest,
+    )
+
+
 def _make_jira_agent_call(
     client: JiraClient,
     project_key: str,
@@ -631,6 +647,63 @@ def _pr_run(
         # number (unique only within one repo) would not identify its source.
         external_id=f"{owner}/{repo}#{pr.number}",
         url=pr.url,
+        tool_calls=manifest,
+        content_hash=digest,
+    )
+
+
+async def extract_from_gdoc(
+    *,
+    client: GoogleDocsClient,
+    doc_id: str,
+    workspace_id: uuid.UUID,
+    feature_scope_id: uuid.UUID,
+    known_nodes: Sequence[Node] = (),
+    previous_hash: str | None = None,
+    model: str = DEFAULT_MODEL,
+    max_tool_calls: int = MAX_TOOL_CALLS,
+) -> tuple[IngestionRunPayload, ExtractionResult]:
+    """End-to-end extraction for one Google Doc (read-only in, validated out).
+
+    Mirrors the Jira path: `known_nodes` make a cross-source `conflicts_with`
+    possible (a PRD contradicting a ticket is exactly the case worth surfacing),
+    and `previous_hash` skips an unchanged doc without a model call. Everything
+    the agent emits passes the same `build_result` gate as every other source.
+    """
+    doc = await asyncio.to_thread(client.fetch_document, doc_id)
+    base_prompt = prompts.build_gdoc_seed_prompt(doc)
+    digest = content_hash(base_prompt)
+    if digest == previous_hash:
+        return _gdoc_run(feature_scope_id, doc, [], digest), ExtractionResult(unchanged=True)
+    seed_prompt = base_prompt + prompts.build_known_nodes_block(
+        (node.id, node.type.value, node.content, node.source_refs[0].source_type)
+        for node in known_nodes
+    )
+    manifest: list[ToolCallRecord] = []
+    result = await run_extraction(
+        seed_prompt=seed_prompt,
+        workspace_id=workspace_id,
+        feature_scope_id=feature_scope_id,
+        agent_call=_make_gdoc_agent_call(
+            model=model, max_tool_calls=max_tool_calls, manifest=manifest
+        ),
+        known_node_ids=[node.id for node in known_nodes],
+    )
+    return _gdoc_run(feature_scope_id, doc, manifest, digest), result
+
+
+def _gdoc_run(
+    feature_scope_id: uuid.UUID,
+    doc: GoogleDoc,
+    manifest: list[ToolCallRecord],
+    digest: str,
+) -> IngestionRunPayload:
+    return IngestionRunPayload(
+        feature_scope_id=feature_scope_id,
+        title=doc.title,
+        source_type=SourceType.GDOC,
+        external_id=doc.id,
+        url=doc.url,
         tool_calls=manifest,
         content_hash=digest,
     )

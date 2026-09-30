@@ -344,6 +344,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/sources/google-docs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Docs Account
+         * @description Who to share docs with -- shown before connecting, because sharing is
+         *     the step that grants access.
+         */
+        get: operations["google_docs_account_sources_google_docs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/connections/{connection_id}": {
         parameters: {
             query?: never;
@@ -602,7 +623,7 @@ export interface components {
             /** Scope */
             scope: string;
             /** Secret */
-            secret: string;
+            secret?: string | null;
             /** Email */
             email?: string | null;
         };
@@ -904,6 +925,11 @@ export interface components {
          * @enum {string}
          */
         GapKind: "no_features" | "unreviewed" | "disagreement" | "no_constraint" | "open_question";
+        /** GoogleDocsAccount */
+        GoogleDocsAccount: {
+            /** Account */
+            account: string | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -1140,7 +1166,7 @@ export interface components {
          *     sending a target the CLI would have refused.
          * @enum {string}
          */
-        RunTargetKind: "github_pr" | "jira_issue" | "jira_epic" | "jira_label";
+        RunTargetKind: "github_pr" | "jira_issue" | "jira_epic" | "jira_label" | "gdoc";
         /**
          * RunView
          * @description One run, as the Sources screen reads it.
@@ -1918,6 +1944,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_docs_account_sources_google_docs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleDocsAccount"];
                 };
             };
         };

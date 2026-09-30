@@ -161,6 +161,8 @@ class RunTargetKind(StrEnum):
     JIRA_ISSUE = "jira_issue"
     JIRA_EPIC = "jira_epic"
     JIRA_LABEL = "jira_label"
+    #: One Google Doc, by URL or id (Phase 3, the third source).
+    GDOC = "gdoc"
 
     @property
     def source_type(self) -> SourceType:

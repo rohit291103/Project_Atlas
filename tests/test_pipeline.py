@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from atlas.extraction.agent import ExtractionError, ExtractionResult
+from atlas.ingestion.gdocs import GoogleDocsError
 from atlas.models.schema import (
     ActorKind,
     CreatedBy,
@@ -32,6 +33,7 @@ from atlas.models.schema import (
 )
 from atlas.pipeline import (
     GitHubCredential,
+    GoogleDocsCredential,
     JiraCredential,
     RunRequest,
     TargetError,
@@ -578,3 +580,99 @@ def test_a_multi_artifact_target_names_no_single_id() -> None:
     names. Re-running one is safe regardless: `reconcile` works per artifact."""
     assert artifact_external_id(RunTargetKind.JIRA_EPIC, "SCRUM-1") is None
     assert artifact_external_id(RunTargetKind.JIRA_LABEL, "checkout") is None
+
+
+# --- Google Docs, the third source (Phase 3) ------------------------------------
+
+DOC_ID = "1AbCdEfGhIjKlMnOpQrStUvWxYz0123"
+SERVICE_ACCOUNT = {
+    "client_email": "atlas-reader@atlas-demo.iam.gserviceaccount.com",
+    "private_key": "-----BEGIN PRIVATE KEY-----\nSECRETKEYMATERIAL\n-----END PRIVATE KEY-----\n",
+}
+
+
+def test_a_doc_target_is_a_docs_url_or_id() -> None:
+    assert parse_target(
+        RunTargetKind.GDOC, f"https://docs.google.com/document/d/{DOC_ID}/edit"
+    ) == (DOC_ID,)
+    assert artifact_external_id(RunTargetKind.GDOC, DOC_ID) == DOC_ID
+    with pytest.raises(TargetError):
+        parse_target(RunTargetKind.GDOC, "https://docs.google.com/spreadsheets/d/x/edit")
+
+
+def test_the_service_account_key_never_appears_in_a_repr() -> None:
+    assert "SECRETKEYMATERIAL" not in repr(GoogleDocsCredential(SERVICE_ACCOUNT))
+
+
+def _stub_gdoc(monkeypatch: pytest.MonkeyPatch, behaviour: Any) -> None:
+    async def fake(**kwargs: Any) -> tuple[IngestionRunPayload, ExtractionResult]:
+        result: tuple[IngestionRunPayload, ExtractionResult] = behaviour(**kwargs)
+        return result
+
+    monkeypatch.setattr("atlas.pipeline.extract_from_gdoc", fake)
+    monkeypatch.setattr("atlas.pipeline.GoogleDocsClient", lambda info: _FakeClient())
+
+
+def _doc_payload() -> IngestionRunPayload:
+    return IngestionRunPayload(
+        feature_scope_id=SCOPE,
+        title="Checkout interviews",
+        source_type=SourceType.GDOC,
+        external_id=DOC_ID,
+        url=f"https://docs.google.com/document/d/{DOC_ID}/edit",
+        content_hash="h1",
+    )
+
+
+def test_a_doc_run_writes_its_run_and_claims(
+    session_factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    doc_node = _node(
+        excerpt="the export is too slow",
+        source_refs=[
+            SourceRef(
+                source_type=SourceType.GDOC,
+                external_id=DOC_ID,
+                url=f"https://docs.google.com/document/d/{DOC_ID}/edit",
+                excerpt="the export is too slow",
+                workspace_id=WORKSPACE,
+            )
+        ],
+    )
+    seen: dict[str, Any] = {}
+
+    def extraction(**kwargs: Any) -> tuple[IngestionRunPayload, ExtractionResult]:
+        seen.update(kwargs)
+        return _doc_payload(), ExtractionResult(nodes=[doc_node])
+
+    _stub_gdoc(monkeypatch, extraction)
+
+    outcome = run_ingestion(
+        session_factory,
+        request=_request(target_kind=RunTargetKind.GDOC, target=DOC_ID),
+        credential=GoogleDocsCredential(SERVICE_ACCOUNT),
+    )
+
+    assert outcome.state is RunState.SUCCEEDED
+    assert (outcome.artifacts, outcome.nodes) == (1, 1)
+    assert seen["doc_id"] == DOC_ID
+    (node,) = _nodes(session_factory)
+    assert node.source_refs[0].source_type is SourceType.GDOC
+
+
+def test_a_doc_failure_never_records_the_private_key(
+    session_factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def boom(**kwargs: Any) -> tuple[IngestionRunPayload, ExtractionResult]:
+        raise GoogleDocsError(500, f"echoed {SERVICE_ACCOUNT['private_key']}")
+
+    _stub_gdoc(monkeypatch, boom)
+
+    outcome = run_ingestion(
+        session_factory,
+        request=_request(target_kind=RunTargetKind.GDOC, target=DOC_ID),
+        credential=GoogleDocsCredential(SERVICE_ACCOUNT),
+    )
+
+    assert outcome.state is RunState.FAILED
+    assert "SECRETKEYMATERIAL" not in (outcome.error or "")

@@ -60,12 +60,21 @@ ACTOR = "Priya (PM)"
 VIEWER = "Sam (observer)"
 
 
+#: A stand-in Google service account. Never used to sign anything in these
+#: tests -- `check_access` and `execute_run` are stubbed -- so the key is inert.
+GOOGLE_ACCOUNT = {
+    "client_email": "atlas-reader@atlas-demo.iam.gserviceaccount.com",
+    "private_key": "-----BEGIN PRIVATE KEY-----\nINERT\n-----END PRIVATE KEY-----\n",
+}
+
+
 def _settings() -> ApiSettings:
     return ApiSettings(
         supabase_db_url="sqlite://",
         app_passphrase=PASSPHRASE,
         session_secret="test-secret-not-a-real-one",
         secret_key=SECRET_KEY,
+        google_service_account=GOOGLE_ACCOUNT,
     )
 
 
@@ -757,6 +766,7 @@ def test_a_stored_credential_is_ciphertext_in_the_row(
 
     with session_scope(seeded) as session:
         stored = session.query(Connection).one()
+    assert stored.secret_ciphertext is not None
     assert SECRET_TOKEN.encode() not in stored.secret_ciphertext
 
 
@@ -1188,10 +1198,21 @@ def test_filing_an_ingested_artifact_under_a_second_feature_is_refused(
 def test_an_epic_is_not_blocked_because_it_names_no_single_artifact(
     client: TestClient, with_product: uuid.UUID, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The guard's known gap, asserted so it is a decision rather than a
-    surprise: an epic expands to many artifacts and the target names none of
-    them, so re-running one still duplicates until Phase 3."""
-    connection_id = _connect(client, with_product, monkeypatch)
+    """An epic expands to many artifacts and the target names none of them, so
+    re-sync routing does not apply; re-running it is still safe because
+    `pipeline.reconcile` works per artifact. Pulled through a *Jira*
+    connection -- a GitHub one is now refused for a Jira target."""
+    _stub_access(monkeypatch)
+    connection_id = client.post(
+        f"/products/{with_product}/connections",
+        json={
+            "source_type": "jira_ticket",
+            "host": "acme.atlassian.net",
+            "scope": "SCRUM",
+            "secret": SECRET_TOKEN,
+            "email": "pm@acme.test",
+        },
+    ).json()["connection"]["id"]
     monkeypatch.setattr("atlas.api.routes.execute_run", lambda *a, **k: None)
 
     response = client.post(
@@ -1568,3 +1589,103 @@ def test_an_answer_that_fails_the_gate_is_a_502(
 
 def test_a_blank_question_is_a_422(signed_in: TestClient, documented: uuid.UUID) -> None:
     assert signed_in.post(f"/products/{documented}/ask", json={"question": ""}).status_code == 422
+
+
+# --- Google Docs, the third source (2026-09-28) ---------------------------------
+
+DOC_URL = "https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123/edit"
+
+
+def test_the_account_to_share_docs_with_is_shown_before_connecting(
+    client: TestClient, with_product: uuid.UUID
+) -> None:
+    """The PM needs the address before they can share anything with it."""
+    response = client.get("/sources/google-docs")
+
+    assert response.json() == {"account": GOOGLE_ACCOUNT["client_email"]}
+    assert "PRIVATE KEY" not in response.text
+
+
+def test_connecting_docs_stores_no_secret_and_names_the_account(
+    client: TestClient, with_product: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _stub_access(monkeypatch)
+
+    response = client.post(
+        f"/products/{with_product}/connections",
+        json={"source_type": "gdoc", "host": "docs.google.com", "scope": DOC_URL},
+    )
+
+    assert response.status_code == 201
+    connection = response.json()["connection"]
+    assert connection["account"] == GOOGLE_ACCOUNT["client_email"]
+    assert connection["host"] == "docs.google.com"
+    assert connection["secret_hint"] == ""
+
+
+def test_docs_cannot_be_connected_when_atlas_has_no_google_account(
+    client: TestClient, with_product: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from dataclasses import replace as dc_replace
+
+    _stub_access(monkeypatch)
+    app = client.app
+    app.dependency_overrides[get_api_settings] = lambda: dc_replace(  # type: ignore[attr-defined]
+        _settings(), google_service_account=None
+    )
+
+    response = client.post(
+        f"/products/{with_product}/connections",
+        json={"source_type": "gdoc", "host": "docs.google.com", "scope": DOC_URL},
+    )
+
+    assert response.status_code == 409
+    assert "Google Docs" in response.json()["detail"]
+    assert client.get("/sources/google-docs").json() == {"account": None}
+
+
+def test_github_still_needs_a_token(client: TestClient, with_product: uuid.UUID) -> None:
+    response = client.post(
+        f"/products/{with_product}/connections",
+        json={"source_type": "github_pr", "host": "github.com", "scope": "acme/gateway"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_a_docs_run_is_handed_atlas_s_own_account(
+    client: TestClient, with_product: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from atlas.pipeline import GoogleDocsCredential
+
+    _stub_access(monkeypatch)
+    connection_id = client.post(
+        f"/products/{with_product}/connections",
+        json={"source_type": "gdoc", "host": "docs.google.com", "scope": DOC_URL},
+    ).json()["connection"]["id"]
+    captured: list[Any] = []
+    monkeypatch.setattr("atlas.api.routes.execute_run", lambda *a, **k: captured.append(k))
+
+    response = client.post(
+        f"/products/{with_product}/runs",
+        json={"connection_id": connection_id, "target_kind": "gdoc", "target": DOC_URL},
+    )
+
+    assert response.status_code == 202
+    (kwargs,) = captured
+    assert isinstance(kwargs["credential"], GoogleDocsCredential)
+
+
+def test_a_target_of_another_source_kind_is_refused(
+    client: TestClient, with_product: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A doc URL on a GitHub connection used to fail deep inside the run; it is
+    a form error."""
+    connection_id = _connect(client, with_product, monkeypatch)
+
+    response = client.post(
+        f"/products/{with_product}/runs",
+        json={"connection_id": connection_id, "target_kind": "gdoc", "target": DOC_URL},
+    )
+
+    assert response.status_code == 422
