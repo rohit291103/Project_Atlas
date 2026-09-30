@@ -846,6 +846,22 @@ test("switching the connect form to Jira asks for the email the token belongs to
   await expect(page.locator("#email")).toBeVisible();
 });
 
+test("connecting Google Docs asks for sharing, never for a token", async ({ page }) => {
+  await signIn(page, EDITOR);
+  await page.locator(".rail__nav-item", { hasText: "Sources" }).click();
+  await page.getByRole("button", { name: "Connect a source" }).click();
+  await page.getByRole("button", { name: "Google Docs", exact: true }).click();
+
+  // Sharing is the grant, so there is no credential field to fill in -- and
+  // the form says who to share with, or that this Atlas has no Google account.
+  await expect(page.locator("#secret")).toHaveCount(0);
+  await expect(page.locator("#host")).toHaveCount(0);
+  await expect(page.locator("#scope")).toBeVisible();
+  await expect(
+    page.locator(".connect").getByText(/Share each doc|isn't set up on this Atlas/),
+  ).toBeVisible();
+});
+
 /* --- the guided tour ---------------------------------------------------------
  *
  * Read-only: the tour navigates and reads, and writes nothing but a localStorage
