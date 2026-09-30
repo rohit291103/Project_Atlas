@@ -1,0 +1,69 @@
+# Q&A golden set (Phase 3 `writing-evals` obligation), written 2026-09-30
+# BEFORE any answer was recorded. Each document is a real recorded extraction
+# from tests/evals/golden_set/, with every claim treated as confirmed in memory
+# -- this grades answering, not curation. Expectations are Tier-1 floors:
+#
+#   expect: answer      >=1 citation, a cited claim contains `keyword`
+#                       (case-insensitive), evidence is not "none"
+#   expect: none        no citation and evidence "none" -- the claims do not
+#                       say, and an answer must not pretend they do
+#   expect: conflict    evidence "conflicting" -- a cited claim is disputed
+
+documents:
+  maxdepth-cross: [pr-111, cross-SCRUM-8] # GitHub + Jira, with real conflicts
+  zsh: [pr-2957]
+  line-width: [pr-723]
+  custom-ignore: [pr-706]
+
+questions:
+  - id: q1
+    document: maxdepth-cross
+    question: Which crate's notion of depth does the max depth feature rely on?
+    expect: answer
+    keyword: walkdir
+  - id: q2
+    document: maxdepth-cross
+    question: What should --maxdepth 0 return?
+    expect: conflict
+  - id: q3
+    document: maxdepth-cross
+    question: What is the largest value --maxdepth accepts?
+    expect: none
+  - id: q4
+    document: maxdepth-cross
+    question: Why is a command line option needed instead of an ignore file?
+    expect: answer
+    keyword: rgignore
+  - id: q5
+    document: zsh
+    question: How can I load ripgrep's zsh completions without saving them to a file?
+    expect: answer
+    keyword: source
+  - id: q6
+    document: zsh
+    question: Is generating the completions every time the shell starts slow?
+    expect: answer
+    keyword: 4ms
+  - id: q7
+    document: zsh
+    question: Does this change also add fish shell completions?
+    expect: none
+  - id: q8
+    document: line-width
+    question: Which padding characters does the line number width option support?
+    expect: answer
+    keyword: pad
+  - id: q9
+    document: line-width
+    question: What happens if the width value starts with a zero?
+    expect: answer
+    keyword: error
+  - id: q10
+    document: custom-ignore
+    question: Which ignore file takes precedence over the others?
+    expect: answer
+    keyword: precedence
+  - id: q11
+    document: custom-ignore
+    question: Which ripgrep release first shipped custom ignore file names?
+    expect: none

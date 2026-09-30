@@ -1,0 +1,224 @@
+{
+ "model": "claude-opus-5",
+ "answers": [
+  {
+   "id": "q1",
+   "answer": "It relies on the walkdir crate's notion of depth for directory traversal [C7].",
+   "evidence": "thin",
+   "citations": [
+    {
+     "label": "C7",
+     "content": "The max depth feature relies on the walkdir crate's notion of depth for directory traversal.",
+     "disputed": false
+    }
+   ]
+  },
+  {
+   "id": "q2",
+   "answer": "The sources disagree and nothing is settled. One source requires that --maxdepth 0 still return matches in files sitting directly inside the current directory [C11], while the other cites GNU find's definition, where -maxdepth 0 applies only to the starting-points themselves [C12]. This ties into a broader unresolved conflict over whether depth is counted from the current working directory [C9] or should be consistent with GNU find [C10].",
+   "evidence": "conflicting",
+   "citations": [
+    {
+     "label": "C11",
+     "content": "--maxdepth 0 must still return matches in files sitting directly inside the current directory.",
+     "disputed": true
+    },
+    {
+     "label": "C12",
+     "content": "GNU find defines maxdepth as descending at most the given non-negative number of levels, with -maxdepth 0 applying only to the starting-points themselves.",
+     "disputed": true
+    },
+    {
+     "label": "C9",
+     "content": "--maxdepth counts levels from the user's current working directory, not from the search starting points passed on the command line.",
+     "disputed": true
+    },
+    {
+     "label": "C10",
+     "content": "The max depth semantics should be consistent with GNU find.",
+     "disputed": true
+    }
+   ]
+  },
+  {
+   "id": "q3",
+   "answer": "The provided claims don't say what the largest value --maxdepth accepts; they cover the option's purpose, semantics disputes, and testing requirements, but not any upper bound on the value.",
+   "evidence": "none",
+   "citations": []
+  },
+  {
+   "id": "q4",
+   "answer": "Because skipping directory traversal today requires an .rgignore file, which isn't convenient to copy from repository to repository [C3]. A command line option was therefore proposed \u2014 an option to skip traversing directories [C2] \u2014 specifically a max depth flag to limit directory traversal depth [C1].",
+   "evidence": "supported",
+   "citations": [
+    {
+     "label": "C1",
+     "content": "Add a max depth command line option to ripgrep to limit directory traversal depth.",
+     "disputed": false
+    },
+    {
+     "label": "C2",
+     "content": "Provide an option to skip traversing directories.",
+     "disputed": false
+    },
+    {
+     "label": "C3",
+     "content": "Skipping traversal of directories currently requires an .rgignore file, which is inconvenient to copy from repository to repository.",
+     "disputed": false
+    }
+   ]
+  },
+  {
+   "id": "q5",
+   "answer": "As of the change in ripgrep PR #2957, you can source them dynamically: `source <(rg --generate complete-zsh)` [C1]. Previously this failed with a zsh error (`_arguments:comparguments:327: can only be called from completion function`), and the only workaround was writing the script to a file in your fpath [C2][C3]. Note that this generate-and-source approach is slower (~4ms per invocation), which is imperceptible alone but can add up, so it's documented in the FAQ with a caveat emptor [C4][C5]. It may require a self-built ripgrep, since the timing of the next release isn't known [C6].",
+   "evidence": "supported",
+   "citations": [
+    {
+     "label": "C1",
+     "content": "Allow zsh completions to be sourced dynamically, so `source <(rg --generate complete-zsh)` works without saving the script to a file first.",
+     "disputed": false
+    },
+    {
+     "label": "C2",
+     "content": "Users cannot source ripgrep's zsh completions directly (e.g. `source <(rg --generate=complete-zsh)`); doing so fails with a zsh error, so the only workaround is writing the script to a file in fpath.",
+     "disputed": false
+    },
+    {
+     "label": "C3",
+     "content": "Before this change, running the source step in the test plan produced an error; afterwards it works as expected.",
+     "disputed": false
+    },
+    {
+     "label": "C4",
+     "content": "The generate-and-source approach is slower (~4ms per invocation); a single lag is imperceptible but accumulates into something noticeable.",
+     "disputed": false
+    },
+    {
+     "label": "C5",
+     "content": "Document the dynamic generate-and-source method in the FAQ, with reworded wording adding a caveat emptor.",
+     "disputed": false
+    },
+    {
+     "label": "C6",
+     "content": "When the next ripgrep release will ship so users can use this feature without a self-built version; the maintainer does not know.",
+     "disputed": false
+    }
+   ]
+  },
+  {
+   "id": "q6",
+   "answer": "Yes, somewhat \u2014 the generate-and-source approach is slower, costing roughly 4ms per invocation; a single 4ms lag is imperceptible, but accumulating around 10 such delays becomes noticeable [C4]. Because of this, the FAQ documents the dynamic method with an added caveat emptor [C5].",
+   "evidence": "thin",
+   "citations": [
+    {
+     "label": "C4",
+     "content": "The generate-and-source approach is slower (~4ms per invocation); a single lag is imperceptible but accumulates into something noticeable.",
+     "disputed": false
+    },
+    {
+     "label": "C5",
+     "content": "Document the dynamic generate-and-source method in the FAQ, with reworded wording adding a caveat emptor.",
+     "disputed": false
+    }
+   ]
+  },
+  {
+   "id": "q7",
+   "answer": "The listed claims don't address fish shell completions \u2014 they only cover zsh dynamic completion sourcing, so I can't say whether fish completions are included.",
+   "evidence": "none",
+   "citations": []
+  },
+  {
+   "id": "q8",
+   "answer": "Only space padding is supported \u2014 the decision was to start with spaces and add more padding support later as needed [C6]. This is because Rust's format! macro can't take a custom padding character as a parameter (only the width), so the padding character has to be hard-coded in the format string [C5]; supporting arbitrary padding characters was the originally explored approach but was rejected [C10]. Relatedly, a width starting with zero must return an error [C2].",
+   "evidence": "thin",
+   "citations": [
+    {
+     "label": "C6",
+     "content": "Start by supporting only space padding, adding more padding support later as needed.",
+     "disputed": false
+    },
+    {
+     "label": "C5",
+     "content": "Rust's format! macro cannot take a custom padding character as a parameter; only the width can be a parameter, so the padding character must be hard-coded in the format string.",
+     "disputed": false
+    },
+    {
+     "label": "C10",
+     "content": "Supporting any arbitrary padding character (via the format! macro), which was the original general approach explored.",
+     "disputed": false
+    },
+    {
+     "label": "C2",
+     "content": "The tool must return an error if the padding width starts with a zero.",
+     "disputed": false
+    }
+   ]
+  },
+  {
+   "id": "q9",
+   "answer": "The tool must return an error if the padding width starts with a zero [C2]. More generally, the width should error if it starts with anything other than 1-9, though that case is already covered in the PR because such input fails to parse as an integer [C3]. One suggested implementation is to check the argument string before converting to usize, store a boolean (arg.starts_with(\"0\")) in the Args struct, pass it to the printer, and use an if condition to pick the format string [C9] \u2014 needed because Rust's format! macro cannot accept a custom padding character as a parameter [C5], and the decision was to start with space padding only [C6].",
+   "evidence": "thin",
+   "citations": [
+    {
+     "label": "C2",
+     "content": "The tool must return an error if the padding width starts with a zero.",
+     "disputed": false
+    },
+    {
+     "label": "C3",
+     "content": "The width should error if it starts with anything other than 1-9; this already holds in the PR because such input fails to parse as an integer.",
+     "disputed": false
+    },
+    {
+     "label": "C9",
+     "content": "Suggested implementation: check the argument string before conversion to usize, set a boolean (arg.starts_with(\"0\")) in the Args struct, pass it to the printer, and use an if condition to determine the format string.",
+     "disputed": false
+    },
+    {
+     "label": "C5",
+     "content": "Rust's format! macro cannot take a custom padding character as a parameter; only the width can be a parameter, so the padding character must be hard-coded in the format string.",
+     "disputed": false
+    },
+    {
+     "label": "C6",
+     "content": "Start by supporting only space padding, adding more padding support later as needed.",
+     "disputed": false
+    }
+   ]
+  },
+  {
+   "id": "q10",
+   "answer": "The sources disagree on this point and it is not settled: one statement says a custom ignore file has higher precedence than `.ignore` (with earlier custom ignore files ranking lower than later ones) [C8], while the PR description states that `.ignore` is always respected and has the highest precedence [C9]. Related context: the suggested design was to add an extra layer of custom, application-specific ignore files with higher precedence than `.ignore` [C5], and the author initially assumed `.ignore` had the highest precedence [C2].",
+   "evidence": "conflicting",
+   "citations": [
+    {
+     "label": "C8",
+     "content": "In the implemented behavior a custom ignore file has higher precedence than `.ignore`, and earlier custom ignore files have lower precedence than later ones.",
+     "disputed": true
+    },
+    {
+     "label": "C9",
+     "content": "`.ignore` is always respected and (per the PR description) has the highest precedence.",
+     "disputed": true
+    },
+    {
+     "label": "C5",
+     "content": "Solve the problem by adding an additional layer of ignore files that has higher precedence than `.ignore` but uses a custom, application-specific name (BurntSushi's suggested approach).",
+     "disputed": false
+    },
+    {
+     "label": "C2",
+     "content": "The author initially assumed `.ignore` would have the highest precedence, and recognized that merely correcting the order would not solve the hierarchy issues.",
+     "disputed": false
+    }
+   ]
+  },
+  {
+   "id": "q11",
+   "answer": "The provided claims don't say which ripgrep release first included custom ignore file names \u2014 they cover the feature's goal, design, and precedence behavior, but no version or release information.",
+   "evidence": "none",
+   "citations": []
+  }
+ ]
+}
