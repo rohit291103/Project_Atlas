@@ -1,0 +1,20 @@
+# Minimal Tier-1 expectations for BurntSushi/ripgrep#2957 ("feat(completion):
+# support sourcing zsh completion dynamically"). A conservative FLOOR, not full
+# expected output. Added 2026-09-30 as the fifth feature for the Phase 2B proof.
+# Authored from the PR body, the maintainer's comment and issue #2956 -- the
+# floor asks only for what the source states outright.
+pr: 2957
+source: BurntSushi/ripgrep#2957
+
+required_node_types: # >=1 node of each type must be present
+  - goal # PR body: "you can dynamically source completions in zsh"
+  - decision # maintainer: kept it in the FAQ, with a caveat emptor
+
+must_mention: # >=1 node whose content contains each (case-insensitive substring)
+  - zsh
+
+notes: |
+  Small, real feature with one explicit maintainer decision (document the
+  generate-and-source method, but with a performance caveat) -- the kind of
+  judgment a spec can carry and a raw PR thread buries. Linked issue #2956 is
+  recorded in raw.json.

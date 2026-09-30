@@ -17,6 +17,7 @@ import pytest
 from scripts.proof import (
     Grade,
     LockError,
+    Packet,
     ProofFeature,
     Rubric,
     blind,
@@ -224,3 +225,121 @@ def test_the_result_serializes_for_the_write_up() -> None:
     result = score(RUBRIC, packets, key, _grades(key, 4, 2))
 
     assert json.loads(result.model_dump_json())["n"] == 5
+
+
+# --- curation, spec building, judging, and the agent's file gate (2026-09-30) ----
+
+import asyncio  # noqa: E402
+import uuid  # noqa: E402
+
+from atlas.models.schema import Node, NodeType, SourceRef, SourceType  # noqa: E402
+from scripts.proof import (  # noqa: E402
+    Curation,
+    build_spec,
+    curate,
+    judge,
+    workdir_gate,
+)
+
+
+def _claim(content: str, node_type: NodeType = NodeType.GOAL) -> Node:
+    return Node(
+        type=node_type,
+        content=content,
+        confidence_score=0.9,
+        source_refs=[
+            SourceRef(
+                source_type=SourceType.GITHUB_PR,
+                external_id="BurntSushi/ripgrep#2957",
+                url="https://github.com/BurntSushi/ripgrep/pull/2957",
+                excerpt=content.lower(),
+                workspace_id=uuid.UUID(int=0),
+            )
+        ],
+        workspace_id=uuid.UUID(int=0),
+        feature_scope_id=uuid.uuid4(),
+    )
+
+
+def _reply(payload: object):  # type: ignore[no-untyped-def]
+    seen: list[str] = []
+
+    async def call(prompt: str) -> str:
+        seen.append(prompt)
+        return json.dumps(payload)
+
+    return call, seen
+
+
+def test_curation_must_account_for_every_claim_once() -> None:
+    keep, drop = _claim("Support dynamic zsh sourcing"), _claim("Next release date unknown")
+    call, seen = _reply(
+        {"keep": [str(keep.id)], "reject": [{"id": str(drop.id), "reason": "off-topic"}]}
+    )
+
+    curation = asyncio.run(curate(_feature(), [keep, drop], call))
+
+    assert curation.kept == (keep.id,)
+    assert curation.rejected == ((drop.id, "off-topic"),)
+    # The curator sees what the control sees -- never the commits.
+    assert "SECRET ANSWER" not in seen[0]
+
+
+def test_curation_that_invents_or_omits_a_claim_is_refused() -> None:
+    real = _claim("Support dynamic zsh sourcing")
+    invented, _ = _reply({"keep": [str(uuid.uuid4())], "reject": []})
+    omitted, _ = _reply({"keep": [], "reject": []})
+
+    with pytest.raises(ValueError, match="not a claim"):
+        asyncio.run(curate(_feature(), [real], invented))
+    with pytest.raises(ValueError, match="unaccounted"):
+        asyncio.run(curate(_feature(), [real], omitted))
+
+
+def test_the_spec_holds_only_kept_claims_and_its_readiness_block() -> None:
+    keep = _claim("Support dynamic zsh sourcing")
+    drop = _claim("Next release date unknown", NodeType.OPEN_QUESTION)
+
+    spec = build_spec(
+        "rg-2957",
+        "zsh completion",
+        [keep, drop],
+        [],
+        Curation(kept=(keep.id,), rejected=((drop.id, "x"),)),
+    )
+
+    assert "Support dynamic zsh sourcing" in spec
+    assert "Next release date unknown" not in spec
+    assert "Readiness:" in spec
+    # Provenance travels into the spec exactly as in a real export.
+    assert "https://github.com/BurntSushi/ripgrep/pull/2957" in spec
+
+
+def test_the_judge_is_blind_and_its_scores_are_range_checked() -> None:
+    packet = Packet(id="abc123", feature="rg-2957", output="diff --git a/x b/x")
+    call, seen = _reply({"scores": {"correct": 3, "scope": 2}, "rationale": "close"})
+
+    grade = asyncio.run(judge(packet, "diff --git merged", RUBRIC, call))
+
+    assert grade.packet_id == "abc123"
+    assert grade.scores == {"correct": 3, "scope": 2}
+    assert "control" not in seen[0].lower() and "treatment" not in seen[0].lower()
+    assert "diff --git merged" in seen[0] and "diff --git a/x b/x" in seen[0]
+
+    bad, _ = _reply({"scores": {"correct": 9, "scope": 2}, "rationale": ""})
+    with pytest.raises(ValueError, match="outside"):
+        asyncio.run(judge(packet, "m", RUBRIC, bad))
+
+
+def test_the_coding_agent_may_only_touch_files_inside_its_checkout(tmp_path: Path) -> None:
+    gate = workdir_gate(tmp_path)
+
+    async def decide(tool: str, args: dict[str, object]) -> str:
+        return str((await gate(tool, args, None)).behavior)
+
+    inside = str(tmp_path / "src" / "main.rs")
+    assert asyncio.run(decide("Edit", {"file_path": inside})) == "allow"
+    assert asyncio.run(decide("Grep", {"pattern": "x", "path": str(tmp_path)})) == "allow"
+    assert asyncio.run(decide("Write", {"file_path": "/etc/passwd"})) == "deny"
+    assert asyncio.run(decide("Read", {"file_path": str(tmp_path / ".." / "x")})) == "deny"
+    assert asyncio.run(decide("Bash", {"command": "ls"})) == "deny"

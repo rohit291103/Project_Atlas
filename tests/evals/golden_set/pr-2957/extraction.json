@@ -1,0 +1,201 @@
+{
+ "nodes": [
+  {
+   "id": "aefb8ef4-d37d-4586-aadb-dcd8877b7c21",
+   "type": "problem",
+   "content": "Users cannot source ripgrep's zsh completions directly (e.g. `source <(rg --generate=complete-zsh)`); doing so fails with a zsh error, so the only workaround is writing the script to a file in fpath.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "a4f4f722-13e6-468b-bd1c-5a7da7ed3cc7",
+     "source_type": "github_issue",
+     "external_id": "2956",
+     "url": "https://github.com/BurntSushi/ripgrep/issues/2956",
+     "excerpt": "However, this doesn't work for ripgrep.",
+     "fetched_at": "2026-09-30T18:07:05.700975Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+     "id": "5287695b-d79c-4671-8a70-6b1b2f21f882",
+     "source_type": "github_issue",
+     "external_id": "2956",
+     "url": "https://github.com/BurntSushi/ripgrep/issues/2956",
+     "excerpt": "_arguments:comparguments:327: can only be called from completion function",
+     "fetched_at": "2026-09-30T18:07:05.701595Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-09-30T18:07:05.701622Z",
+   "updated_at": "2026-09-30T18:07:05.701623Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "88e272cb-ed49-4621-a6e7-c699e75649ac"
+  },
+  {
+   "id": "a45238f8-ec06-4786-b6d8-a3884c041e65",
+   "type": "goal",
+   "content": "Allow zsh completions to be sourced dynamically, so `source <(rg --generate complete-zsh)` works without saving the script to a file first.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "1db7894a-598f-4247-9632-e91b01243c45",
+     "source_type": "github_pr",
+     "external_id": "2957",
+     "url": "https://github.com/BurntSushi/ripgrep/pull/2957",
+     "excerpt": "Now, you can dynamically source completions in zsh by running",
+     "fetched_at": "2026-09-30T18:07:05.701660Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-09-30T18:07:05.701668Z",
+   "updated_at": "2026-09-30T18:07:05.701668Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "88e272cb-ed49-4621-a6e7-c699e75649ac"
+  },
+  {
+   "id": "77dc8de7-bd9b-401b-abc6-40c29bc85d4a",
+   "type": "evidence",
+   "content": "Before this change, running the source step in the test plan produced an error; afterwards it works as expected.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "09bc96d2-2317-42ab-bcc9-6ea5cf3d6804",
+     "source_type": "github_pr",
+     "external_id": "2957",
+     "url": "https://github.com/BurntSushi/ripgrep/pull/2957",
+     "excerpt": "Before this commit, you would get an error after step 1.",
+     "fetched_at": "2026-09-30T18:07:05.701677Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-09-30T18:07:05.701683Z",
+   "updated_at": "2026-09-30T18:07:05.701684Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "88e272cb-ed49-4621-a6e7-c699e75649ac"
+  },
+  {
+   "id": "60e93f5a-d29a-4f4c-b6c4-139160a59408",
+   "type": "decision",
+   "content": "Document the dynamic generate-and-source method in the FAQ, with reworded wording adding a caveat emptor.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "bec0f7ef-3071-4d92-b77e-e47ec79334dd",
+     "source_type": "github_pr",
+     "external_id": "2957",
+     "url": "https://github.com/BurntSushi/ripgrep/pull/2957",
+     "excerpt": "I've left it in the FAQ and fixed up the wording by adding an appropriate caveat emptor.",
+     "fetched_at": "2026-09-30T18:07:05.701690Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-09-30T18:07:05.701696Z",
+   "updated_at": "2026-09-30T18:07:05.701697Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "88e272cb-ed49-4621-a6e7-c699e75649ac"
+  },
+  {
+   "id": "2317168b-d5f2-4ade-8ef1-009bea7f595e",
+   "type": "evidence",
+   "content": "The generate-and-source approach is slower (~4ms per invocation); a single lag is imperceptible but accumulates into something noticeable.",
+   "confidence_score": 0.6,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "1aff99a9-bc15-4329-ae78-c6b6611eee3a",
+     "source_type": "github_pr",
+     "external_id": "2957",
+     "url": "https://github.com/BurntSushi/ripgrep/pull/2957",
+     "excerpt": "the text now makes it clear that the \"generate and source\" approach is slower",
+     "fetched_at": "2026-09-30T18:07:05.701703Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+     "id": "d1dcc913-7dbf-43d5-a1ef-0c8d67f2605d",
+     "source_type": "github_pr",
+     "external_id": "2957",
+     "url": "https://github.com/BurntSushi/ripgrep/pull/2957",
+     "excerpt": "4ms might not seem like much, and indeed, I cannot perceive a 4ms lag, but if you accrue 10 of those kinds of things, it starts to pile up into something that is noticeable.",
+     "fetched_at": "2026-09-30T18:07:05.701708Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-09-30T18:07:05.701714Z",
+   "updated_at": "2026-09-30T18:07:05.701714Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "88e272cb-ed49-4621-a6e7-c699e75649ac"
+  },
+  {
+   "id": "25ae9157-886c-4ed7-b22e-4ebdc49b25ce",
+   "type": "open_question",
+   "content": "When the next ripgrep release will ship so users can use this feature without a self-built version; the maintainer does not know.",
+   "confidence_score": 0.6,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "f5601d28-9de0-4839-acaa-5b3c6dd7cf03",
+     "source_type": "github_pr",
+     "external_id": "2957",
+     "url": "https://github.com/BurntSushi/ripgrep/pull/2957",
+     "excerpt": "jooc when will the next release be so others can use it?",
+     "fetched_at": "2026-09-30T18:07:05.701720Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+     "id": "2f770a1b-06a5-4460-9d6c-b724da5b201a",
+     "source_type": "github_pr",
+     "external_id": "2957",
+     "url": "https://github.com/BurntSushi/ripgrep/pull/2957",
+     "excerpt": "I don't know, sorry.",
+     "fetched_at": "2026-09-30T18:07:05.701726Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-09-30T18:07:05.701731Z",
+   "updated_at": "2026-09-30T18:07:05.701731Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "88e272cb-ed49-4621-a6e7-c699e75649ac"
+  }
+ ],
+ "edges": [
+  {
+   "id": "90bf4021-4af4-410a-b391-4b0d0ef57778",
+   "from_node_id": "a45238f8-ec06-4786-b6d8-a3884c041e65",
+   "to_node_id": "aefb8ef4-d37d-4586-aadb-dcd8877b7c21",
+   "relation_type": "derives_from",
+   "confidence_score": 0.9,
+   "created_at": "2026-09-30T18:07:05.701765Z"
+  },
+  {
+   "id": "19db8e01-603b-4fc8-82bd-0e2f9297d249",
+   "from_node_id": "77dc8de7-bd9b-401b-abc6-40c29bc85d4a",
+   "to_node_id": "aefb8ef4-d37d-4586-aadb-dcd8877b7c21",
+   "relation_type": "supports",
+   "confidence_score": 0.9,
+   "created_at": "2026-09-30T18:07:05.701792Z"
+  },
+  {
+   "id": "392e769f-fa02-4328-b64b-5943e3604e2b",
+   "from_node_id": "2317168b-d5f2-4ade-8ef1-009bea7f595e",
+   "to_node_id": "60e93f5a-d29a-4f4c-b6c4-139160a59408",
+   "relation_type": "supports",
+   "confidence_score": 0.6,
+   "created_at": "2026-09-30T18:07:05.701798Z"
+  }
+ ]
+}

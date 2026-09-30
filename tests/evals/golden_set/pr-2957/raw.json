@@ -1,0 +1,49 @@
+{
+ "commits": [],
+ "linked_issues": [
+  {
+   "author": "vegerot",
+   "body": "#### Describe your feature request\r\n\r\nThe way I load many completions is by sourcing them in my `.zshrc`, for example\r\n\r\n```zsh\r\n  if type fzf > /dev/null; then\r\n\t  source <(fzf --zsh)\r\n  fi\r\n\r\n  if type gh > /dev/null; then\r\n\tsource <(TCELL_MINIMIZE=1 gh completion -s zsh)\r\n  fi\r\n\r\n  if type fd > /dev/null; then\r\n\t  source <(fd --gen-completions)\r\n  fi\r\n```\r\n\r\nHowever, this doesn't work for ripgrep.  If I run `rg --generate=complete-zsh`, I get\r\n\r\n```zsh\r\n$ source <(rg --generate=complete-zsh)\r\n\r\n_arguments:comparguments:327: can only be called from completion function\r\n```\r\n\r\nAs a workaround, I can put `rg --generate=complete-zsh > /somewhere/in/fpath/_rg` and it works, but I'm hoping to avoid that\r\n\r\n",
+   "created_at": "2024-12-30T23:08:15+00:00",
+   "number": 2956,
+   "state": "closed",
+   "title": "Can't source zsh completions directly",
+   "url": "https://github.com/BurntSushi/ripgrep/issues/2956"
+  }
+ ],
+ "pr_number": 2957,
+ "pull_request": {
+  "author": "vegerot",
+  "body": "Summary:\r\nPreviously, you needed to save the completion script to a file and then\r\nsource it.  Now, you can dynamically source completions in zsh by\r\nrunning\r\n\r\n```zsh\r\n$ source <(rg --generate complete-zsh)\r\n```\r\n\r\nTest plan:\r\n1. Run `source <(rg --generate complete-zsh)`\r\n2. Run `rg --generate=complete-zs<TAB>`\r\n\r\nBefore this commit, you would get an error after step 1.\r\nAfter this commit, it should work as expected.\r\n\r\nCloses #2956\r\n",
+  "comments": [
+   {
+    "author": "BurntSushi",
+    "body": "I've left it in the FAQ and fixed up the wording by adding an appropriate caveat emptor. I guess since other projects have found it useful to suggest this method it's probably not too big of a deal for ripgrep to do it too. But the text now makes it clear that the \"generate and source\" approach is slower. 4ms might not seem like much, and indeed, I cannot perceive a 4ms lag, but if you accrue 10 of those kinds of things, it starts to pile up into something that is noticeable.",
+    "created_at": "2024-12-31T13:11:11+00:00",
+    "id": 2566444587,
+    "url": "https://github.com/BurntSushi/ripgrep/pull/2957#issuecomment-2566444587"
+   },
+   {
+    "author": "vegerot",
+    "body": "@BurntSushi I'm using a self-built version now, but jooc when will the next release be so others can use it?",
+    "created_at": "2025-01-03T04:01:31+00:00",
+    "id": 2568665780,
+    "url": "https://github.com/BurntSushi/ripgrep/pull/2957#issuecomment-2568665780"
+   },
+   {
+    "author": "BurntSushi",
+    "body": "I don't know, sorry. See: https://github.com/BurntSushi/ripgrep/blob/master/FAQ.md#when-is-the-next-release",
+    "created_at": "2025-01-03T04:29:43+00:00",
+    "id": 2568680061,
+    "url": "https://github.com/BurntSushi/ripgrep/pull/2957#issuecomment-2568680061"
+   }
+  ],
+  "created_at": "2024-12-30T23:36:56+00:00",
+  "merged_at": "2024-12-31T13:23:13+00:00",
+  "number": "2957",
+  "state": "closed",
+  "title": "feat(completion): support sourcing zsh completion dynamically",
+  "url": "https://github.com/BurntSushi/ripgrep/pull/2957"
+ },
+ "repo": "BurntSushi/ripgrep"
+}

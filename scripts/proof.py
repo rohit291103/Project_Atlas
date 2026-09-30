@@ -29,11 +29,24 @@ import hashlib
 import json
 import math
 import random
+import re
+import uuid
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
+
+from atlas.assembly import assemble, to_markdown
+from atlas.models.schema import (
+    Edge,
+    IngestionRunPayload,
+    Node,
+    NodeStatus,
+    SourceType,
+)
+from atlas.storage.projections import FeatureScope, Product, Projection
 
 CONDITIONS = ("control", "treatment")
 
@@ -291,6 +304,195 @@ def _total(rubric: Rubric, grade: Grade) -> int:
     return total
 
 
+# --- curation: the automated stand-in for a human review (2026-09-30) -----------
+#
+# The product's spec is built from *human-confirmed* claims. For this run the
+# user delegated that review, and recording an automated choice as a human
+# ruling in Atlas's log is the one thing `actor_kind` exists to prevent -- so
+# curation happens here, in memory, and the pre-registration states it: the
+# treatment is "an Atlas spec curated by Claude". The curator sees exactly what
+# the control agent sees (never the commits), so knowledge of what was built
+# cannot leak into the spec.
+
+CURATOR_PROMPT = """\
+You are reviewing claims that were automatically extracted from a GitHub pull
+request thread, as the reviewer of a product spec would. For each claim decide:
+KEEP it if the source text below supports it and it would help an engineer
+build this feature correctly; REJECT it if it is unsupported, speculative, a
+duplicate of another claim, or irrelevant to building the feature (for example
+release timing or thanks). Judge only from the source text given -- you are not
+told how the feature was eventually built.
+
+Reply with one JSON object and nothing else:
+{"keep": ["<claim id>", ...], "reject": [{"id": "<claim id>", "reason": "<short>"}, ...]}
+Every claim id must appear exactly once, in keep or in reject.
+"""
+
+
+class Curation(BaseModel):
+    kept: tuple[uuid.UUID, ...]
+    rejected: tuple[tuple[uuid.UUID, str], ...]
+
+
+TextCall = Callable[[str], Awaitable[str]]
+
+
+def _json_reply(text: str) -> Any:
+    body = text.strip()
+    fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", body, re.DOTALL)
+    return json.loads(fenced.group(1) if fenced else body)
+
+
+async def curate(feature: ProofFeature, nodes: list[Node], call: TextCall) -> Curation:
+    listing = "\n".join(f"- id {node.id} ({node.type.value}): {node.content}" for node in nodes)
+    reply = _json_reply(
+        await call(
+            f"{CURATOR_PROMPT}\n# Source\n\n{_artifact_text(feature.raw)}\n# Claims\n\n{listing}\n"
+        )
+    )
+    known = {node.id for node in nodes}
+    kept = [uuid.UUID(str(value)) for value in reply.get("keep", [])]
+    rejected = [
+        (uuid.UUID(str(item["id"])), str(item.get("reason", "")))
+        for item in reply.get("reject", [])
+    ]
+    named = kept + [node_id for node_id, _ in rejected]
+    strangers = [node_id for node_id in named if node_id not in known]
+    if strangers:
+        raise ValueError(f"curation named {strangers[0]}, which is not a claim of {feature.name}")
+    if len(named) != len(set(named)) or set(named) != known:
+        raise ValueError(f"curation left claims unaccounted for or named twice in {feature.name}")
+    return Curation(kept=tuple(kept), rejected=tuple(rejected))
+
+
+def build_spec(
+    name: str, title: str, nodes: list[Node], edges: list[Edge], curation: Curation
+) -> str:
+    """The treatment: the product's own assembly and Markdown export, run over
+    the curated claims -- kept ones marked confirmed, rejected ones rejected --
+    in memory only. Nothing is written to Atlas's log."""
+    product_id, scope_id = uuid.uuid5(uuid.NAMESPACE_URL, name), uuid.uuid4()
+    kept, rejected = set(curation.kept), {node_id for node_id, _ in curation.rejected}
+    status = {
+        **dict.fromkeys(kept, NodeStatus.CONFIRMED),
+        **dict.fromkeys(rejected, NodeStatus.REJECTED),
+    }
+    ruled = [
+        node.model_copy(
+            update={
+                "status": status.get(node.id, NodeStatus.UNCONFIRMED),
+                "feature_scope_id": scope_id,
+            }
+        )
+        for node in nodes
+    ]
+    first = nodes[0].source_refs[0] if nodes else None
+    scope = FeatureScope(
+        id=scope_id,
+        title=title,
+        runs=(
+            IngestionRunPayload(
+                feature_scope_id=scope_id,
+                title=title,
+                source_type=first.source_type if first else SourceType.GITHUB_PR,
+                external_id=first.external_id if first else name,
+                url=first.url if first else "https://github.com",
+                product_id=product_id,
+            ),
+        ),
+        product_id=product_id,
+        description=None,
+    )
+    projection = Projection(
+        nodes={node.id: node for node in ruled},
+        edges={edge.id: edge for edge in edges},
+        feature_scopes={scope_id: scope},
+        products={product_id: Product(id=product_id, name=title, description=None)},
+    )
+    return to_markdown(assemble(projection, product_id))
+
+
+# --- judging --------------------------------------------------------------------
+
+JUDGE_PROMPT = """\
+You are grading a code change produced by a coding agent, against the change
+that was actually merged for the same feature. You are not told how the agent
+was instructed. Score each criterion on its integer scale, judging only the
+candidate diff against the merged diff.
+
+Reply with one JSON object and nothing else:
+{"scores": {"<criterion id>": <int>, ...}, "rationale": "<two or three sentences>"}
+"""
+
+
+async def judge(packet: Packet, merged_diff: str, rubric: Rubric, call: TextCall) -> Grade:
+    criteria = "\n".join(f"- {c.id} ({c.min}..{c.max}): {c.question}" for c in rubric.criteria)
+    reply = _json_reply(
+        await call(
+            f"{JUDGE_PROMPT}\n# Criteria\n\n{criteria}\n\n# Merged diff\n\n{merged_diff}\n\n"
+            f"# Candidate diff\n\n{packet.output or '(the agent changed nothing)'}\n"
+        )
+    )
+    grade = Grade(packet_id=packet.id, scores={k: int(v) for k, v in reply["scores"].items()})
+    _total(rubric, grade)  # raises on a missing criterion or an out-of-range score
+    return grade
+
+
+# --- the coding agent's file gate -------------------------------------------------
+
+_FILE_TOOLS = {"Read": "file_path", "Edit": "file_path", "Write": "file_path"}
+_SEARCH_TOOLS = {"Glob", "Grep"}
+
+
+def workdir_gate(workdir: Path) -> Callable[[str, dict[str, Any], Any], Awaitable[Any]]:
+    """`can_use_tool` for the coding agent: file tools only, and only inside its
+    own scratch worktree. `acceptEdits` alone would let an edit land anywhere
+    the process can write; this makes the checkout the whole world."""
+    from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
+
+    root = workdir.resolve()
+
+    def inside(value: object) -> bool:
+        if not isinstance(value, str) or not value:
+            return False
+        target = Path(value) if Path(value).is_absolute() else root / value
+        return target.resolve().is_relative_to(root)
+
+    async def gate(tool: str, args: dict[str, Any], context: Any) -> Any:
+        if tool in _FILE_TOOLS and inside(args.get(_FILE_TOOLS[tool])):
+            return PermissionResultAllow()
+        if tool in _SEARCH_TOOLS and inside(args.get("path", str(root))):
+            return PermissionResultAllow()
+        return PermissionResultDeny(message=f"{tool} is not allowed outside {root}")
+
+    return gate
+
+
+def text_call(system_prompt: str, model: str) -> TextCall:
+    """One no-tool turn: the curator and the judge. Every tool is denied by a
+    gate, with the prompt streamed so the gate is actually consulted."""
+    from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, TextBlock, query
+
+    from atlas.qa import _deny_all, _stream
+
+    options = ClaudeAgentOptions(
+        model=model,
+        system_prompt=system_prompt,
+        can_use_tool=_deny_all,
+        setting_sources=[],
+        max_turns=1,
+    )
+
+    async def call(prompt: str) -> str:
+        text = ""
+        async for message in query(prompt=_stream(prompt), options=options):
+            if isinstance(message, AssistantMessage):
+                text = "".join(b.text for b in message.content if isinstance(b, TextBlock)) or text
+        return text
+
+    return call
+
+
 # --- running and the command line ----------------------------------------------
 #
 # Everything below touches the filesystem, git, or a model, and is exercised by
@@ -355,17 +557,28 @@ async def run_agent(prompt: str, repo: Path, base_sha: str, workdir: Path, model
         capture_output=True,
     )
     try:
+        from atlas.qa import _stream
+
         options = ClaudeAgentOptions(
             model=model,
             cwd=str(workdir),
-            permission_mode="acceptEdits",
-            allowed_tools=["Read", "Glob", "Grep", "Edit", "Write"],
+            # The gate is the authority: file tools only, only inside this
+            # worktree. No `allowed_tools` -- pre-approval would bypass it.
+            can_use_tool=workdir_gate(workdir),
+            disallowed_tools=["Bash", "WebFetch", "WebSearch", "Task", "NotebookEdit"],
+            setting_sources=[],
             max_turns=40,
         )
-        async for _ in query(prompt=prompt, options=options):
+        async for _ in query(prompt=_stream(prompt), options=options):
             pass
+        # Stage first: a plain `git diff` omits files the agent created, which
+        # would silently drop part of its answer.
+        subprocess.run(["git", "-C", str(workdir), "add", "-A"], check=True, capture_output=True)
         diff = subprocess.run(
-            ["git", "-C", str(workdir), "diff"], check=True, capture_output=True, text=True
+            ["git", "-C", str(workdir), "diff", "--cached"],
+            check=True,
+            capture_output=True,
+            text=True,
         )
         return diff.stdout
     finally:
@@ -392,6 +605,54 @@ def run(root: Path, repo: Path, model: str) -> None:
                     run_agent(prompt, repo, entry.base_sha, Path(scratch) / "wt", model)
                 )
             target.write_text(diff)
+
+
+def curate_all(root: Path, model: str) -> None:
+    """Curate each feature's recorded claims and write its treatment spec.
+    After `lock`: the curator prompt is part of what was pre-registered."""
+    import asyncio
+
+    verify_lock(root / "preregistration.md", root / "lock.json")
+    call = text_call(CURATOR_PROMPT, model)
+    (root / "curation").mkdir(exist_ok=True)
+    (root / "specs").mkdir(exist_ok=True)
+    for entry in _manifest(root):
+        target = root / "specs" / f"{entry.name}.md"
+        if target.exists():
+            continue  # resumable
+        raw = json.loads((GOLDEN / entry.fixture / "raw.json").read_text())
+        extraction = json.loads((GOLDEN / entry.fixture / "extraction.json").read_text())
+        nodes = [Node.model_validate(node) for node in extraction["nodes"]]
+        edges = [Edge.model_validate(edge) for edge in extraction["edges"]]
+        feature = ProofFeature(name=entry.name, raw=raw, spec="")
+        curation = asyncio.run(curate(feature, nodes, call))
+        (root / "curation" / f"{entry.name}.json").write_text(curation.model_dump_json(indent=2))
+        title = str(raw.get("pull_request", {}).get("title") or entry.name)
+        target.write_text(build_spec(entry.name, title, nodes, edges, curation))
+
+
+def judge_runs(root: Path, repo: Path, rubric_path: Path, model: str) -> None:
+    """Grade every packet blind against the merged diff. Needs the sealed key
+    only to find the feature's merged diff -- never shown to the judge."""
+    import asyncio
+    import subprocess
+
+    verify_lock(root / "preregistration.md", root / "lock.json")
+    rubric = Rubric.model_validate_json(rubric_path.read_text())
+    entries = {entry.name: entry for entry in _manifest(root)}
+    packets = [Packet.model_validate(p) for p in json.loads((root / "packets.json").read_text())]
+    call = text_call(JUDGE_PROMPT, model)
+    grades: list[Grade] = []
+    for packet in packets:
+        entry = entries[packet.feature]
+        merged = subprocess.run(
+            ["git", "-C", str(repo), "diff", entry.base_sha, entry.merged_sha],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        grades.append(asyncio.run(judge(packet, merged, rubric, call)))
+    (root / "grades.json").write_text(json.dumps([g.model_dump() for g in grades], indent=2))
 
 
 def blind_runs(root: Path, seed: int) -> None:
@@ -427,6 +688,12 @@ def main(argv: list[str] | None = None) -> None:
     run_cmd = commands.add_parser("run", help="run the coding agent per prompt (costs tokens)")
     run_cmd.add_argument("--repo", type=Path, required=True, help="a local clone of the repo")
     run_cmd.add_argument("--model", default="claude-sonnet-5")
+    curate_cmd = commands.add_parser("curate", help="curate claims into treatment specs")
+    curate_cmd.add_argument("--model", default="claude-opus-5")
+    judge_cmd = commands.add_parser("judge", help="grade packets blind with a Claude judge")
+    judge_cmd.add_argument("--repo", type=Path, required=True)
+    judge_cmd.add_argument("--rubric", type=Path, required=True)
+    judge_cmd.add_argument("--model", default="claude-opus-5")
     blind_cmd = commands.add_parser("blind", help="shuffle diffs into packets + sealed key")
     blind_cmd.add_argument("--seed", type=int, required=True)
     score_cmd = commands.add_parser("score", help="unblind grades and compute the verdict")
@@ -439,6 +706,10 @@ def main(argv: list[str] | None = None) -> None:
         lock(args.root / "preregistration.md", args.root / "lock.json")
     elif args.command == "run":
         run(args.root, args.repo, args.model)
+    elif args.command == "curate":
+        curate_all(args.root, args.model)
+    elif args.command == "judge":
+        judge_runs(args.root, args.repo, args.rubric, args.model)
     elif args.command == "blind":
         blind_runs(args.root, args.seed)
     else:

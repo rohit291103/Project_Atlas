@@ -2,5 +2,6 @@
   {"name": "rg-111-max-depth", "fixture": "pr-111", "base_sha": "3e892a7a80e86d5e57e95626788c10e23d4221cf", "merged_sha": "3550f2e29af3a3a56f0f8f7e76ef07ef5f1c8600"},
   {"name": "rg-706-custom-ignore-names", "fixture": "pr-706", "base_sha": "8514d4fbb45265c263c982d5107216eefb2017dc", "merged_sha": "3cb4d1337e9846c0518e3e2dfc4f7b007b16a288"},
   {"name": "rg-723-line-number-width", "fixture": "pr-723", "base_sha": "5e73075ef5300fdec03f6c4685750788108b00f4", "merged_sha": "ba1023e1e45d7bd6edffa43d06c9613d3b84de8f"},
-  {"name": "rg-3472-incremental-ignore", "fixture": "pr-3472", "base_sha": "c55818fd32d68cf742aea67bce86529f198bc985", "merged_sha": "b621e65b4fc8a50b55576b07526f21c5d051ad71"}
+  {"name": "rg-3472-incremental-ignore", "fixture": "pr-3472", "base_sha": "c55818fd32d68cf742aea67bce86529f198bc985", "merged_sha": "b621e65b4fc8a50b55576b07526f21c5d051ad71"},
+  {"name": "rg-2957-zsh-dynamic-completion", "fixture": "pr-2957", "base_sha": "79cbe89deb1151e703f4d91b19af9cdcc128b765", "merged_sha": "94305125ef33b86151b6cd2ce2b33d641f6b6ac3"}
 ]
