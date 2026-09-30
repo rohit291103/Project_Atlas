@@ -1,0 +1,22 @@
+{
+  "kept": [
+    "1a967364-6756-4119-99ce-bddcf3fc6f54",
+    "80533bcd-00bd-4187-a235-08366b637a0a",
+    "6de8e156-6788-43bc-8292-3771db98e6c2",
+    "195eb7f8-0afe-484b-9910-66de96c5f8ac",
+    "35ad0f48-02bc-4b7b-a714-d2ee1cad09b5",
+    "474252ba-8f6c-4493-95f5-2c4eabec3cc1",
+    "27cde10a-f6ce-43d7-9423-3697576e994c",
+    "0ed73e16-3470-4a13-b6c9-f94127107229"
+  ],
+  "rejected": [
+    [
+      "bde14606-7192-4332-91bd-ca5359dec778",
+      "Vague restatement duplicating the max-depth goal claim"
+    ],
+    [
+      "3ff98966-4e2a-45b5-867c-0c894be1138d",
+      "Unrelated CI noise; no bearing on building the feature"
+    ]
+  ]
+}

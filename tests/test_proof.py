@@ -343,3 +343,15 @@ def test_the_coding_agent_may_only_touch_files_inside_its_checkout(tmp_path: Pat
     assert asyncio.run(decide("Write", {"file_path": "/etc/passwd"})) == "deny"
     assert asyncio.run(decide("Read", {"file_path": str(tmp_path / ".." / "x")})) == "deny"
     assert asyncio.run(decide("Bash", {"command": "ls"})) == "deny"
+
+
+def test_reaching_the_turn_cap_ends_the_run_rather_than_the_experiment() -> None:
+    """The cap is the budget: at the cap the agent's answer is whatever it
+    changed so far. Found live 2026-09-30 -- the SDK raises at the cap, which
+    crashed the whole run before any diff was saved."""
+    from scripts.proof import turn_cap_reached
+
+    assert turn_cap_reached(
+        Exception("Claude Code returned an error result: Reached maximum number of turns (40)")
+    )
+    assert not turn_cap_reached(Exception("rate limited"))

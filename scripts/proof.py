@@ -569,8 +569,15 @@ async def run_agent(prompt: str, repo: Path, base_sha: str, workdir: Path, model
             setting_sources=[],
             max_turns=40,
         )
-        async for _ in query(prompt=_stream(prompt), options=options):
-            pass
+        try:
+            async for _ in query(prompt=_stream(prompt), options=options):
+                pass
+        except Exception as stopped:  # noqa: BLE001 - only the turn cap is expected
+            # The cap is the pre-registered budget, not a failure: the agent's
+            # answer is whatever it has changed by then. Anything else re-raises.
+            if not turn_cap_reached(stopped):
+                raise
+            (workdir.parent / "hit_turn_cap").write_text("1")
         # Stage first: a plain `git diff` omits files the agent created, which
         # would silently drop part of its answer.
         subprocess.run(["git", "-C", str(workdir), "add", "-A"], check=True, capture_output=True)
@@ -586,6 +593,11 @@ async def run_agent(prompt: str, repo: Path, base_sha: str, workdir: Path, model
             ["git", "-C", str(repo), "worktree", "remove", "--force", str(workdir)],
             capture_output=True,
         )
+
+
+def turn_cap_reached(error: BaseException) -> bool:
+    """Whether the SDK stopped the agent because it used every turn."""
+    return "maximum number of turns" in str(error)
 
 
 def run(root: Path, repo: Path, model: str) -> None:
@@ -604,7 +616,11 @@ def run(root: Path, repo: Path, model: str) -> None:
                 diff = asyncio.run(
                     run_agent(prompt, repo, entry.base_sha, Path(scratch) / "wt", model)
                 )
+                capped = (Path(scratch) / "hit_turn_cap").exists()
             target.write_text(diff)
+            (out / f"{condition}.meta.json").write_text(
+                json.dumps({"model": model, "hit_turn_cap": capped}, indent=2)
+            )
 
 
 def curate_all(root: Path, model: str) -> None:

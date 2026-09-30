@@ -1,0 +1,24 @@
+{
+  "kept": [
+    "8742a637-a4cc-45bc-be75-cb77970ebbc7",
+    "db97f74e-8595-4abe-b0f6-d8f7fad17c08",
+    "21694684-baa3-4592-b62e-f4b027a4b535",
+    "1350b528-ca25-4aae-934e-39e291273720",
+    "26a1126d-30cb-4541-bfdb-ef020458507b",
+    "661d91ec-148f-4669-bff0-085ec57d3635"
+  ],
+  "rejected": [
+    [
+      "c12df0dc-0a26-4acd-99a4-d65d96e917ff",
+      "Contradicted by the thread's resolution: custom ignore files end up with higher precedence than `.ignore`, so this stale PR-description claim would mislead an implementer"
+    ],
+    [
+      "c2287863-713b-4893-89fa-659b3a6cc1aa",
+      "Test-coverage scoping question with no bearing on how the feature is built; also transitively resolved by the kept precedence claims"
+    ],
+    [
+      "c6e122cb-146c-482d-ad5d-2a1a8db7d827",
+      "Narrates the author's mistaken assumption rather than a feature requirement; the corrected behavior is already captured in the precedence claims"
+    ]
+  ]
+}

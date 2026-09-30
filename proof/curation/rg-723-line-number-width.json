@@ -1,0 +1,23 @@
+{
+  "kept": [
+    "6ad2bf14-d2cb-4e72-9f1c-1df3d07ba54b",
+    "794e789a-2428-43bb-a712-853f41e97d6c",
+    "4e479850-7cd3-465e-a36e-ce94d38b446b",
+    "cf7df69c-43b3-41c0-9d4d-173d7da8efe5",
+    "c5e005dd-1322-4673-a222-2fe921d4b8e5",
+    "58fbabcb-f179-4c8e-9146-147f61ab7b94",
+    "74d8948f-a804-4c54-a531-56296f5e5b0e",
+    "cd9b5bbf-c398-41b9-b6fd-f9627443c130",
+    "5a76a65b-95f3-4461-8c58-c12750642ef4"
+  ],
+  "rejected": [
+    [
+      "332d32bc-c1ad-4f2b-b28f-c1e64660179e",
+      "Open question never answered in thread; no actionable guidance"
+    ],
+    [
+      "5797988e-2bde-4d71-88fd-1fff07ab7af7",
+      "Suggestion for zero-padding support, superseded by decision to support spaces only and error on leading zero"
+    ]
+  ]
+}

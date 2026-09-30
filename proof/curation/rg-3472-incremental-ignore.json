@@ -1,0 +1,14 @@
+{
+  "kept": [
+    "87bddb99-7a73-4b47-8e3b-f21333311847",
+    "0f7ed46d-7b00-4b97-bf20-6ffc6cc04c4d",
+    "c425cec4-2ba8-49a3-bbb7-e1e466f7450b",
+    "f7c6498e-55dc-40bd-bf32-232dea81dc8b"
+  ],
+  "rejected": [
+    [
+      "19e7a105-2e82-4e94-a46a-af27724eb410",
+      "Release timing/version info, irrelevant to building the feature"
+    ]
+  ]
+}

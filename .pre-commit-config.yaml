@@ -2,8 +2,13 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
+      # Not over recorded artifacts: proof/ inputs and outputs and the eval
+      # fixtures must stay byte-exact (a stripped space in a control prompt is
+      # a change to the experiment -- proof/deviations.md #2).
       - id: trailing-whitespace
+        exclude: ^(proof/|tests/evals/)
       - id: end-of-file-fixer
+        exclude: ^(proof/|tests/evals/)
       - id: check-yaml
       - id: check-toml
       - id: check-added-large-files
