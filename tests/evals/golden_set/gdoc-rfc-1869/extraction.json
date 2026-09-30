@@ -1,0 +1,438 @@
+{
+ "nodes": [
+  {
+   "id": "6a776900-8605-4c3b-9cec-870b48b41ae9",
+   "type": "goal",
+   "content": "Improve the ergonomics of Rust for developing command-line tools and back-end / computational-kernel programs.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "ecb75843-029b-4ffc-914a-0dea8edab6a6",
+     "source_type": "gdoc",
+     "external_id": "gdoc-rfc-1869",
+     "url": "https://github.com/rust-lang/rfcs/blob/master/text/1869-eprintln.md",
+     "excerpt": "This proposal will improve the ergonomics of the Rust language for\ndevelopment of command-line tools and \"back end\" / \"computational\nkernel\" programs.",
+     "fetched_at": "2026-09-30T18:21:33.793188Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-09-30T18:21:33.794223Z",
+   "updated_at": "2026-09-30T18:21:33.794225Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "3d7e4288-866a-449d-aff1-70edd04ed920"
+  },
+  {
+   "id": "16ee612d-71b8-4992-90fb-27e89dc11650",
+   "type": "requirement",
+   "content": "Add two macros to the global prelude: eprint! (same as print!) and eprintln! (same as println!), except they write to standard error instead of standard output.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "a475a0b5-7266-4c14-9bac-7a5fe17bcae0",
+     "source_type": "gdoc",
+     "external_id": "gdoc-rfc-1869",
+     "url": "https://github.com/rust-lang/rfcs/blob/master/text/1869-eprintln.md",
+     "excerpt": "Two macros will be added to the global prelude.  `eprint!` is exactly\nthe same as `print!`, and `eprintln!` is exactly the same as\n`println!`, except that both of them write to standard error instead\nof standard output.",
+     "fetched_at": "2026-09-30T18:21:33.794269Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-09-30T18:21:33.794279Z",
+   "updated_at": "2026-09-30T18:21:33.794280Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "3d7e4288-866a-449d-aff1-70edd04ed920"
+  },
+  {
+   "id": "65df5b29-fcd0-45e6-b0c0-1473b7396180",
+   "type": "problem",
+   "content": "Writing text to standard error is significantly more work than writing to standard output.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "b3933ee7-fe2b-4792-bf94-12062ec17dc7",
+     "source_type": "gdoc",
+     "external_id": "gdoc-rfc-1869",
+     "url": "https://github.com/rust-lang/rfcs/blob/master/text/1869-eprintln.md",
+     "excerpt": "writing text to standard output is very easy, using the\n`print(ln)!` macros, but writing text to standard error is\nsignificantly more work",
+     "fetched_at": "2026-09-30T18:21:33.794289Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-09-30T18:21:33.794301Z",
+   "updated_at": "2026-09-30T18:21:33.794301Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "3d7e4288-866a-449d-aff1-70edd04ed920"
+  },
+  {
+   "id": "4f2acc4b-228b-4377-8ae5-013cec15e98f",
+   "type": "problem",
+   "content": "Because writing to stderr is harder, all tutorial documentation uses println! for error messages, teaching bad habits.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "b318d935-2f5e-486c-990e-5af9d4dbb926",
+     "source_type": "gdoc",
+     "external_id": "gdoc-rfc-1869",
+     "url": "https://github.com/rust-lang/rfcs/blob/master/text/1869-eprintln.md",
+     "excerpt": "all of the tutorial documentation for the language uses\n`println!` for error messages, which teaches bad habits.",
+     "fetched_at": "2026-09-30T18:21:33.794308Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-09-30T18:21:33.794314Z",
+   "updated_at": "2026-09-30T18:21:33.794314Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "3d7e4288-866a-449d-aff1-70edd04ed920"
+  },
+  {
+   "id": "f63b477e-9601-4119-8ec9-54556dbb093b",
+   "type": "architecture_note",
+   "content": "\"Standard error\" is defined as the same place where panic! writes messages, so using set_panic to redirect panic messages also affects eprint! and eprintln!.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "91b38472-85d6-4273-ac36-5fa4753e4034",
+     "source_type": "gdoc",
+     "external_id": "gdoc-rfc-1869",
+     "url": "https://github.com/rust-lang/rfcs/blob/master/text/1869-eprintln.md",
+     "excerpt": "\"Standard error\" is defined as \"the same place\nwhere `panic!` writes messages.\"  In particular, using `set_panic` to\nchange where panic messages go will also affect `eprint!` and\n`eprintln!`.",
+     "fetched_at": "2026-09-30T18:21:33.794320Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-09-30T18:21:33.794326Z",
+   "updated_at": "2026-09-30T18:21:33.794326Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "3d7e4288-866a-449d-aff1-70edd04ed920"
+  },
+  {
+   "id": "1bf889b0-7dba-4908-aee3-ddb4a4d5234d",
+   "type": "open_question",
+   "content": "Discussion agreed the macros are useful but reached no consensus on their names.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "a375a557-a8e0-46d6-8873-179b3f8a683b",
+     "source_type": "gdoc",
+     "external_id": "gdoc-rfc-1869",
+     "url": "https://github.com/rust-lang/rfcs/blob/master/text/1869-eprintln.md",
+     "excerpt": "Previous discussion has converged on agreement that both these macros\nwill be useful, but has not arrived at a consensus about their names.",
+     "fetched_at": "2026-09-30T18:21:33.794333Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-09-30T18:21:33.794338Z",
+   "updated_at": "2026-09-30T18:21:33.794338Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "3d7e4288-866a-449d-aff1-70edd04ed920"
+  },
+  {
+   "id": "51435c20-9e29-442f-b0cd-6bb0ac43f338",
+   "type": "decision",
+   "content": "Name the macros eprint! and eprintln! \u2014 they are almost as short as print!/println!, still visibly different, and are the names several third-party crate authors already chose.",
+   "confidence_score": 0.6,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "35a34c52-bd80-4bde-b3f0-2ad365b6e905",
+     "source_type": "gdoc",
+     "external_id": "gdoc-rfc-1869",
+     "url": "https://github.com/rust-lang/rfcs/blob/master/text/1869-eprintln.md",
+     "excerpt": "It is the author's opinion that\n`eprint!` and `eprintln!` have the strongest case in their favor,\nbeing (a) almost as short as `print!` and `println!`, (b) still\nvisibly different from them, and (c) the names chosen by several\nthird-party crate authors who implemented these macros themselves for\ninternal use.",
+     "fetched_at": "2026-09-30T18:21:33.794381Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-09-30T18:21:33.794399Z",
+   "updated_at": "2026-09-30T18:21:33.794400Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "3d7e4288-866a-449d-aff1-70edd04ed920"
+  },
+  {
+   "id": "fca48f54-4c6a-41c5-a3ef-8876816c8161",
+   "type": "constraint",
+   "content": "The chosen names must be unlikely to conflict with existing library crates' exported macros.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "60a934af-4fb4-4886-ab52-9e0ce8fb85f0",
+     "source_type": "gdoc",
+     "external_id": "gdoc-rfc-1869",
+     "url": "https://github.com/rust-lang/rfcs/blob/master/text/1869-eprintln.md",
+     "excerpt": "the most significant concern is to choose names that are\nunlikely to conflict with existing library crates' _exported_\nmacros.",
+     "fetched_at": "2026-09-30T18:21:33.794411Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-09-30T18:21:33.794417Z",
+   "updated_at": "2026-09-30T18:21:33.794418Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "3d7e4288-866a-449d-aff1-70edd04ed920"
+  },
+  {
+   "id": "0b9e8bb7-e2b9-4a7b-aade-4c2419122253",
+   "type": "rejected_alternative",
+   "content": "Names error(ln)! and err(ln)! were ruled out as too likely to collide with third-party crates; error! is already taken by the log crate.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "02cd0dd9-e4b5-4323-a001-bd6e8e681121",
+     "source_type": "gdoc",
+     "external_id": "gdoc-rfc-1869",
+     "url": "https://github.com/rust-lang/rfcs/blob/master/text/1869-eprintln.md",
+     "excerpt": "`error(ln)!` and `err(ln)!` are ruled out as too likely to collide\n   with third-party crates.  `error!` in particular is already taken\n   by the [`log` crate][log-crate].",
+     "fetched_at": "2026-09-30T18:21:33.794424Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-09-30T18:21:33.794430Z",
+   "updated_at": "2026-09-30T18:21:33.794430Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "3d7e4288-866a-449d-aff1-70edd04ed920"
+  },
+  {
+   "id": "060556a8-9ec0-4d7f-bd51-1daf9e779140",
+   "type": "rejected_alternative",
+   "content": "Names like println_err!, printlnerr!, errprintln! were rejected as less terse / more typing, and the distinguishing label should be at the beginning of the name.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "012a0d58-344f-4514-8152-eda993fcdfbf",
+     "source_type": "gdoc",
+     "external_id": "gdoc-rfc-1869",
+     "url": "https://github.com/rust-lang/rfcs/blob/master/text/1869-eprintln.md",
+     "excerpt": "`println_err!`, `printlnerr!`, `errprintln!`, and several other\n   variants on this theme are less terse, but also more typing.",
+     "fetched_at": "2026-09-30T18:21:33.794437Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-09-30T18:21:33.794442Z",
+   "updated_at": "2026-09-30T18:21:33.794443Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "3d7e4288-866a-449d-aff1-70edd04ed920"
+  },
+  {
+   "id": "61252933-5e40-4317-9aaa-0b880010f4a4",
+   "type": "rejected_alternative",
+   "content": "Names like aprintln!, dprintln!, uprintln!, println2! were rejected as no less cryptic than eprintln!, and 'e' (for 'error') is the best choice since the stream is officially 'standard error'.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "1b076b59-93e3-4260-80e4-2573507f372c",
+     "source_type": "gdoc",
+     "external_id": "gdoc-rfc-1869",
+     "url": "https://github.com/rust-lang/rfcs/blob/master/text/1869-eprintln.md",
+     "excerpt": "`aprintln!`, `dprintln!`, `uprintln!`, `println2!`, etc. are not\n   less cryptic than `eprintln!`, and the official name of standard\n   I/O stream 2 is \"standard _error_\", even though it's not just for\n   errors, so `e` is the best choice.",
+     "fetched_at": "2026-09-30T18:21:33.794449Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-09-30T18:21:33.794454Z",
+   "updated_at": "2026-09-30T18:21:33.794454Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "3d7e4288-866a-449d-aff1-70edd04ed920"
+  },
+  {
+   "id": "ba12cfe4-2fc4-402a-a461-583f3d488f1c",
+   "type": "rejected_alternative",
+   "content": "Improving writeln!'s ergonomics instead of adding new macros was rejected for four reasons: it is always more typing, it requires use std::io::Write, it returns a Result needing .unwrap(), and it is unaffected by set_panic().",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "c010b4c3-ed73-46bd-b217-cbab93a7aa33",
+     "source_type": "gdoc",
+     "external_id": "gdoc-rfc-1869",
+     "url": "https://github.com/rust-lang/rfcs/blob/master/text/1869-eprintln.md",
+     "excerpt": "we could think of some way to improve the ergonomics of\n`writeln!` so that we don't need the new macros at all.  There are\nfour fundamental problems with that, though:",
+     "fetched_at": "2026-09-30T18:21:33.794460Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-09-30T18:21:33.794465Z",
+   "updated_at": "2026-09-30T18:21:33.794466Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "3d7e4288-866a-449d-aff1-70edd04ed920"
+  },
+  {
+   "id": "573f3e74-7721-48d4-868a-f9d9ec0a6176",
+   "type": "rejected_alternative",
+   "content": "Providing only eprintln! and omitting the no-newline eprint! was rejected because stderr is also the place for progress messages, which commonly print partial lines.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "0464140a-87cd-4908-9e69-497d82765099",
+     "source_type": "gdoc",
+     "external_id": "gdoc-rfc-1869",
+     "url": "https://github.com/rust-lang/rfcs/blob/master/text/1869-eprintln.md",
+     "excerpt": "We could provide only `eprintln!`, omitting the no-newline variant.\nMost _error_ messages should be one or more complete lines, so it's\nnot obvious that we need `eprint!`.  However, standard error is also\nthe appropriate place to send _progress_ messages, and it is common to\nwant to print partial lines in progress messages",
+     "fetched_at": "2026-09-30T18:21:33.794471Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-09-30T18:21:33.794477Z",
+   "updated_at": "2026-09-30T18:21:33.794477Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "3d7e4288-866a-449d-aff1-70edd04ed920"
+  },
+  {
+   "id": "16435172-0e15-42d8-816d-6ab08f24f896",
+   "type": "evidence",
+   "content": "\"This is too cryptic\" is the single most frequently heard complaint from people who dislike eprintln!, since the leading 'e' is not obvious at a glance.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "4cfdc628-b3e8-4cd6-971c-9a39e55977d6",
+     "source_type": "gdoc",
+     "external_id": "gdoc-rfc-1869",
+     "url": "https://github.com/rust-lang/rfcs/blob/master/text/1869-eprintln.md",
+     "excerpt": "(\"This is too cryptic\" is the\nsingle most frequently heard complaint from people who don't like\n`eprintln!`.)",
+     "fetched_at": "2026-09-30T18:21:33.794483Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-09-30T18:21:33.794487Z",
+   "updated_at": "2026-09-30T18:21:33.794488Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "3d7e4288-866a-449d-aff1-70edd04ed920"
+  }
+ ],
+ "edges": [
+  {
+   "id": "b83b7178-b38a-4c6f-92b1-722b9d0dc846",
+   "from_node_id": "16ee612d-71b8-4992-90fb-27e89dc11650",
+   "to_node_id": "6a776900-8605-4c3b-9cec-870b48b41ae9",
+   "relation_type": "implements",
+   "confidence_score": 0.9,
+   "created_at": "2026-09-30T18:21:33.794519Z"
+  },
+  {
+   "id": "87f9a388-9555-4fa4-9f1b-3fc77feb3450",
+   "from_node_id": "6a776900-8605-4c3b-9cec-870b48b41ae9",
+   "to_node_id": "65df5b29-fcd0-45e6-b0c0-1473b7396180",
+   "relation_type": "derives_from",
+   "confidence_score": 0.6,
+   "created_at": "2026-09-30T18:21:33.794552Z"
+  },
+  {
+   "id": "3941ddeb-23a7-4f9f-a5fb-04e723880b7d",
+   "from_node_id": "4f2acc4b-228b-4377-8ae5-013cec15e98f",
+   "to_node_id": "65df5b29-fcd0-45e6-b0c0-1473b7396180",
+   "relation_type": "derives_from",
+   "confidence_score": 0.6,
+   "created_at": "2026-09-30T18:21:33.794558Z"
+  },
+  {
+   "id": "9356163a-5352-481d-9100-70f8835f9dbd",
+   "from_node_id": "f63b477e-9601-4119-8ec9-54556dbb093b",
+   "to_node_id": "16ee612d-71b8-4992-90fb-27e89dc11650",
+   "relation_type": "derives_from",
+   "confidence_score": 0.9,
+   "created_at": "2026-09-30T18:21:33.794563Z"
+  },
+  {
+   "id": "2990894e-85b7-4fc3-b368-e71d4735b1f2",
+   "from_node_id": "51435c20-9e29-442f-b0cd-6bb0ac43f338",
+   "to_node_id": "1bf889b0-7dba-4908-aee3-ddb4a4d5234d",
+   "relation_type": "derives_from",
+   "confidence_score": 0.6,
+   "created_at": "2026-09-30T18:21:33.794568Z"
+  },
+  {
+   "id": "e54aae99-8e19-4bb8-bbca-00bb870b4dab",
+   "from_node_id": "51435c20-9e29-442f-b0cd-6bb0ac43f338",
+   "to_node_id": "fca48f54-4c6a-41c5-a3ef-8876816c8161",
+   "relation_type": "depends_on",
+   "confidence_score": 0.6,
+   "created_at": "2026-09-30T18:21:33.794573Z"
+  },
+  {
+   "id": "1bdfdd3f-71ea-443c-af65-be2cc84063f5",
+   "from_node_id": "51435c20-9e29-442f-b0cd-6bb0ac43f338",
+   "to_node_id": "0b9e8bb7-e2b9-4a7b-aade-4c2419122253",
+   "relation_type": "rejects",
+   "confidence_score": 0.9,
+   "created_at": "2026-09-30T18:21:33.794577Z"
+  },
+  {
+   "id": "c231add9-6a68-499d-bc69-dfc80330cdc5",
+   "from_node_id": "51435c20-9e29-442f-b0cd-6bb0ac43f338",
+   "to_node_id": "060556a8-9ec0-4d7f-bd51-1daf9e779140",
+   "relation_type": "rejects",
+   "confidence_score": 0.9,
+   "created_at": "2026-09-30T18:21:33.794582Z"
+  },
+  {
+   "id": "bfe151f2-789c-4dff-b927-5d321158ecd6",
+   "from_node_id": "51435c20-9e29-442f-b0cd-6bb0ac43f338",
+   "to_node_id": "61252933-5e40-4317-9aaa-0b880010f4a4",
+   "relation_type": "rejects",
+   "confidence_score": 0.9,
+   "created_at": "2026-09-30T18:21:33.794587Z"
+  },
+  {
+   "id": "6f78bb67-06a3-452a-b087-0bdaac560eb7",
+   "from_node_id": "51435c20-9e29-442f-b0cd-6bb0ac43f338",
+   "to_node_id": "ba12cfe4-2fc4-402a-a461-583f3d488f1c",
+   "relation_type": "rejects",
+   "confidence_score": 0.9,
+   "created_at": "2026-09-30T18:21:33.794591Z"
+  },
+  {
+   "id": "f80120e2-02b6-48fc-9ad1-a206c5fd245b",
+   "from_node_id": "16ee612d-71b8-4992-90fb-27e89dc11650",
+   "to_node_id": "573f3e74-7721-48d4-868a-f9d9ec0a6176",
+   "relation_type": "rejects",
+   "confidence_score": 0.9,
+   "created_at": "2026-09-30T18:21:33.794596Z"
+  },
+  {
+   "id": "629fb488-432b-4b41-9025-601b9260d1d9",
+   "from_node_id": "16435172-0e15-42d8-816d-6ab08f24f896",
+   "to_node_id": "51435c20-9e29-442f-b0cd-6bb0ac43f338",
+   "relation_type": "conflicts_with",
+   "confidence_score": 0.6,
+   "created_at": "2026-09-30T18:21:33.794601Z"
+  }
+ ]
+}

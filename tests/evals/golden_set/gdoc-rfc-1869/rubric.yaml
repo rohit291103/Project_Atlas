@@ -1,0 +1,14 @@
+# Tier-1 floor for a doc-shaped source (Phase 3, Google Docs). The document is
+# Rust RFC 1869 ("eprintln"), a real public design doc (MIT/Apache-2.0), used as
+# the text a Google Doc would carry. Written from the RFC before any extraction
+# was recorded. Its "Unresolved questions" says only "See discussion above", so
+# no open_question is required.
+source: rust-lang/rfcs text/1869-eprintln.md
+
+required_node_types:
+  - goal # Summary: add eprint!/eprintln! to the prelude
+  - problem # Motivation: writing to stderr is significantly more work
+  - rejected_alternative # Alternatives section
+
+must_mention:
+  - eprintln

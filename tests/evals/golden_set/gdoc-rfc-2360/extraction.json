@@ -1,0 +1,407 @@
+{
+ "nodes": [
+  {
+   "id": "9d035882-ce98-4dfa-87dd-2b8e00488c22",
+   "type": "problem",
+   "content": "Because synthetic benchmarks are constrained, the compiler can apply optimizations that would not happen in practice, even removing a benchmark entirely if it has no side-effects.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "28409d95-f41e-4e20-be0f-0baaec745113",
+     "source_type": "gdoc",
+     "external_id": "gdoc-rfc-2360",
+     "url": "https://github.com/rust-lang/rfcs/blob/master/text/2360-bench-black-box.md",
+     "excerpt": "the compiler is often\nable to perform optimizations that wouldn't otherwise trigger in practice, like\ncompletely removing a benchmark if it has no side-effects.",
+     "fetched_at": "2026-09-30T18:23:27.792847Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-09-30T18:23:27.793895Z",
+   "updated_at": "2026-09-30T18:23:27.793897Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "ace934d4-7820-4648-8254-ec1736dcde83"
+  },
+  {
+   "id": "7a50d0d4-d3f0-4fe2-ac75-4bdf403d3974",
+   "type": "problem",
+   "content": "The current workarounds (volatile loads/stores, C FFI calls) that stable Rust users use to prevent these optimizations incur overheads that would not be present in the real application being modeled.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "4c09c2d0-cdbd-42d3-bac0-67b4c8fe0316",
+     "source_type": "gdoc",
+     "external_id": "gdoc-rfc-2360",
+     "url": "https://github.com/rust-lang/rfcs/blob/master/text/2360-bench-black-box.md",
+     "excerpt": "These operations incur\noverheads that often would not be present in the application the synthetic benchmark\nis trying to model.",
+     "fetched_at": "2026-09-30T18:23:27.793938Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-09-30T18:23:27.793946Z",
+   "updated_at": "2026-09-30T18:23:27.793946Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "ace934d4-7820-4648-8254-ec1736dcde83"
+  },
+  {
+   "id": "6d426ba5-f4df-4230-9acf-babfcba99716",
+   "type": "decision",
+   "content": "Add `core::hint::bench_black_box`, an identity function that hints the compiler to be maximally pessimistic about what the function could do.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "35a83a12-2eb2-4cab-81ed-871b8bbc9441",
+     "source_type": "gdoc",
+     "external_id": "gdoc-rfc-2360",
+     "url": "https://github.com/rust-lang/rfcs/blob/master/text/2360-bench-black-box.md",
+     "excerpt": "This RFC adds `core::hint::bench_black_box` (see [black box]), an identity function\nthat hints the compiler to be maximally pessimistic in terms of the assumptions\nabout what `bench_black_box` could do.",
+     "fetched_at": "2026-09-30T18:23:27.793955Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-09-30T18:23:27.793969Z",
+   "updated_at": "2026-09-30T18:23:27.793969Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "ace934d4-7820-4648-8254-ec1736dcde83"
+  },
+  {
+   "id": "604affa7-1478-4f16-85f5-76748ab08677",
+   "type": "architecture_note",
+   "content": "`bench_black_box` is a NOP that returns `x`; its operational semantics are equivalent to the identity function.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "444284a0-2db5-4045-b6d9-513cadac060f",
+     "source_type": "gdoc",
+     "external_id": "gdoc-rfc-2360",
+     "url": "https://github.com/rust-lang/rfcs/blob/master/text/2360-bench-black-box.md",
+     "excerpt": "is a `NOP` that returns `x`, that is, its operational semantics are equivalent\nto the [identity function][identity_fn].",
+     "fetched_at": "2026-09-30T18:23:27.793976Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-09-30T18:23:27.793981Z",
+   "updated_at": "2026-09-30T18:23:27.793981Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "ace934d4-7820-4648-8254-ec1736dcde83"
+  },
+  {
+   "id": "2c2eb84d-e54c-465e-8e34-8e8e9a0cebf4",
+   "type": "architecture_note",
+   "content": "Implementations are encouraged, but not required, to treat `bench_black_box` as an unknown function that can perform any valid operation on `x` without introducing UB in the calling code (i.e. optimize under maximally pessimistic assumptions).",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "47c4f32f-3633-42cc-9e1f-40297f4a02f8",
+     "source_type": "gdoc",
+     "external_id": "gdoc-rfc-2360",
+     "url": "https://github.com/rust-lang/rfcs/blob/master/text/2360-bench-black-box.md",
+     "excerpt": "Implementations are encouraged, _but not required_, to treat `bench_black_box` as an\n_unknown_ function that can perform any valid operation on `x` that Rust is\nallowed to perform without introducing undefined behavior in the calling code.",
+     "fetched_at": "2026-09-30T18:23:27.793987Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-09-30T18:23:27.793992Z",
+   "updated_at": "2026-09-30T18:23:27.793992Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "ace934d4-7820-4648-8254-ec1736dcde83"
+  },
+  {
+   "id": "0f606bbc-2a9c-4a12-899b-75b053502138",
+   "type": "rejected_alternative",
+   "content": "A `clobber()` function (flushing all pending writes to memory), provided in a previous version of the RFC, was dropped because it cannot work properly within Rust's memory model.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "2cc73d61-8cbd-4484-a9a1-6afb7435710c",
+     "source_type": "gdoc",
+     "external_id": "gdoc-rfc-2360",
+     "url": "https://github.com/rust-lang/rfcs/blob/master/text/2360-bench-black-box.md",
+     "excerpt": "In https://github.com/nikomatsakis/rust-memory-model/issues/45 it was realized\nthat such a function cannot work properly within Rust's memory model.",
+     "fetched_at": "2026-09-30T18:23:27.793998Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-09-30T18:23:27.794003Z",
+   "updated_at": "2026-09-30T18:23:27.794004Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "ace934d4-7820-4648-8254-ec1736dcde83"
+  },
+  {
+   "id": "10a16458-58a5-40a7-8daf-f9b58f2f3e76",
+   "type": "rejected_alternative",
+   "content": "The `value_fence` / `evaluate_and_drop` design (using volatile reads/writes) was not pursued because it adds overhead (volatile reads and stores aren't no-ops) and is already implementable on stable Rust.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "ad441158-4ad5-4a59-939a-b02913d182ee",
+     "source_type": "gdoc",
+     "external_id": "gdoc-rfc-2360",
+     "url": "https://github.com/rust-lang/rfcs/blob/master/text/2360-bench-black-box.md",
+     "excerpt": "This approach is not pursued in this RFC because these two functions:",
+     "fetched_at": "2026-09-30T18:23:27.794009Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+     "id": "b2e11b08-58e7-40e8-8220-19c723ca5342",
+     "source_type": "gdoc",
+     "external_id": "gdoc-rfc-2360",
+     "url": "https://github.com/rust-lang/rfcs/blob/master/text/2360-bench-black-box.md",
+     "excerpt": "add overhead ([`rust.godbolt.org`](https://godbolt.org/g/aCpPfg)): `volatile`\n  reads and stores aren't no ops, but the proposed `bench_black_box` and `clobber`\n  functions are.",
+     "fetched_at": "2026-09-30T18:23:27.794014Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-09-30T18:23:27.794019Z",
+   "updated_at": "2026-09-30T18:23:27.794020Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "ace934d4-7820-4648-8254-ec1736dcde83"
+  },
+  {
+   "id": "d953ec11-05eb-4af4-90a8-2ed4ac1b17bb",
+   "type": "rejected_alternative",
+   "content": "The `bench_input` / `bench_output` hints proposed by @eddyb were not adopted now because it is unclear whether they can be implemented strictly in LLVM; the best achievable ends up implementing both as `bench_black_box`, so their distinct semantics cannot be shown or taught.",
+   "confidence_score": 0.6,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "833469b9-8628-4c64-b154-0d83b06dbdd6",
+     "source_type": "gdoc",
+     "external_id": "gdoc-rfc-2360",
+     "url": "https://github.com/rust-lang/rfcs/blob/master/text/2360-bench-black-box.md",
+     "excerpt": "Right now, however, it is unclear whether these two hints can be implemented\nstrictly in LLVM. The comment thread shows that the best we can actually do\nends up implementing both of these as `bench_black_box` with the same effects.",
+     "fetched_at": "2026-09-30T18:23:27.794025Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-09-30T18:23:27.794030Z",
+   "updated_at": "2026-09-30T18:23:27.794031Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "ace934d4-7820-4648-8254-ec1736dcde83"
+  },
+  {
+   "id": "2a08c9fe-e379-4c82-b7ce-5b3d32473514",
+   "type": "open_question",
+   "content": "It is unclear whether `bench_black_box` should be a `const fn`, since that would hint it cannot have side-effects or do anything a `const fn` cannot.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "6984ce6c-3090-4c59-8dae-dc43923cb2f0",
+     "source_type": "gdoc",
+     "external_id": "gdoc-rfc-2360",
+     "url": "https://github.com/rust-lang/rfcs/blob/master/text/2360-bench-black-box.md",
+     "excerpt": "`const fn`: it is unclear whether `bench_black_box` should be a `const fn`. If it\n  were, that would hint that it cannot have any side-effects, or that it cannot\n  do anything that `const fn`s cannot do.",
+     "fetched_at": "2026-09-30T18:23:27.794036Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-09-30T18:23:27.794041Z",
+   "updated_at": "2026-09-30T18:23:27.794041Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "ace934d4-7820-4648-8254-ec1736dcde83"
+  },
+  {
+   "id": "d82726e0-58b7-4708-9fa5-2caf90892fcb",
+   "type": "open_question",
+   "content": "The naming is unresolved: `bench_black_box` was settled on for the time being, but the naming should be resolved before stabilization.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "7b9a6645-9a93-4996-bee9-1345e2c2541f",
+     "source_type": "gdoc",
+     "external_id": "gdoc-rfc-2360",
+     "url": "https://github.com/rust-lang/rfcs/blob/master/text/2360-bench-black-box.md",
+     "excerpt": "during the RFC discussion it was unclear whether `black_box` is the\n  right name for this primitive but we settled on `bench_black_box` for the time\n  being. We should resolve the naming before stabilization.",
+     "fetched_at": "2026-09-30T18:23:27.794047Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-09-30T18:23:27.794051Z",
+   "updated_at": "2026-09-30T18:23:27.794052Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "ace934d4-7820-4648-8254-ec1736dcde83"
+  },
+  {
+   "id": "1e42cf88-720a-4964-8499-297dd058cace",
+   "type": "evidence",
+   "content": "In the Vec::push benchmark example, LLVM optimized away the Vec allocation and the calls to push_cap, making the benchmark useless.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "df135ce2-8011-426b-982f-e177915ed334",
+     "source_type": "gdoc",
+     "external_id": "gdoc-rfc-2360",
+     "url": "https://github.com/rust-lang/rfcs/blob/master/text/2360-bench-black-box.md",
+     "excerpt": "LLVM is pretty amazing: it has optimized the `Vec` allocation and the calls to\n`push_cap` away. In doing so, it has made our benchmark useless.",
+     "fetched_at": "2026-09-30T18:23:27.794057Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-09-30T18:23:27.794062Z",
+   "updated_at": "2026-09-30T18:23:27.794062Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "ace934d4-7820-4648-8254-ec1736dcde83"
+  },
+  {
+   "id": "0b87f09b-0fd9-4ada-aeb9-fa13bcfdd8d2",
+   "type": "evidence",
+   "content": "Inspecting the machine code shows that, for this Rust implementation, `bench_black_box` successfully prevents LLVM from removing the Vec::push calls that were meant to be measured.",
+   "confidence_score": 0.9,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "ce34b9b4-beac-4375-838e-65e815193d74",
+     "source_type": "gdoc",
+     "external_id": "gdoc-rfc-2360",
+     "url": "https://github.com/rust-lang/rfcs/blob/master/text/2360-bench-black-box.md",
+     "excerpt": "Inspecting the machine code reveals that, for this particular Rust\nimplementation, `bench_black_box` successfully prevents LLVM from performing the\noptimization that removes the `Vec::push` calls that we wanted to measure.",
+     "fetched_at": "2026-09-30T18:23:27.794068Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-09-30T18:23:27.794073Z",
+   "updated_at": "2026-09-30T18:23:27.794073Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "ace934d4-7820-4648-8254-ec1736dcde83"
+  },
+  {
+   "id": "021485c4-9a90-4d8e-a669-c0a6e2d55266",
+   "type": "evidence",
+   "content": "Prior art: a `black_box` function with slightly different semantics is already provided by the Rust `test` crate.",
+   "confidence_score": 0.6,
+   "status": "unconfirmed",
+   "source_refs": [
+    {
+     "id": "6d1dc683-7629-4467-babe-099502d8952e",
+     "source_type": "gdoc",
+     "external_id": "gdoc-rfc-2360",
+     "url": "https://github.com/rust-lang/rfcs/blob/master/text/2360-bench-black-box.md",
+     "excerpt": "The `black_box` function with slightly different semantics is provided by the\n`test` crate:",
+     "fetched_at": "2026-09-30T18:23:27.794078Z",
+     "workspace_id": "00000000-0000-0000-0000-000000000000"
+    }
+   ],
+   "created_by": "system",
+   "created_at": "2026-09-30T18:23:27.794083Z",
+   "updated_at": "2026-09-30T18:23:27.794083Z",
+   "updated_by": null,
+   "workspace_id": "00000000-0000-0000-0000-000000000000",
+   "feature_scope_id": "ace934d4-7820-4648-8254-ec1736dcde83"
+  }
+ ],
+ "edges": [
+  {
+   "id": "abeb109c-27eb-45ee-8e34-9b7f6675d2c6",
+   "from_node_id": "1e42cf88-720a-4964-8499-297dd058cace",
+   "to_node_id": "9d035882-ce98-4dfa-87dd-2b8e00488c22",
+   "relation_type": "supports",
+   "confidence_score": 0.9,
+   "created_at": "2026-09-30T18:23:27.794126Z"
+  },
+  {
+   "id": "81c14806-167a-42f3-bcf1-ecaa22fd9430",
+   "from_node_id": "6d426ba5-f4df-4230-9acf-babfcba99716",
+   "to_node_id": "9d035882-ce98-4dfa-87dd-2b8e00488c22",
+   "relation_type": "derives_from",
+   "confidence_score": 0.9,
+   "created_at": "2026-09-30T18:23:27.794151Z"
+  },
+  {
+   "id": "efb82a58-af35-4398-97d3-7679e47c8b24",
+   "from_node_id": "6d426ba5-f4df-4230-9acf-babfcba99716",
+   "to_node_id": "7a50d0d4-d3f0-4fe2-ac75-4bdf403d3974",
+   "relation_type": "derives_from",
+   "confidence_score": 0.9,
+   "created_at": "2026-09-30T18:23:27.794157Z"
+  },
+  {
+   "id": "67025dbf-bf48-4391-9050-59e0b0654e08",
+   "from_node_id": "604affa7-1478-4f16-85f5-76748ab08677",
+   "to_node_id": "6d426ba5-f4df-4230-9acf-babfcba99716",
+   "relation_type": "derives_from",
+   "confidence_score": 0.9,
+   "created_at": "2026-09-30T18:23:27.794162Z"
+  },
+  {
+   "id": "67658551-2533-489c-a32b-489496fc9f4b",
+   "from_node_id": "2c2eb84d-e54c-465e-8e34-8e8e9a0cebf4",
+   "to_node_id": "6d426ba5-f4df-4230-9acf-babfcba99716",
+   "relation_type": "derives_from",
+   "confidence_score": 0.9,
+   "created_at": "2026-09-30T18:23:27.794167Z"
+  },
+  {
+   "id": "d5547fc4-aed8-4ff7-bef8-6e14bfc9270e",
+   "from_node_id": "0b87f09b-0fd9-4ada-aeb9-fa13bcfdd8d2",
+   "to_node_id": "6d426ba5-f4df-4230-9acf-babfcba99716",
+   "relation_type": "supports",
+   "confidence_score": 0.9,
+   "created_at": "2026-09-30T18:23:27.794172Z"
+  },
+  {
+   "id": "4818619f-c2b0-476c-b7f2-860a1cf0d21e",
+   "from_node_id": "021485c4-9a90-4d8e-a669-c0a6e2d55266",
+   "to_node_id": "6d426ba5-f4df-4230-9acf-babfcba99716",
+   "relation_type": "supports",
+   "confidence_score": 0.6,
+   "created_at": "2026-09-30T18:23:27.794176Z"
+  },
+  {
+   "id": "b9a3664f-3e37-4571-9374-0612bf74012e",
+   "from_node_id": "6d426ba5-f4df-4230-9acf-babfcba99716",
+   "to_node_id": "0f606bbc-2a9c-4a12-899b-75b053502138",
+   "relation_type": "rejects",
+   "confidence_score": 0.9,
+   "created_at": "2026-09-30T18:23:27.794182Z"
+  },
+  {
+   "id": "c5ec02c9-f17c-43d9-895b-7b6f5536f3d0",
+   "from_node_id": "6d426ba5-f4df-4230-9acf-babfcba99716",
+   "to_node_id": "10a16458-58a5-40a7-8daf-f9b58f2f3e76",
+   "relation_type": "rejects",
+   "confidence_score": 0.9,
+   "created_at": "2026-09-30T18:23:27.794186Z"
+  },
+  {
+   "id": "02f4a150-e611-44e0-b54c-d5ee8ab4934e",
+   "from_node_id": "6d426ba5-f4df-4230-9acf-babfcba99716",
+   "to_node_id": "d953ec11-05eb-4af4-90a8-2ed4ac1b17bb",
+   "relation_type": "rejects",
+   "confidence_score": 0.6,
+   "created_at": "2026-09-30T18:23:27.794191Z"
+  }
+ ]
+}

@@ -1,0 +1,23 @@
+# Tier-1 floor for a doc-shaped source (Phase 3, Google Docs). The document is
+# Rust RFC 2360 ("bench_black_box"), a real public design doc (MIT/Apache-2.0).
+# Written from the RFC before any extraction was recorded.
+source: rust-lang/rfcs text/2360-bench-black-box.md
+
+required_node_types:
+  - goal # Summary: a hint that prevents the optimizer from eliding benchmarked code
+  - rejected_alternative # clobber, value_fence / evaluate_and_drop
+  - open_question # naming before stabilization; const fn
+
+must_mention:
+  - black_box
+
+# Recorded 2026-09-30 after the first live run, NOT a loosened floor: the floor
+# above stands as written. The extraction typed the RFC's summary ("This RFC
+# adds `core::hint::bench_black_box`") as a `decision` and its motivation as two
+# `problem`s, so no `goal` was emitted. Defensible under rule 5 (one claim, one
+# node -- a summary that *announces what is added* reads as a decision), but it
+# means a doc whose outcome is only implicit yields no goal, and the spec's
+# "Goals" section is empty. Kept visible as an expected failure until the doc
+# prompt is revisited under `extraction-quality-review`.
+known_gaps:
+  - goal
