@@ -355,3 +355,26 @@ def test_reaching_the_turn_cap_ends_the_run_rather_than_the_experiment() -> None
         Exception("Claude Code returned an error result: Reached maximum number of turns (40)")
     )
     assert not turn_cap_reached(Exception("rate limited"))
+
+
+def test_the_prompt_stream_stays_open_until_the_session_ends() -> None:
+    """Found live 2026-09-30: a stream that ends after its one message closes
+    the SDK's input channel, and every permission request -- i.e. every Edit --
+    then fails with "Stream closed". The agent could read but never write."""
+    from scripts.proof import held_stream
+
+    async def scenario() -> list[str]:
+        done = asyncio.Event()
+        stream = held_stream("do the task", done)
+        events = [str((await stream.__anext__())["message"]["content"])]
+        pending = asyncio.ensure_future(stream.__anext__())
+        await asyncio.sleep(0.01)
+        events.append("still open" if not pending.done() else "closed early")
+        done.set()
+        try:
+            await pending
+        except StopAsyncIteration:
+            events.append("closed after done")
+        return events
+
+    assert asyncio.run(scenario()) == ["do the task", "still open", "closed after done"]

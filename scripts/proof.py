@@ -25,13 +25,14 @@ part of it, and nothing in the product imports it.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import math
 import random
 import re
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -549,7 +550,7 @@ async def run_agent(prompt: str, repo: Path, base_sha: str, workdir: Path, model
     """
     import subprocess
 
-    from claude_agent_sdk import ClaudeAgentOptions, query
+    from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query
 
     subprocess.run(
         ["git", "-C", str(repo), "worktree", "add", "--detach", str(workdir), base_sha],
@@ -557,8 +558,6 @@ async def run_agent(prompt: str, repo: Path, base_sha: str, workdir: Path, model
         capture_output=True,
     )
     try:
-        from atlas.qa import _stream
-
         options = ClaudeAgentOptions(
             model=model,
             cwd=str(workdir),
@@ -569,15 +568,19 @@ async def run_agent(prompt: str, repo: Path, base_sha: str, workdir: Path, model
             setting_sources=[],
             max_turns=40,
         )
+        done = asyncio.Event()
         try:
-            async for _ in query(prompt=_stream(prompt), options=options):
-                pass
+            async for message in query(prompt=held_stream(prompt, done), options=options):
+                if isinstance(message, ResultMessage):
+                    done.set()
         except Exception as stopped:  # noqa: BLE001 - only the turn cap is expected
             # The cap is the pre-registered budget, not a failure: the agent's
             # answer is whatever it has changed by then. Anything else re-raises.
             if not turn_cap_reached(stopped):
                 raise
             (workdir.parent / "hit_turn_cap").write_text("1")
+        finally:
+            done.set()
         # Stage first: a plain `git diff` omits files the agent created, which
         # would silently drop part of its answer.
         subprocess.run(["git", "-C", str(workdir), "add", "-A"], check=True, capture_output=True)
@@ -593,6 +596,25 @@ async def run_agent(prompt: str, repo: Path, base_sha: str, workdir: Path, model
             ["git", "-C", str(repo), "worktree", "remove", "--force", str(workdir)],
             capture_output=True,
         )
+
+
+async def held_stream(prompt: str, done: asyncio.Event) -> AsyncIterator[dict[str, Any]]:
+    """The prompt as streaming input, **held open until the session ends**.
+
+    Required for the permission gate to work at all: the SDK closes its input
+    channel when the prompt stream finishes, and Claude Code's permission
+    requests travel back over that channel -- so a one-shot stream makes every
+    gated tool (every Edit) fail with "Stream closed" (found live 2026-09-30;
+    `proof/deviations.md` #3). Extraction never hit this because its in-process
+    MCP server keeps the channel open.
+    """
+    yield {
+        "type": "user",
+        "session_id": "",
+        "message": {"role": "user", "content": prompt},
+        "parent_tool_use_id": None,
+    }
+    await done.wait()
 
 
 def turn_cap_reached(error: BaseException) -> bool:
