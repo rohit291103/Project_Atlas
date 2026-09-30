@@ -183,7 +183,13 @@ Nothing active.
 - **3: Q&A with citations** (`qa.py`, `cb42f29`). It answers from confirmed claims only, citations are gated to claims the model was shown, and the evidence label is computed rather than trusted. **Uses `claude-opus-5`. The live eval has not been run**, and `writing-evals` requires a golden set before this counts as working.
 - **3: unaddressed-problem detection was not built, deliberately.** Its gate failed: there are no evidence→problem or →problem `implements` edges in the golden set (`docs/research/2026-09-28-problem-edge-density-gate.md`). The fix is in the extraction prompt first.
 
-**Still open in Phase 3:** the third source (**Notion or Google Docs, which is the user's call**), its transcript golden set, and the unscoped-interview modelling question. **Not verified in a browser:** Supabase is paused again, so the user has to resume it. **Not yet done:** a `backend-reviewer` pass over the session's storage and pipeline changes.
+- **Backend review done** (`3e531d3`). It fixed a cross-product re-sync that could take over another product's feature, a Q&A model call with no permission gate, and `reconcile` silently dropping a second source. See `docs/decisions/2026-09-28-feedback-and-qa-module-placement.md`.
+- **Browser-verified against the live database** (`0b80e8f`): 46/46 passing in both themes, with new tests for readiness, what-changed, Ask and Quality.
+- **3: Google Docs is the third source** (`40318fa`), "share with Atlas", with docs filed into a feature. Migration `c7e2a9d41f06` is **applied live**: a docs connection holds no secret, and a check constraint enforces it. The security review found nothing. **Known limit:** one shared service account means any workspace holding a doc's URL can ingest it, so this must close before a second workspace. See `docs/decisions/2026-09-28-google-docs-source.md`.
+
+**Phase 3 construction is complete.** What's still owed is evidence, not code: a doc golden set with interview notes, a Q&A golden set, and a live Google Docs run. The live run needs someone to create the service account and set `ATLAS_GOOGLE_SERVICE_ACCOUNT`. Unaddressed-problem detection waits on an extraction prompt fix.
+
+**Phase 4, in progress:** key rotation first, then a Google service account per workspace. Comment threads, feature-level RBAC, admin analytics and SSO each need a user decision first.
 
 **The full ordered task list, with dependencies and what each touches, lives in `docs/decisions/2026-08-19-product-orientation-rerun-safety-and-demo-data.md` § Implementation slices.** Summary of the order:
 
