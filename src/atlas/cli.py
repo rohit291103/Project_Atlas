@@ -38,10 +38,11 @@ from atlas.pipeline import (
     TargetError,
     run_ingestion,
 )
+from atlas.storage.connections import SecretError, rotate_connection_secrets
 from atlas.storage.db import get_engine, get_sessionmaker
 from atlas.storage.products import assign_feature_scope, create_product
 from atlas.storage.projections import Projection, load_projection
-from atlas.storage.rbac import workspace_session
+from atlas.storage.rbac import owner_session, workspace_session
 
 app = typer.Typer(help="Project Atlas -- extraction CLI and debug read path.")
 console = Console()
@@ -246,6 +247,34 @@ def ingest_jira(
     except TargetError as bad:
         raise typer.BadParameter(str(bad)) from bad
     _report(request, outcome)
+
+
+@app.command("rotate-secrets")
+def rotate_secrets() -> None:
+    """Re-seal every stored source credential under the first ATLAS_SECRET_KEY.
+
+    The rotation procedure (Phase 4): deploy with ATLAS_SECRET_KEY="new,old",
+    run this once, then deploy with ATLAS_SECRET_KEY="new". It crosses every
+    workspace, so it uses SUPABASE_DB_ADMIN_URL -- the owner connection, which
+    RLS does not narrow -- and it prints a count, never a key.
+    """
+    load_dotenv()
+    url = os.environ.get("SUPABASE_DB_ADMIN_URL")
+    key = os.environ.get("ATLAS_SECRET_KEY")
+    if not url or not key:
+        console.print("[red]Needs SUPABASE_DB_ADMIN_URL and ATLAS_SECRET_KEY.[/red]")
+        raise typer.Exit(1)
+    session_factory = get_sessionmaker(get_engine(url))
+    try:
+        with owner_session(session_factory) as session:
+            rotated = rotate_connection_secrets(session, key=key)
+    except SecretError as refused:
+        console.print(f"[red]{refused}[/red]")
+        raise typer.Exit(1) from None
+    console.print(
+        f"[green]Re-sealed {rotated} credential(s) under the new key.[/green] "
+        "Now deploy with only the new key in ATLAS_SECRET_KEY."
+    )
 
 
 @app.command("product-create")

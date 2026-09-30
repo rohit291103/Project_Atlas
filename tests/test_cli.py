@@ -27,6 +27,7 @@ from atlas.cli import _parse_repo, render_projection
 from atlas.extraction.agent import build_result
 from atlas.ingestion.jira import JiraClient
 from atlas.models.schema import (
+    ActorKind,
     CreatedBy,
     IngestionRunPayload,
     Node,
@@ -385,3 +386,53 @@ def test_cli_never_opens_an_unscoped_transaction() -> None:
     source = (Path(__file__).resolve().parents[1] / "src" / "atlas" / "cli.py").read_text()
     assert "session_scope(" not in source
     assert "workspace_session(" in source
+
+
+# --- rotate-secrets (Phase 4) ---------------------------------------------------
+
+
+def test_rotate_secrets_re_seals_under_the_first_key_and_prints_no_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from typer.testing import CliRunner
+
+    from atlas.cli import app
+    from atlas.storage.connections import (
+        create_connection,
+        generate_secret_key,
+        list_connections,
+        unseal,
+    )
+
+    old, new = generate_secret_key(), generate_secret_key()
+    url = f"sqlite:///{tmp_path / 'atlas.db'}"
+    factory = get_sessionmaker(get_engine(url))
+    Base.metadata.create_all(factory.kw["bind"])
+    workspace, product = uuid.uuid4(), uuid.uuid4()
+    with session_scope(factory) as session:
+        create_connection(
+            session,
+            workspace_id=workspace,
+            product_id=product,
+            source_type=SourceType.GITHUB_PR,
+            account="token",
+            host="github.com",
+            scope="acme/web",
+            secret="ghp_rotate_via_cli",
+            actor="Priya",
+            actor_kind=ActorKind.HUMAN,
+            key=old,
+        )
+    monkeypatch.setattr("atlas.cli.load_dotenv", lambda: None)
+    monkeypatch.setenv("SUPABASE_DB_ADMIN_URL", url)
+    monkeypatch.setenv("ATLAS_SECRET_KEY", f"{new},{old}")
+
+    result = CliRunner().invoke(app, ["rotate-secrets"])
+
+    assert result.exit_code == 0, result.output
+    assert "1" in result.output
+    assert new not in result.output and old not in result.output
+    with session_scope(factory) as session:
+        (connection,) = list_connections(session, workspace_id=workspace, product_id=product)
+        assert connection.secret_ciphertext is not None
+        assert unseal(connection.secret_ciphertext, new) == "ghp_rotate_via_cli"

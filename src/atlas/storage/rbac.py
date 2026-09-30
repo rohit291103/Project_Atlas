@@ -107,3 +107,18 @@ def workspace_session(
     with session_scope(session_factory) as session:
         scope_to_workspace(session, workspace_id)
         yield session
+
+
+@contextmanager
+def owner_session(session_factory: sessionmaker[Session]) -> Iterator[Session]:
+    """A transaction that deliberately crosses workspaces.
+
+    For operator tasks only -- today, `rotate-secrets` -- and only over the
+    *owner* connection (`SUPABASE_DB_ADMIN_URL`), which RLS does not narrow. It
+    is named, rather than being a bare `session_scope`, so that crossing the
+    tenant boundary is always a visible choice: under the app role a bare
+    session reads zero rows, which is the bug `workspace_session` exists to
+    prevent, and `tests/test_cli.py` keeps `session_scope(` out of the CLI.
+    """
+    with session_scope(session_factory) as session:
+        yield session

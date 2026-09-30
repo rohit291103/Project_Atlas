@@ -36,7 +36,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from cryptography.fernet import Fernet, InvalidToken
+from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 from pydantic import Field
 from sqlalchemy import (
     CheckConstraint,
@@ -104,15 +104,32 @@ def generate_secret_key() -> str:
     return Fernet.generate_key().decode()
 
 
-def _cipher(key: str) -> Fernet:
-    try:
-        return Fernet(key.encode())
-    except (ValueError, TypeError):
-        raise SecretError(
-            "ATLAS_SECRET_KEY is not a valid Fernet key "
-            '(generate one with `python -c "from cryptography.fernet import Fernet; '
-            'print(Fernet.generate_key().decode())"`)'
-        ) from None
+def _keys(key: str) -> list[Fernet]:
+    """`ATLAS_SECRET_KEY` as a list: comma-separated, first one current.
+
+    One key is the normal state. Two or more exist only during a rotation
+    (Phase 4): the first encrypts, every one decrypts, so rows sealed under the
+    old key keep working until `rotate_connection_secrets` re-seals them. The
+    error names the variable and the position, never the value.
+    """
+    parts = [part.strip() for part in key.split(",") if part.strip()]
+    if not parts:
+        raise SecretError("ATLAS_SECRET_KEY is empty")
+    keys: list[Fernet] = []
+    for position, part in enumerate(parts, start=1):
+        try:
+            keys.append(Fernet(part.encode()))
+        except (ValueError, TypeError):
+            raise SecretError(
+                f"ATLAS_SECRET_KEY entry {position} is not a valid Fernet key "
+                '(generate one with `python -c "from cryptography.fernet import Fernet; '
+                'print(Fernet.generate_key().decode())"`)'
+            ) from None
+    return keys
+
+
+def _cipher(key: str) -> MultiFernet:
+    return MultiFernet(_keys(key))
 
 
 def seal(secret: str, key: str) -> bytes:
@@ -353,3 +370,41 @@ def mark_used(session: Session, connection: Connection, *, at: datetime) -> None
     old."""
     connection.last_used_at = at
     session.add(connection)
+
+
+def rotate_connection_secrets(session: Session, *, key: str) -> int:
+    """Re-seal every stored credential under the first key in `key`. Returns how
+    many were re-sealed.
+
+    Runs across **every workspace**, so it needs a session that RLS does not
+    narrow -- the owner connection, from the CLI, never the API. It refuses a
+    single key: with nothing to rotate *from*, the likely story is that the
+    "new,old" deploy step was skipped, and re-sealing under the only key would
+    report success while changing nothing.
+
+    Each row is decrypted and re-encrypted in memory and never logged; Fernet's
+    `rotate` does both in one call, so no plaintext is ever bound to a name here.
+    Rows sealed under a key no longer listed fail loudly (`SecretError`) rather
+    than being skipped, because a skipped row is a credential that will fail on
+    its next run with nobody told why.
+    """
+    keys = _keys(key)
+    if len(keys) < 2:
+        raise SecretError(
+            'rotation needs ATLAS_SECRET_KEY="new,old" -- the new key first, then '
+            "every key a stored credential may still be sealed under"
+        )
+    cipher = MultiFernet(keys)
+    rotated = 0
+    for connection in session.execute(select(Connection)).scalars():
+        if connection.secret_ciphertext is None:
+            continue  # Google Docs: no per-product secret to rotate
+        try:
+            connection.secret_ciphertext = cipher.rotate(connection.secret_ciphertext)
+        except InvalidToken:
+            raise SecretError(
+                f"connection {connection.id} is sealed under a key not in ATLAS_SECRET_KEY"
+            ) from None
+        rotated += 1
+    session.flush()
+    return rotated

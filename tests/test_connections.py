@@ -33,6 +33,7 @@ from atlas.storage.connections import (
     get_connection,
     list_connections,
     revoke_connection,
+    rotate_connection_secrets,
     seal,
     unseal,
 )
@@ -251,3 +252,75 @@ def test_a_docs_connection_refuses_a_secret(session: Session) -> None:
 def test_github_and_jira_still_require_a_secret(session: Session) -> None:
     with pytest.raises(ValueError, match="secret"):
         _create(session, secret=None)
+
+
+# --- key rotation (Phase 4) ------------------------------------------------------
+#
+# ATLAS_SECRET_KEY may list several keys, comma-separated: the first encrypts,
+# all of them decrypt. Rotation = deploy "new,old", run the rotation, deploy
+# "new". A key that can only be replaced by re-entering every credential by hand
+# is a key nobody rotates.
+
+
+def test_the_first_key_encrypts_and_every_listed_key_decrypts() -> None:
+    old, new = generate_secret_key(), generate_secret_key()
+    sealed_old = seal("ghp_old", old)
+
+    assert unseal(sealed_old, f"{new},{old}") == "ghp_old"
+    assert unseal(seal("ghp_new", f"{new},{old}"), new) == "ghp_new"
+
+
+def test_a_retired_key_no_longer_decrypts() -> None:
+    old, new = generate_secret_key(), generate_secret_key()
+
+    with pytest.raises(SecretError):
+        unseal(seal("ghp_old", old), new)
+
+
+def test_spaces_around_listed_keys_are_tolerated() -> None:
+    old, new = generate_secret_key(), generate_secret_key()
+
+    assert unseal(seal("t", old), f" {new} , {old} ") == "t"
+
+
+def test_a_malformed_listed_key_is_named_without_being_repeated() -> None:
+    good = generate_secret_key()
+
+    with pytest.raises(SecretError) as raised:
+        seal("t", f"{good},not-a-key")
+
+    assert "ATLAS_SECRET_KEY" in str(raised.value)
+    assert "not-a-key" not in str(raised.value)
+    assert good not in str(raised.value)
+
+
+def test_rotation_re_seals_every_credential_under_the_first_key(session: Session) -> None:
+    old, new = generate_secret_key(), generate_secret_key()
+    github = _create(session, key=old, secret="ghp_rotate_me_1234")
+    other = _create(session, key=old, workspace_id=OTHER_WORKSPACE, secret="ghp_other_ws_5678")
+    docs = _create(
+        session,
+        key=old,
+        source_type=SourceType.GDOC,
+        account="atlas-reader@example.iam.gserviceaccount.com",
+        host="docs.google.com",
+        scope="1AbCdEfGhIjKlMnOpQrStUvWxYz0123",
+        secret=None,
+    )
+
+    rotated = rotate_connection_secrets(session, key=f"{new},{old}")
+
+    assert rotated == 2  # the docs row has no secret to rotate
+    for connection, expected in ((github, "ghp_rotate_me_1234"), (other, "ghp_other_ws_5678")):
+        assert connection.secret_ciphertext is not None
+        assert unseal(connection.secret_ciphertext, new) == expected
+    assert docs.secret_ciphertext is None
+
+
+def test_rotation_refuses_a_single_key_it_cannot_prove_is_new(session: Session) -> None:
+    """With one key there is nothing to rotate *from*; running it anyway usually
+    means the operator skipped the "new,old" deploy step."""
+    _create(session)
+
+    with pytest.raises(SecretError, match="new,old"):
+        rotate_connection_secrets(session, key=KEY)
