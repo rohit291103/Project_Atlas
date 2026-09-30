@@ -6677,3 +6677,12 @@ body.is-resizing {
   font-size: var(--text-xs);
   color: var(--text-dim);
 }
+
+/* Workspace activity — one row per week; the table can grow a column per
+   person, so it scrolls sideways inside the reading measure, never the page. */
+.activity {
+  max-width: 960px;
+}
+.activity__scroll {
+  overflow-x: auto;
+}

@@ -1073,6 +1073,21 @@ test("Quality reads the rulings and states the guard above the numbers", async (
   await expect(page.locator(".quality__headline, .notice").first()).toBeVisible();
 });
 
+test("an admin can read workspace activity; an editor is not offered it", async ({ page }) => {
+  await signIn(page, ADMIN);
+  const link = page.locator(".rail__nav-item", { hasText: "Activity" });
+  await expect(link).toBeVisible();
+  await link.click();
+  await expect(page).toHaveURL(/\/activity$/);
+  await expect(page.locator("h1")).toHaveText("Workspace activity", { timeout: 40000 });
+  // Either a week-by-week table or the honest empty state.
+  await expect(page.locator(".activity table, .activity .notice").first()).toBeVisible();
+
+  await page.context().clearCookies();
+  await signIn(page, EDITOR);
+  await expect(page.locator(".rail__nav-item", { hasText: "Activity" })).toHaveCount(0);
+});
+
 test("a viewer can discuss a claim without ruling on it", async ({ page }) => {
   await openFirstFeature(page, VIEWER);
   const status = await page.locator(".qitem--focused").getAttribute("class");

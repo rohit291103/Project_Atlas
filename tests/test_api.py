@@ -1837,3 +1837,25 @@ def test_a_feature_reports_how_many_comments_each_claim_has(
     detail = client.get(f"/feature-scopes/{FEATURE_SCOPE_ID}").json()
 
     assert detail["comment_counts"] == {node["id"]: 2}
+
+
+# --- workspace activity (Phase 4, admin only) -------------------------------------
+
+
+def test_an_admin_sees_the_workspace_s_activity(
+    client: TestClient, seeded: sessionmaker[Session]
+) -> None:
+    _as(client, ACTOR)
+    node = client.get(f"/feature-scopes/{FEATURE_SCOPE_ID}").json()["nodes"][0]
+    client.post(f"/nodes/{node['id']}/confirm")
+
+    report = client.get("/workspace/activity").json()
+
+    assert report["people"] == [ACTOR]
+    assert report["weeks"][-1]["rulings_by_person"] == {ACTOR: 1}
+
+
+def test_activity_is_admin_only(client: TestClient, seeded: sessionmaker[Session]) -> None:
+    _as(client, EDITOR_ONLY)
+
+    assert client.get("/workspace/activity").status_code == 403

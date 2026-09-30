@@ -68,6 +68,7 @@ export type FeedbackReport = components["schemas"]["FeedbackReport"];
 export type Answer = components["schemas"]["Answer"];
 export type GoogleDocsAccount = components["schemas"]["GoogleDocsAccount"];
 export type CommentView = components["schemas"]["CommentView"];
+export type ActivityReport = components["schemas"]["ActivityReport"];
 export type Tally = components["schemas"]["Tally"];
 
 /** A viewer may read the extracted draft but not rule on it (TRD §9). The UI
@@ -189,6 +190,8 @@ export const api = {
     return response.text();
   },
 
+  /** Workspace usage per week -- admin only. */
+  activity: () => request<ActivityReport>("/workspace/activity"),
   /** A claim's discussion thread, oldest first. Any member may add to it. */
   comments: (nodeId: string) => request<CommentView[]>(`/nodes/${nodeId}/comments`),
   addComment: (nodeId: string, body: string) =>

@@ -240,6 +240,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/workspace/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Workspace Activity
+         * @description How this workspace is using Atlas, per week (Phase 4). Admin only: it
+         *     names who ruled on how much, which is a manager's view, not a peer's. All
+         *     counting is in `activity.py`, from this workspace's log alone.
+         */
+        get: operations["get_workspace_activity_workspace_activity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/feature-scopes": {
         parameters: {
             query?: never;
@@ -544,6 +566,13 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ActivityReport */
+        ActivityReport: {
+            /** Weeks */
+            weeks: components["schemas"]["WeekActivity"][];
+            /** People */
+            people: string[];
+        };
         /** AddNodeRequest */
         AddNodeRequest: {
             type: components["schemas"]["NodeType"];
@@ -1477,6 +1506,40 @@ export interface components {
             /** Context */
             ctx?: Record<string, never>;
         };
+        /** WeekActivity */
+        WeekActivity: {
+            /** Week */
+            week: string;
+            /**
+             * Runs Started
+             * @default 0
+             */
+            runs_started: number;
+            /**
+             * Runs Succeeded
+             * @default 0
+             */
+            runs_succeeded: number;
+            /**
+             * Runs Failed
+             * @default 0
+             */
+            runs_failed: number;
+            /** Rulings By Person */
+            rulings_by_person?: {
+                [key: string]: number;
+            };
+            /**
+             * Automated Rulings
+             * @default 0
+             */
+            automated_rulings: number;
+            /**
+             * Comments
+             * @default 0
+             */
+            comments: number;
+        };
         /** WeeklyTally */
         WeeklyTally: {
             /** Week */
@@ -1848,6 +1911,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_workspace_activity_workspace_activity_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityReport"];
                 };
             };
         };

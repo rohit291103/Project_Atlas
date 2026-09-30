@@ -24,7 +24,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE, ApiError, api } from "./api";
 import type { FeatureScope, Product, Role } from "./api";
 import { IconConflict, IconAbout,
-  IconOverview, IconQuality, IconSources } from "./components/icons";
+  IconOverview, IconQuality, IconSources, IconActivity } from "./components/icons";
 import { Loading } from "./components/Loading";
 import { ProductSwitcher } from "./components/ProductSwitcher";
 import { landingProductId, rememberProduct } from "./lastProduct";
@@ -32,6 +32,7 @@ import { Tour } from "./components/Tour";
 import { hasSeenTour, markTourSeen, tourFeature, tourSteps } from "./tour";
 import { AboutPage } from "./pages/AboutPage";
 import { QualityPage } from "./pages/QualityPage";
+import { ActivityPage } from "./pages/ActivityPage";
 import { ConflictsPage } from "./pages/ConflictsPage";
 import { LandingPage } from "./pages/LandingPage";
 import { ProductsPage } from "./pages/ProductsPage";
@@ -390,6 +391,19 @@ export function App() {
                 <span className="rail__nav-text">Quality</span>
               </a>
             )}
+
+            {/* Admins only: it names who ruled on how much, which is a
+                manager's view rather than a peer's. The server enforces it. */}
+            {isRealProduct && role === "admin" && (
+              <a
+                className={`rail__nav-item${route.name === "activity" ? " is-active" : ""}`}
+                aria-current={route.name === "activity" ? "page" : undefined}
+                {...linkProps({ name: "activity", productId: activeShelf.product.id }, navigate)}
+              >
+                <IconActivity className="rail__nav-icon" />
+                <span className="rail__nav-text">Activity</span>
+              </a>
+            )}
           </div>
         )}
 
@@ -644,6 +658,9 @@ function Screen({
   }
   if (route.name === "quality") {
     return <QualityPage key={route.productId} productId={route.productId} />;
+  }
+  if (route.name === "activity") {
+    return <ActivityPage />;
   }
   if (route.name === "about") {
     return (

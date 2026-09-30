@@ -1245,6 +1245,7 @@ function Thread({ nodeId, onPosted }: { nodeId: string; onPosted: () => void }) 
   return (
     <section className="card thread" aria-label="Discussion">
       <CardHead title="Discussion" count={comments?.length} />
+      <div className="card__body">
       {comments && comments.length > 0 ? (
         <ol className="thread__list">
           {comments.map((comment) => (
@@ -1282,6 +1283,7 @@ function Thread({ nodeId, onPosted }: { nodeId: string; onPosted: () => void }) 
         </button>
       </form>
       {error && <div className="notice notice--error">{error}</div>}
+      </div>
     </section>
   );
 }

@@ -95,6 +95,14 @@ export const IconExternal = ({ className }: IconProps) => (
   </svg>
 );
 
+/** Activity — a calendar week: the page counts what happened, week by week. */
+export const IconActivity = ({ className }: IconProps) => (
+  <svg {...base} className={className}>
+    <rect x="2.5" y="3.5" width="11" height="10" rx="1.5" />
+    <path d="M2.5 6.5h11M5.5 2v3M10.5 2v3" />
+  </svg>
+);
+
 /** Quality — a rising line. The screen asks whether extraction is getting
  * better, and the Phase 3 exit criterion is literally a trend. */
 export const IconQuality = ({ className }: IconProps) => (

@@ -53,6 +53,7 @@ from fastapi.responses import PlainTextResponse
 from pydantic import Field, ValidationError
 from sqlalchemy.orm import Session
 
+from atlas.activity import ActivityReport, activity_report
 from atlas.api.deps import (
     SESSION_COOKIE,
     SESSION_MAX_AGE_SECONDS,
@@ -654,6 +655,14 @@ async def ask_product(
         return await ask(body.question, document, model_call())
     except AnswerError as refused:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(refused)) from None
+
+
+@router.get("/workspace/activity", response_model=ActivityReport)
+def get_workspace_activity(session: SessionDep, principal: AdminDep) -> ActivityReport:
+    """How this workspace is using Atlas, per week (Phase 4). Admin only: it
+    names who ruled on how much, which is a manager's view, not a peer's. All
+    counting is in `activity.py`, from this workspace's log alone."""
+    return activity_report(load_log(session, workspace_id=principal.workspace_id))
 
 
 @router.get("/feature-scopes", response_model=list[FeatureScopeRow])
