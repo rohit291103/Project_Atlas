@@ -53,7 +53,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, api, canWrite } from "../api";
 import { Orientation } from "../components/Orientation";
-import type { FeatureScopeDetail, Node, NodeType, Role, SourceRef } from "../api";
+import type { CommentView, FeatureScopeDetail, Node, NodeType, Role, SourceRef } from "../api";
 import {
   QUEUE_VIEWS,
   SOURCE_BADGES,
@@ -623,6 +623,7 @@ export function ReviewPage({
                     </div>
                     {section.nodes.map((node) => (
                       <QueueItem
+                        comments={detail?.comment_counts?.[node.id] ?? 0}
                         key={node.id}
                         node={node}
                         focused={focused?.id === node.id}
@@ -749,6 +750,12 @@ export function ReviewPage({
                     neighbours={neighboursOf(focused, detail?.edges ?? [], allNodes)}
                     onFocusNode={jumpTo}
                   />
+
+                  {/* Open to every role, viewers included: a comment is
+                      discussion, not a ruling, and moves nothing about the
+                      claim. Keyed by claim so a draft never follows you to
+                      the next one. */}
+                  <Thread key={focused.id} nodeId={focused.id} onPosted={() => void load()} />
                 </div>
 
                 <div className="rv__col" data-tour="provenance">
@@ -830,11 +837,13 @@ function QueueItem({
   node,
   focused,
   conflicted,
+  comments,
   onSelect,
 }: {
   node: Node;
   focused: boolean;
   conflicted: boolean;
+  comments: number;
   onSelect: () => void;
 }) {
   const ref = useRef<HTMLButtonElement>(null);
@@ -868,6 +877,12 @@ function QueueItem({
           <span className="qitem__flag" aria-label="in conflict">
             {" "}
             ⚠
+          </span>
+        )}
+        {comments > 0 && (
+          <span className="qitem__comments">
+            {" "}
+            · {comments} comment{comments === 1 ? "" : "s"}
           </span>
         )}
       </span>
@@ -1188,5 +1203,85 @@ function InlineEditor({
         </span>
       </div>
     </div>
+  );
+}
+
+/** A claim's discussion (Phase 4). Loaded when the claim is opened rather than
+ * with the feature, so the queue never pays for threads nobody reads. */
+function Thread({ nodeId, onPosted }: { nodeId: string; onPosted: () => void }) {
+  const [comments, setComments] = useState<CommentView[] | null>(null);
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    api
+      .comments(nodeId)
+      .then((thread) => live && setComments(thread))
+      .catch(() => live && setComments([]));
+    return () => {
+      live = false;
+    };
+  }, [nodeId]);
+
+  const post = async () => {
+    const body = draft.trim();
+    if (!body) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const posted = await api.addComment(nodeId, body);
+      setComments((thread) => [...(thread ?? []), posted]);
+      setDraft("");
+      onPosted();
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : "Couldn't post that comment.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="card thread" aria-label="Discussion">
+      <CardHead title="Discussion" count={comments?.length} />
+      {comments && comments.length > 0 ? (
+        <ol className="thread__list">
+          {comments.map((comment) => (
+            <li className="thread__item" key={comment.id}>
+              <p className="thread__meta">
+                <b>{comment.author}</b> · {new Date(comment.created_at).toLocaleString()}
+              </p>
+              <p className="thread__body">{comment.body}</p>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="thread__empty">No discussion yet. A comment doesn't rule on the claim.</p>
+      )}
+      <form
+        className="thread__form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void post();
+        }}
+      >
+        <textarea
+          className="thread__input"
+          value={draft}
+          maxLength={2000}
+          rows={2}
+          placeholder="Ask about this claim, or add context…"
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) void post();
+          }}
+        />
+        <button type="submit" className="action action--sm" disabled={busy || !draft.trim()}>
+          {busy ? "Posting…" : "Comment"}
+        </button>
+      </form>
+      {error && <div className="notice notice--error">{error}</div>}
+    </section>
   );
 }

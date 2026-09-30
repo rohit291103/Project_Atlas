@@ -1773,3 +1773,67 @@ def test_an_editor_may_still_pull_from_a_connected_source(
     )
 
     assert response.status_code == 202
+
+
+# --- comment threads (Phase 4) ---------------------------------------------------
+
+
+def test_any_member_may_comment_on_a_claim_and_everyone_reads_the_thread(
+    client: TestClient, seeded: sessionmaker[Session]
+) -> None:
+    """Viewers included (2026-09-30): discussion is not a ruling."""
+    _as(client, VIEWER)
+    node = client.get(f"/feature-scopes/{FEATURE_SCOPE_ID}").json()["nodes"][0]
+
+    posted = client.post(f"/nodes/{node['id']}/comments", json={"body": "Is this still true?"})
+    _as(client, ACTOR)
+    client.post(f"/nodes/{node['id']}/comments", json={"body": "Yes — see the Sept doc."})
+
+    assert posted.status_code == 201
+    thread = client.get(f"/nodes/{node['id']}/comments").json()
+    assert [(c["author"], c["body"]) for c in thread] == [
+        (VIEWER, "Is this still true?"),
+        (ACTOR, "Yes — see the Sept doc."),
+    ]
+
+
+def test_commenting_does_not_rule_on_the_claim(
+    client: TestClient, seeded: sessionmaker[Session]
+) -> None:
+    _as(client, VIEWER)
+    node = client.get(f"/feature-scopes/{FEATURE_SCOPE_ID}").json()["nodes"][0]
+
+    client.post(f"/nodes/{node['id']}/comments", json={"body": "Looks right to me."})
+
+    after = client.get(f"/feature-scopes/{FEATURE_SCOPE_ID}").json()["nodes"][0]
+    assert after["status"] == node["status"]
+
+
+def test_a_comment_on_an_unknown_claim_is_404(
+    client: TestClient, seeded: sessionmaker[Session]
+) -> None:
+    _as(client, ACTOR)
+
+    response = client.post(f"/nodes/{uuid.uuid4()}/comments", json={"body": "hello"})
+
+    assert response.status_code == 404
+
+
+def test_a_blank_comment_is_422(client: TestClient, seeded: sessionmaker[Session]) -> None:
+    _as(client, ACTOR)
+    node = client.get(f"/feature-scopes/{FEATURE_SCOPE_ID}").json()["nodes"][0]
+
+    assert client.post(f"/nodes/{node['id']}/comments", json={"body": "  "}).status_code == 422
+
+
+def test_a_feature_reports_how_many_comments_each_claim_has(
+    client: TestClient, seeded: sessionmaker[Session]
+) -> None:
+    _as(client, ACTOR)
+    node = client.get(f"/feature-scopes/{FEATURE_SCOPE_ID}").json()["nodes"][0]
+    client.post(f"/nodes/{node['id']}/comments", json={"body": "one"})
+    client.post(f"/nodes/{node['id']}/comments", json={"body": "two"})
+
+    detail = client.get(f"/feature-scopes/{FEATURE_SCOPE_ID}").json()
+
+    assert detail["comment_counts"] == {node["id"]: 2}

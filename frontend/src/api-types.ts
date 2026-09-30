@@ -286,6 +286,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/nodes/{node_id}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Comments
+         * @description One claim's thread, oldest first.
+         */
+        get: operations["list_comments_nodes__node_id__comments_get"];
+        put?: never;
+        /**
+         * Post Comment
+         * @description Add to a claim's thread. Any member may -- viewers included (2026-09-30):
+         *     a comment is discussion, not a ruling, and changes nothing about the claim.
+         */
+        post: operations["post_comment_nodes__node_id__comments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/feature-scopes/{feature_scope_id}/description": {
         parameters: {
             query?: never;
@@ -603,6 +628,33 @@ export interface components {
             /** After */
             after: string;
         };
+        /** CommentRequest */
+        CommentRequest: {
+            /** Body */
+            body: string;
+        };
+        /** CommentView */
+        CommentView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Node Id
+             * Format: uuid
+             */
+            node_id: string;
+            /** Body */
+            body: string;
+            /** Author */
+            author: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
         /**
          * ConnectSourceRequest
          * @description Connect one source to one product.
@@ -826,6 +878,10 @@ export interface components {
             nodes: components["schemas"]["Node"][];
             /** Edges */
             edges: components["schemas"]["Edge"][];
+            /** Comment Counts */
+            comment_counts?: {
+                [key: string]: number;
+            };
         };
         /**
          * FeatureScopeRow
@@ -1834,6 +1890,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FeatureScopeDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_comments_nodes__node_id__comments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                node_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentView"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_comment_nodes__node_id__comments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                node_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentView"];
                 };
             };
             /** @description Validation Error */

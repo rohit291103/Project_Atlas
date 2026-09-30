@@ -50,7 +50,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response, status
 from fastapi.responses import PlainTextResponse
-from pydantic import Field
+from pydantic import Field, ValidationError
 from sqlalchemy.orm import Session
 
 from atlas.api.deps import (
@@ -77,6 +77,7 @@ from atlas.assembly import (
 from atlas.config import ApiSettings
 from atlas.feedback import FeedbackReport, feedback_report
 from atlas.models.schema import (
+    COMMENT_MAX_LENGTH,
     AtlasModel,
     DescriptionStr,
     Edge,
@@ -105,6 +106,7 @@ from atlas.pipeline import (
 )
 from atlas.qa import MAX_QUESTION, Answer, AnswerError, ask, model_call
 from atlas.storage import confirmations, connections, products
+from atlas.storage.comments import Comment, add_comment, comment_counts, comments_for_node
 from atlas.storage.connections import ConnectionView, SecretError
 from atlas.storage.projections import (
     FeatureScope,
@@ -295,6 +297,21 @@ class FeatureScopeDetail(AtlasModel):
     feature_scope: FeatureScope | None
     nodes: list[Node]
     edges: list[Edge]
+    #: Comments per claim, for a badge; only claims with at least one appear.
+    #: The thread itself is fetched when a claim is opened.
+    comment_counts: dict[uuid.UUID, int] = Field(default_factory=dict)
+
+
+class CommentRequest(AtlasModel):
+    body: str = Field(max_length=COMMENT_MAX_LENGTH)
+
+
+class CommentView(AtlasModel):
+    id: uuid.UUID
+    node_id: uuid.UUID
+    body: str
+    author: str
+    created_at: datetime
 
 
 # --- helpers -------------------------------------------------------------------
@@ -678,10 +695,65 @@ def get_feature_scope(
     )
     if not projection.feature_scopes and not projection.nodes:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"no feature scope {feature_scope_id}")
+    counts = comment_counts(session, workspace_id=principal.workspace_id)
     return FeatureScopeDetail(
         feature_scope=projection.feature_scopes.get(feature_scope_id),
         nodes=list(projection.nodes.values()),
         edges=list(projection.edges.values()),
+        comment_counts={
+            node_id: counts[node_id] for node_id in projection.nodes if node_id in counts
+        },
+    )
+
+
+@router.get("/nodes/{node_id}/comments", response_model=list[CommentView])
+def list_comments(
+    node_id: uuid.UUID, session: SessionDep, principal: PrincipalDep
+) -> list[CommentView]:
+    """One claim's thread, oldest first."""
+    _require_node(session, principal, node_id)
+    return [
+        _comment_view(comment)
+        for comment in comments_for_node(
+            session, workspace_id=principal.workspace_id, node_id=node_id
+        )
+    ]
+
+
+@router.post(
+    "/nodes/{node_id}/comments",
+    response_model=CommentView,
+    status_code=status.HTTP_201_CREATED,
+)
+def post_comment(
+    node_id: uuid.UUID, body: CommentRequest, session: SessionDep, principal: PrincipalDep
+) -> CommentView:
+    """Add to a claim's thread. Any member may -- viewers included (2026-09-30):
+    a comment is discussion, not a ruling, and changes nothing about the claim."""
+    _require_node(session, principal, node_id)
+    try:
+        comment = add_comment(
+            session,
+            workspace_id=principal.workspace_id,
+            node_id=node_id,
+            body=body.body,
+            actor=principal.actor,
+            actor_kind=principal.actor_kind,
+        )
+    except ValidationError as bad:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "a comment cannot be blank"
+        ) from bad
+    return _comment_view(comment)
+
+
+def _comment_view(comment: Comment) -> CommentView:
+    return CommentView(
+        id=comment.id,
+        node_id=comment.node_id,
+        body=comment.body,
+        author=comment.author,
+        created_at=comment.created_at,
     )
 
 

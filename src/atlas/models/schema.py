@@ -247,6 +247,9 @@ class EventType(StrEnum):
     # that a source was connected or revoked, and by whom (TRD Sec9).
     CONNECTION_CREATED = "connection_created"
     CONNECTION_REVOKED = "connection_revoked"
+    #: Discussion on a claim (Phase 4). Not a ruling: replay projects nothing
+    #: from it; `storage/comments.py` reads it directly.
+    COMMENT_ADDED = "comment_added"
 
 
 # --- entities ------------------------------------------------------------------
@@ -538,6 +541,24 @@ class FeatureScopeAssignedPayload(AtlasModel):
 
     feature_scope_id: uuid.UUID
     product_id: uuid.UUID
+
+
+#: Long enough for a real point with a link or two; short enough that a thread
+#: stays a discussion and a spec stays in the claims.
+COMMENT_MAX_LENGTH = 2000
+
+
+class CommentPayload(AtlasModel):
+    """Payload of a `comment_added` Event -- one message on a claim (Phase 4).
+
+    Who wrote it and when are the Event's own `actor`/`timestamp`, as for a
+    ruling, so the two cannot disagree. Append-only like every event: there is
+    no edit, and a retraction (if ever needed) would be its own event.
+    """
+
+    comment_id: uuid.UUID = Field(default_factory=uuid.uuid4)
+    node_id: uuid.UUID
+    body: Annotated[NonBlankStr, Field(max_length=COMMENT_MAX_LENGTH)]
 
 
 class ProductDescribedPayload(AtlasModel):

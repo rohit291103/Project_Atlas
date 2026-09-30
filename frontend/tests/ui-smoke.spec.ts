@@ -1072,3 +1072,18 @@ test("Quality reads the rulings and states the guard above the numbers", async (
   // Either a headline rate or the honest empty state -- never a blank page.
   await expect(page.locator(".quality__headline, .notice").first()).toBeVisible();
 });
+
+test("a viewer can discuss a claim without ruling on it", async ({ page }) => {
+  await openFirstFeature(page, VIEWER);
+  const status = await page.locator(".qitem--focused").getAttribute("class");
+
+  const thread = page.locator(".thread");
+  await expect(thread).toBeVisible();
+  const text = `Is this still true? (${Date.now()})`;
+  await thread.locator(".thread__input").fill(text);
+  await thread.getByRole("button", { name: "Comment" }).click();
+
+  await expect(thread.locator(".thread__body", { hasText: text })).toBeVisible();
+  // Discussion is not a ruling: the claim's status mark is exactly as it was.
+  await expect(page.locator(".qitem--focused")).toHaveAttribute("class", status ?? "");
+});

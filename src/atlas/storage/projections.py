@@ -85,7 +85,13 @@ __all__ = [
 # here because a connection lives in a table (it must be deletable); the log
 # records only that one was made or revoked, for audit.
 _NO_OP_EVENTS = frozenset(
-    {EventType.SPEC_EXPORTED, EventType.CONNECTION_CREATED, EventType.CONNECTION_REVOKED}
+    {
+        EventType.SPEC_EXPORTED,
+        EventType.CONNECTION_CREATED,
+        EventType.CONNECTION_REVOKED,
+        # A comment is discussion, not a ruling; `storage/comments.py` reads it.
+        EventType.COMMENT_ADDED,
+    }
 )
 
 #: How long a run may sit with a start event and no terminal event before the
