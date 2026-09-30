@@ -5,21 +5,15 @@ HTTP and JSON parsing, returns a frozen DTO rather than domain Nodes, and only
 ever issues GET to the Docs API -- the one POST is the OAuth token exchange,
 which reads nothing and writes nothing.
 
-**Access is "share with Atlas"** (decided 2026-09-28): Atlas has one Google
-service account, and a PM shares specific docs with its email exactly as they
-would with a teammate. Atlas can read what was shared and nothing else, and
-the scope requested is `documents.readonly`, so least privilege holds twice
-over (Philosophy §6). The key lives in the environment
-(`ATLAS_GOOGLE_SERVICE_ACCOUNT`), never in the database -- it is an application
-secret, not a per-product credential.
-
-**Known limit, recorded rather than hidden:** one service account is shared by
-every workspace, so any workspace holding a doc's URL could ingest a doc
-someone else shared with Atlas. Doc ids are long and unguessable, which makes
-the URL a capability, but that is not tenant isolation. Acceptable for a
-single-team pilot; must be closed (a service account per workspace, or OAuth)
-before Atlas has more than one customer -- see
-`docs/decisions/2026-09-28-google-docs-source.md`.
+**Access is "share with Atlas"** (decided 2026-09-28): each workspace has its
+own Google service account, and a PM shares specific docs with that address
+exactly as they would with a teammate. The account can read what was shared
+and nothing else, and the scope requested is `documents.readonly`, so least
+privilege holds twice over (Philosophy §6). Keys live in the environment
+(`ATLAS_GOOGLE_SERVICE_ACCOUNTS`, one per workspace), never in the database --
+they are application secrets, not per-product credentials. One account per
+workspace (2026-09-30) is what keeps a doc shared with one tenant unreadable
+from another; see `docs/decisions/2026-09-28-google-docs-source.md`.
 
 **Signing in without a Google library.** A service account authenticates by
 signing a short-lived JWT with its RSA key and exchanging it for an access

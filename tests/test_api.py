@@ -74,7 +74,7 @@ def _settings() -> ApiSettings:
         app_passphrase=PASSPHRASE,
         session_secret="test-secret-not-a-real-one",
         secret_key=SECRET_KEY,
-        google_service_account=GOOGLE_ACCOUNT,
+        google_service_accounts={WORKSPACE_ID: GOOGLE_ACCOUNT},
     )
 
 
@@ -1631,7 +1631,7 @@ def test_docs_cannot_be_connected_when_atlas_has_no_google_account(
     _stub_access(monkeypatch)
     app = client.app
     app.dependency_overrides[get_api_settings] = lambda: dc_replace(  # type: ignore[attr-defined]
-        _settings(), google_service_account=None
+        _settings(), google_service_accounts={}
     )
 
     response = client.post(
@@ -1689,3 +1689,26 @@ def test_a_target_of_another_source_kind_is_refused(
     )
 
     assert response.status_code == 422
+
+
+def test_another_workspace_s_google_account_is_never_used(
+    client: TestClient, with_product: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Phase 4: one account per workspace. A workspace with no account of its own
+    cannot borrow one configured for someone else -- which is what made a doc
+    URL ingestible by every tenant when there was a single shared account."""
+    from dataclasses import replace as dc_replace
+
+    _stub_access(monkeypatch)
+    elsewhere = uuid.uuid4()
+    client.app.dependency_overrides[get_api_settings] = lambda: dc_replace(  # type: ignore[attr-defined]
+        _settings(), google_service_accounts={elsewhere: GOOGLE_ACCOUNT}
+    )
+
+    response = client.post(
+        f"/products/{with_product}/connections",
+        json={"source_type": "gdoc", "host": "docs.google.com", "scope": DOC_URL},
+    )
+
+    assert response.status_code == 409
+    assert client.get("/sources/google-docs").json() == {"account": None}

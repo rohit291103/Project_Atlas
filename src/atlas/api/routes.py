@@ -736,16 +736,21 @@ _TARGET_KINDS: dict[SourceType, frozenset[RunTargetKind]] = {
 }
 
 
-def _google_credential(settings: ApiSettings) -> GoogleDocsCredential:
-    if settings.google_service_account is None:
+def _google_credential(settings: ApiSettings, workspace_id: uuid.UUID) -> GoogleDocsCredential:
+    """This workspace's Google account, and only this workspace's: a doc shared
+    with another workspace's address must stay unreadable from here."""
+    account = settings.google_account(workspace_id)
+    if account is None:
         raise HTTPException(
             status.HTTP_409_CONFLICT,
-            "Google Docs isn't set up on this Atlas yet (ATLAS_GOOGLE_SERVICE_ACCOUNT).",
+            "Google Docs isn't set up for this workspace yet (ATLAS_GOOGLE_SERVICE_ACCOUNTS).",
         )
-    return GoogleDocsCredential(service_account=settings.google_service_account)
+    return GoogleDocsCredential(service_account=account)
 
 
-def _credential_from(body: ConnectSourceRequest, host: str, settings: ApiSettings) -> Credential:
+def _credential_from(
+    body: ConnectSourceRequest, host: str, settings: ApiSettings, workspace_id: uuid.UUID
+) -> Credential:
     """Turn a connect request into the credential its connector expects.
 
     GitHub authenticates a token; Jira authenticates email + token; Google Docs
@@ -759,7 +764,7 @@ def _credential_from(body: ConnectSourceRequest, host: str, settings: ApiSetting
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
                 "Google Docs takes no token — share the doc with Atlas instead",
             )
-        return _google_credential(settings)
+        return _google_credential(settings, workspace_id)
     if not (body.secret or "").strip():
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "a token is required")
     secret = body.secret or ""
@@ -827,7 +832,7 @@ def connect_source(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "host must not be blank")
     if body.source_type is SourceType.GDOC:
         host = "docs.google.com"
-    credential = _credential_from(body, host, settings)
+    credential = _credential_from(body, host, settings, principal.workspace_id)
     try:
         access = check_access(credential, scope=body.scope)
     except TargetError as bad:
@@ -866,9 +871,9 @@ def connect_source(
 
 
 class GoogleDocsAccount(AtlasModel):
-    #: The address a PM shares docs with, or `None` if this Atlas has no Google
-    #: account configured. Public by nature -- it is an email -- and nothing
-    #: else about the key is ever returned.
+    #: The address a PM shares docs with -- this workspace's own account -- or
+    #: `None` if the workspace has none configured. Public by nature (it is an
+    #: email), and nothing else about the key is ever returned.
     account: str | None
 
 
@@ -876,7 +881,7 @@ class GoogleDocsAccount(AtlasModel):
 def google_docs_account(principal: PrincipalDep, settings: SettingsDep) -> GoogleDocsAccount:
     """Who to share docs with -- shown before connecting, because sharing is
     the step that grants access."""
-    info = settings.google_service_account
+    info = settings.google_account(principal.workspace_id)
     return GoogleDocsAccount(account=info["client_email"] if info else None)
 
 
@@ -968,7 +973,7 @@ def start_ingestion(
 
     credential: Credential
     if connection.source_type is SourceType.GDOC:
-        credential = _google_credential(settings)
+        credential = _google_credential(settings, principal.workspace_id)
     else:
         try:
             secret = connections.unseal(connection.secret_ciphertext or b"", settings.secret_key)

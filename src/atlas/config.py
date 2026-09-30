@@ -96,14 +96,20 @@ class ApiSettings:
     app_passphrase: str
     session_secret: str
     secret_key: str
-    #: Atlas's own Google service account -- **the one deliberate exception** to
-    #: "no ambient source credential" above (2026-09-28, "share with Atlas";
-    #: `docs/decisions/2026-09-28-google-docs-source.md`). Accepted because its
-    #: reach is exactly the docs people have explicitly shared with it, under
-    #: the `documents.readonly` scope -- unlike a GitHub or Jira token, which
-    #: reaches everything its owner can. Optional: unset, Google Docs is simply
-    #: unavailable. `repr=False` keeps the private key out of any log line.
-    google_service_account: dict[str, Any] | None = field(default=None, repr=False)
+    #: Google service accounts, **one per workspace** -- the one deliberate
+    #: exception to "no ambient source credential" above (2026-09-28, "share
+    #: with Atlas"; `docs/decisions/2026-09-28-google-docs-source.md`). Accepted
+    #: because an account's reach is exactly the docs people shared with it,
+    #: read-only. Per workspace (2026-09-30) so a doc shared with one
+    #: workspace's address is unreadable from another -- a single shared account
+    #: made any doc URL ingestible by every tenant. Empty: Google Docs is simply
+    #: unavailable. `repr=False` keeps private keys out of any log line.
+    google_service_accounts: dict[uuid.UUID, dict[str, Any]] = field(
+        default_factory=dict, repr=False
+    )
+
+    def google_account(self, workspace_id: uuid.UUID) -> dict[str, Any] | None:
+        return self.google_service_accounts.get(workspace_id)
 
     @classmethod
     def from_env(cls) -> "ApiSettings":
@@ -112,23 +118,47 @@ class ApiSettings:
             app_passphrase=os.environ["ATLAS_APP_PASSPHRASE"],
             session_secret=os.environ["ATLAS_SESSION_SECRET"],
             secret_key=os.environ["ATLAS_SECRET_KEY"],
-            google_service_account=_google_service_account(
-                os.environ.get("ATLAS_GOOGLE_SERVICE_ACCOUNT")
+            google_service_accounts=google_service_accounts(
+                os.environ.get("ATLAS_GOOGLE_SERVICE_ACCOUNTS")
             ),
         )
 
 
-def _google_service_account(value: str | None) -> dict[str, Any] | None:
-    """The key JSON itself (what a hosting dashboard holds) or a path to it
-    (what a laptop holds). Fails loudly on a malformed value rather than
-    starting with Google Docs silently broken."""
+def google_service_accounts(value: str | None) -> dict[uuid.UUID, dict[str, Any]]:
+    """`ATLAS_GOOGLE_SERVICE_ACCOUNTS`: a JSON object mapping workspace id to
+    that workspace's key -- the key JSON itself, or a path to it.
+
+    Fails loudly rather than starting with Google Docs half-configured, and
+    refuses two workspaces sharing one account: that configuration would
+    quietly reopen the cross-tenant gap this mapping exists to close. Error
+    messages name the workspace, never the key.
+    """
     if not value or not value.strip():
-        return None
-    raw = value if value.lstrip().startswith("{") else Path(value).read_text()
-    info = json.loads(raw)
-    if not isinstance(info, dict) or not {"client_email", "private_key"} <= info.keys():
-        raise ValueError(
-            "ATLAS_GOOGLE_SERVICE_ACCOUNT is not a service account key "
-            "(expected client_email and private_key)"
-        )
-    return info
+        return {}
+    mapping = json.loads(value)
+    if not isinstance(mapping, dict):
+        raise ValueError("ATLAS_GOOGLE_SERVICE_ACCOUNTS must map workspace id to a key")
+    accounts: dict[uuid.UUID, dict[str, Any]] = {}
+    owners: dict[str, uuid.UUID] = {}
+    for raw_id, raw_key in mapping.items():
+        try:
+            workspace_id = uuid.UUID(raw_id)
+        except ValueError:
+            raise ValueError(
+                f"ATLAS_GOOGLE_SERVICE_ACCOUNTS: {raw_id!r} is not a workspace id"
+            ) from None
+        info = json.loads(Path(raw_key).read_text()) if isinstance(raw_key, str) else raw_key
+        if not isinstance(info, dict) or not {"client_email", "private_key"} <= info.keys():
+            raise ValueError(
+                f"ATLAS_GOOGLE_SERVICE_ACCOUNTS: the key for workspace {workspace_id} "
+                "is not a service account key (expected client_email and private_key)"
+            )
+        email = str(info["client_email"])
+        if email in owners:
+            raise ValueError(
+                f"ATLAS_GOOGLE_SERVICE_ACCOUNTS: {email} is given to two workspaces "
+                f"({owners[email]} and {workspace_id}); each needs its own account"
+            )
+        owners[email] = workspace_id
+        accounts[workspace_id] = info
+    return accounts

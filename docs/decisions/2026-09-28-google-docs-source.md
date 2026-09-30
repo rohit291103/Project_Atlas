@@ -33,3 +33,14 @@ One service account serves every workspace. **Any workspace that knows a doc's U
 - **A doc golden set** (`writing-evals`), with interview notes among the docs. Rule 5 (one claim, one node) and the tool budget were tuned on PR threads, and a 45-minute transcript is mostly not claims. Until that set exists, doc extraction is *built*, not *known to work*.
 - **A live run.** Someone has to create the service account, set the env var, share a doc and pull it.
 - **The per-workspace service account** described above, before a second customer.
+
+## Amended 2026-09-30: one service account per workspace, and the tenant gap closed
+
+The limit recorded above ("any workspace that knows a doc's URL can ingest a doc someone else shared with Atlas") is **closed**.
+
+- `ATLAS_GOOGLE_SERVICE_ACCOUNT` (a single key) is replaced by **`ATLAS_GOOGLE_SERVICE_ACCOUNTS`**: a JSON object mapping each workspace id to that workspace's key, given as the key JSON or a path to it. The single-key variable had existed for two days and was never set in any environment, so nothing needed migrating.
+- Every lookup uses the caller's workspace (`ApiSettings.google_account(workspace_id)`): connecting, the "share with" address, and starting a run. A workspace with no account of its own gets a 409. It never borrows another workspace's account, and a test asserts that.
+- **Configuration refuses one account given to two workspaces**, because that would silently reopen the gap. Error messages name the workspace, never the key.
+- Result: a doc shared with workspace A's address can't be read through workspace B, because B's account was never given access. The doc URL is no longer a capability.
+
+The exception to "no ambient source credential" (above) still stands, now scoped per workspace.

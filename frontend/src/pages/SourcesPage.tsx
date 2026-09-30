@@ -356,8 +356,8 @@ function ConnectForm({
         <>
           {googleAccount === null ? (
             <div className="notice notice--error">
-              Google Docs isn't set up on this Atlas yet. Whoever runs it needs to add a Google
-              service account (ATLAS_GOOGLE_SERVICE_ACCOUNT).
+              Google Docs isn't set up for this workspace yet. Whoever runs Atlas needs to give
+              it a Google service account of its own (ATLAS_GOOGLE_SERVICE_ACCOUNTS).
             </div>
           ) : (
             <p className="connect__note">

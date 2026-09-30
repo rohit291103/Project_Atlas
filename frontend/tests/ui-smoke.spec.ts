@@ -858,7 +858,7 @@ test("connecting Google Docs asks for sharing, never for a token", async ({ page
   await expect(page.locator("#host")).toHaveCount(0);
   await expect(page.locator("#scope")).toBeVisible();
   await expect(
-    page.locator(".connect").getByText(/Share each doc|isn't set up on this Atlas/),
+    page.locator(".connect").getByText(/Share each doc|isn't set up for this workspace/),
   ).toBeVisible();
 });
 
