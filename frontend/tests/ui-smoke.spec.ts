@@ -30,6 +30,7 @@ import { actors } from "./fixture";
  * deployed environment seeded some other way. */
 const EDITOR = actors.editor;
 const VIEWER = actors.viewer;
+const ADMIN = actors.admin;
 const PASSPHRASE = process.env.ATLAS_APP_PASSPHRASE ?? "letmein";
 
 type Page = import("@playwright/test").Page;
@@ -823,7 +824,7 @@ test("the sources screen states the read-only promise and never shows a secret",
 });
 
 test("the connect form says where the credential goes before asking for it", async ({ page }) => {
-  await signIn(page, EDITOR);
+  await signIn(page, ADMIN);
   await page.locator(".rail__nav-item", { hasText: "Sources" }).click();
   await page.getByRole("button", { name: "Connect a source" }).click();
 
@@ -836,7 +837,7 @@ test("the connect form says where the credential goes before asking for it", asy
 test("switching the connect form to Jira asks for the email the token belongs to", async ({
   page,
 }) => {
-  await signIn(page, EDITOR);
+  await signIn(page, ADMIN);
   await page.locator(".rail__nav-item", { hasText: "Sources" }).click();
   await page.getByRole("button", { name: "Connect a source" }).click();
   await page.getByRole("button", { name: "Jira", exact: true }).click();
@@ -846,8 +847,18 @@ test("switching the connect form to Jira asks for the email the token belongs to
   await expect(page.locator("#email")).toBeVisible();
 });
 
-test("connecting Google Docs asks for sharing, never for a token", async ({ page }) => {
+test("an editor can pull from sources but not connect one", async ({ page }) => {
   await signIn(page, EDITOR);
+  await page.locator(".rail__nav-item", { hasText: "Sources" }).click();
+  await expect(page.locator("h2", { hasText: "Connected" })).toBeVisible();
+
+  // Granting Atlas access is an admin's act (Phase 4); the server refuses it
+  // regardless, and the screen does not offer what would be refused.
+  await expect(page.getByRole("button", { name: "Connect a source" })).toHaveCount(0);
+});
+
+test("connecting Google Docs asks for sharing, never for a token", async ({ page }) => {
+  await signIn(page, ADMIN);
   await page.locator(".rail__nav-item", { hasText: "Sources" }).click();
   await page.getByRole("button", { name: "Connect a source" }).click();
   await page.getByRole("button", { name: "Google Docs", exact: true }).click();

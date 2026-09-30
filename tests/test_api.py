@@ -56,8 +56,13 @@ PASSPHRASE = "open-sesame"
 #: The Fernet key connections are encrypted with. Generated per test run, so no
 #: key is ever committed and a leaked fixture value cannot decrypt anything real.
 SECRET_KEY = generate_secret_key()
+#: Seated as admin: since Phase 4 only an admin may connect or revoke a source,
+#: and an admin can do everything an editor can, so every editor-path test holds.
 ACTOR = "Priya (PM)"
 VIEWER = "Sam (observer)"
+#: A plain editor -- may rule on claims and pull from connected sources, but may
+#: not grant Atlas access to anything new.
+EDITOR_ONLY = "Eli (engineer)"
 
 
 #: A stand-in Google service account. Never used to sign anything in these
@@ -154,7 +159,8 @@ def seeded(session_factory: sessionmaker[Session]) -> sessionmaker[Session]:
         # A provisioned workspace and one member: as of slice 1D the API resolves
         # both from the database, so a seed without them is a seed nobody can read.
         session.add(Workspace(id=WORKSPACE_ID, name="Acme"))
-        session.add(WorkspaceMember(workspace_id=WORKSPACE_ID, actor=ACTOR, role=Role.EDITOR))
+        session.add(WorkspaceMember(workspace_id=WORKSPACE_ID, actor=ACTOR, role=Role.ADMIN))
+        session.add(WorkspaceMember(workspace_id=WORKSPACE_ID, actor=EDITOR_ONLY, role=Role.EDITOR))
         session.add(WorkspaceMember(workspace_id=WORKSPACE_ID, actor=VIEWER, role=Role.VIEWER))
         record_extraction(session, result, workspace_id=WORKSPACE_ID, ingestion_run=run)
     return session_factory
@@ -238,7 +244,7 @@ def test_sign_in_issues_a_session_naming_the_actor(client: TestClient) -> None:
     response = client.post("/session", json={"passphrase": PASSPHRASE, "name": ACTOR})
 
     assert response.status_code == 200
-    assert response.json() == {"actor": ACTOR, "role": Role.EDITOR.value}
+    assert response.json() == {"actor": ACTOR, "role": Role.ADMIN.value}
     assert client.get("/session").json()["actor"] == ACTOR
 
 
@@ -1712,3 +1718,58 @@ def test_another_workspace_s_google_account_is_never_used(
 
     assert response.status_code == 409
     assert client.get("/sources/google-docs").json() == {"account": None}
+
+
+# --- admin gates sources (Phase 4) -----------------------------------------------
+#
+# Granting Atlas access to a repo, a Jira project or a doc is the sensitive act,
+# so it is an admin's. Pulling from a source an admin already connected stays an
+# editor's job -- that is reviewing work, not granting access.
+
+
+def _as(client: TestClient, actor: str) -> None:
+    client.post("/session", json={"passphrase": PASSPHRASE, "name": actor})
+
+
+def test_an_editor_may_not_connect_a_source(
+    client: TestClient, with_product: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _stub_access(monkeypatch)
+    _as(client, EDITOR_ONLY)
+
+    response = client.post(
+        f"/products/{with_product}/connections",
+        json={
+            "source_type": "github_pr",
+            "host": "github.com",
+            "scope": "acme/gateway",
+            "secret": SECRET_TOKEN,
+        },
+    )
+
+    assert response.status_code == 403
+    assert "admin" in response.json()["detail"]
+
+
+def test_an_editor_may_not_revoke_a_source(
+    client: TestClient, with_product: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    connection_id = _connect(client, with_product, monkeypatch)
+    _as(client, EDITOR_ONLY)
+
+    assert client.delete(f"/connections/{connection_id}").status_code == 403
+
+
+def test_an_editor_may_still_pull_from_a_connected_source(
+    client: TestClient, with_product: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    connection_id = _connect(client, with_product, monkeypatch)
+    monkeypatch.setattr("atlas.api.routes.execute_run", lambda *a, **k: None)
+    _as(client, EDITOR_ONLY)
+
+    response = client.post(
+        f"/products/{with_product}/runs",
+        json={"connection_id": connection_id, "target_kind": "github_pr", "target": "acme/web#7"},
+    )
+
+    assert response.status_code == 202

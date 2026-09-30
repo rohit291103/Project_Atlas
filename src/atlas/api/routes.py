@@ -56,6 +56,7 @@ from sqlalchemy.orm import Session
 from atlas.api.deps import (
     SESSION_COOKIE,
     SESSION_MAX_AGE_SECONDS,
+    AdminDep,
     Principal,
     PrincipalDep,
     SessionDep,
@@ -811,7 +812,7 @@ def connect_source(
     product_id: uuid.UUID,
     body: ConnectSourceRequest,
     session: SessionDep,
-    principal: WriterDep,
+    principal: AdminDep,
     settings: SettingsDep,
 ) -> ConnectionCreated:
     """Verify a credential against the scope it claims, then store it encrypted.
@@ -889,7 +890,7 @@ def google_docs_account(principal: PrincipalDep, settings: SettingsDep) -> Googl
 def revoke_connection(
     connection_id: uuid.UUID,
     session: SessionDep,
-    principal: WriterDep,
+    principal: AdminDep,
 ) -> None:
     """Revocation is a real delete -- the ciphertext stops existing. The event
     log keeps the record that it happened, which is the part that should."""

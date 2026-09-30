@@ -20,7 +20,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ApiError, api, canWrite } from "../api";
+import { ApiError, api, canAdminister, canWrite } from "../api";
 import type {
   Connection,
   ConnectSource,
@@ -87,6 +87,9 @@ export function SourcesPage({
   onIngested: () => void;
 }) {
   const writable = canWrite(role);
+  // Connecting and revoking grant or remove Atlas's access, so they are an
+  // admin's; pulling from what is connected stays with every editor.
+  const administers = canAdminister(role);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [runs, setRuns] = useState<Run[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -145,7 +148,7 @@ export function SourcesPage({
       <section className="sources">
         <div className="sources__head">
           <h2>Connected</h2>
-          {writable && !connecting && (
+          {administers && !connecting && (
             <button type="button" className="link-button" onClick={() => setConnecting(true)}>
               Connect a source
             </button>
@@ -155,9 +158,9 @@ export function SourcesPage({
         {connections.length === 0 && !connecting && (
           <div className="notice">
             Nothing connected yet.{" "}
-            {writable
-              ? "Connect a GitHub repo or a Jira project to start pulling context."
-              : "Ask an editor to connect one."}
+            {administers
+              ? "Connect a GitHub repo, a Jira project or Google Docs to start pulling context."
+              : "Ask a workspace admin to connect one."}
           </div>
         )}
 
@@ -168,7 +171,7 @@ export function SourcesPage({
             <ConnectionCard
               key={connection.id}
               connection={connection}
-              writable={writable}
+              writable={administers}
               onRevoked={() => {
                 setJustConnected(null);
                 void load();

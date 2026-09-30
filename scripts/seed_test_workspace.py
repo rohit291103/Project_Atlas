@@ -109,6 +109,9 @@ FIXTURE_WORKSPACE_NAME = "Browser suite fixture"
 #: fails if the two ever disagree.
 EDITOR = "Suite Editor (automated)"
 VIEWER = "Suite Viewer (automated)"
+#: Since Phase 4 only an admin may connect or revoke a source, so the suite
+#: needs one to exercise the connect form at all.
+ADMIN = "Suite Admin (automated)"
 
 #: Who the seed writes as. Not `EDITOR`: the fixture's rulings were made by this
 #: script, and an audit trail that says otherwise is the exact defect
@@ -501,7 +504,7 @@ def provision(admin_sessions: sessionmaker[Session]) -> None:
                 select(WorkspaceMember).where(WorkspaceMember.workspace_id == FIXTURE_WORKSPACE_ID)
             ).scalars()
         }
-        for actor, role in ((EDITOR, Role.EDITOR), (VIEWER, Role.VIEWER)):
+        for actor, role in ((ADMIN, Role.ADMIN), (EDITOR, Role.EDITOR), (VIEWER, Role.VIEWER)):
             if actor not in seated:
                 session.add(
                     WorkspaceMember(workspace_id=FIXTURE_WORKSPACE_ID, actor=actor, role=role)
@@ -724,7 +727,7 @@ def main(argv: list[str] | None = None) -> int:
         f"{summary.features} features, {summary.claims} claims, "
         f"{summary.conflicts} conflicts, {summary.ruled} rulings"
     )
-    print(f"members: {EDITOR} (editor), {VIEWER} (viewer)")
+    print(f"members: {ADMIN} (admin), {EDITOR} (editor), {VIEWER} (viewer)")
     return 0
 
 

@@ -39,6 +39,7 @@ __all__ = [
     "Principal",
     "PrincipalDep",
     "WriterDep",
+    "AdminDep",
     "require_writer",
     "SessionDep",
     "SessionFactoryDep",
@@ -220,3 +221,23 @@ def require_writer(principal: PrincipalDep) -> Principal:
 
 
 WriterDep = Annotated[Principal, Depends(require_writer)]
+
+
+def require_admin(principal: PrincipalDep) -> Principal:
+    """Only an admin may grant Atlas access to a source (Phase 4, 2026-09-30).
+
+    Connecting a repo, a Jira project or a doc is the act a security review asks
+    about -- it widens what Atlas can read. Pulling from a source an admin
+    already connected stays an editor's job (`WriterDep`): that is reviewing
+    work, not granting access. `Role.ADMIN` has existed since slice 1D for
+    exactly this; its docstring anticipated the surface.
+    """
+    if principal.role is not Role.ADMIN:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "only a workspace admin may connect or revoke a source",
+        )
+    return principal
+
+
+AdminDep = Annotated[Principal, Depends(require_admin)]

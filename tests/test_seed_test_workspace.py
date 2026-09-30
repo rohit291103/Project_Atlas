@@ -49,6 +49,7 @@ from atlas.storage.db import Base, get_engine, get_sessionmaker, session_scope  
 from atlas.storage.projections import load_projection  # noqa: E402
 from atlas.storage.tables import EventLog, WorkspaceMember, append_event  # noqa: E402
 from scripts.seed_test_workspace import (  # noqa: E402
+    ADMIN,
     EDITOR,
     FIXTURE_WORKSPACE_ID,
     PLAN,
@@ -315,7 +316,7 @@ def test_membership_is_seated_once_and_survives_a_rebuild(
             select(WorkspaceMember).where(WorkspaceMember.workspace_id == FIXTURE_WORKSPACE_ID)
         ).scalars()
         seated = {member.actor: member.role for member in members}
-    assert seated == {EDITOR: Role.EDITOR, VIEWER: Role.VIEWER}
+    assert seated == {ADMIN: Role.ADMIN, EDITOR: Role.EDITOR, VIEWER: Role.VIEWER}
 
 
 def test_clearing_refuses_to_delete_what_a_human_wrote(
@@ -386,4 +387,5 @@ def test_the_playwright_fixture_module_names_the_same_actors() -> None:
     source = (Path(__file__).resolve().parents[1] / "frontend" / "tests" / "fixture.ts").read_text()
     assert json.dumps(EDITOR) in source
     assert json.dumps(VIEWER) in source
+    assert json.dumps(ADMIN) in source
     assert str(FIXTURE_WORKSPACE_ID) in source

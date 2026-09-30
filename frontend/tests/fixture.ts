@@ -18,6 +18,8 @@
  */
 export const EDITOR = "Suite Editor (automated)";
 export const VIEWER = "Suite Viewer (automated)";
+/** Only an admin may connect or revoke a source (Phase 4). */
+export const ADMIN = "Suite Admin (automated)";
 
 /** The fixture workspace's id — `uuid5`, so it is the same on every rebuild. */
 export const WORKSPACE_ID = "7d7d0811-9fbb-5b17-9039-e48d8090bd88";
@@ -29,4 +31,5 @@ export const WORKSPACE_ID = "7d7d0811-9fbb-5b17-9039-e48d8090bd88";
 export const actors = {
   editor: process.env.ATLAS_TEST_EDITOR ?? EDITOR,
   viewer: process.env.ATLAS_TEST_VIEWER ?? VIEWER,
+  admin: process.env.ATLAS_TEST_ADMIN ?? ADMIN,
 };

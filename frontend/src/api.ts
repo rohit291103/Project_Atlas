@@ -73,6 +73,9 @@ export type Tally = components["schemas"]["Tally"];
  * hides what the API would refuse — an affordance that always 403s is worse
  * than no affordance. */
 export const canWrite = (role: Role): boolean => role !== "viewer";
+/** Granting Atlas access to a source is an admin's act (Phase 4); the server
+ * enforces it, this only hides the controls a non-admin could not use. */
+export const canAdminister = (role: Role): boolean => role === "admin";
 
 /* Exported so a failure can name what it could not reach. A thrown `fetch`
  * carries no status and no body, so the origin is the only useful thing left
