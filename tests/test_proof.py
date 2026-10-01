@@ -378,3 +378,33 @@ def test_the_prompt_stream_stays_open_until_the_session_ends() -> None:
         return events
 
     assert asyncio.run(scenario()) == ["do the task", "still open", "closed after done"]
+
+
+def test_an_infrastructure_error_is_retried_from_scratch_and_counted(tmp_path: Path) -> None:
+    """Found live 2026-10-01: the CLI ended a session with an error result
+    ("Claude Code returned an error result: success") and no answer. Such a
+    session is rerun from a fresh checkout, at most twice, and every attempt is
+    recorded -- the same rule for both conditions."""
+    from scripts.proof import attempt_with_retries
+
+    calls: list[int] = []
+
+    async def flaky(attempt: int) -> str:
+        calls.append(attempt)
+        if attempt < 2:
+            raise Exception("Claude Code returned an error result: success")
+        return "diff --git a/x b/x"
+
+    diff, attempts = asyncio.run(attempt_with_retries(flaky, retries=2))
+
+    assert (diff, attempts, calls) == ("diff --git a/x b/x", 3, [0, 1, 2])
+
+
+def test_retries_are_bounded() -> None:
+    from scripts.proof import attempt_with_retries
+
+    async def always(attempt: int) -> str:
+        raise Exception("Claude Code returned an error result: success")
+
+    with pytest.raises(Exception, match="error result"):
+        asyncio.run(attempt_with_retries(always, retries=2))

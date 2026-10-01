@@ -617,6 +617,27 @@ async def held_stream(prompt: str, done: asyncio.Event) -> AsyncIterator[dict[st
     await done.wait()
 
 
+#: Reruns allowed when a session ends in an infrastructure error with no answer
+#: (`proof/deviations.md` #4). Same rule for both conditions.
+INFRA_RETRIES = 2
+
+
+async def attempt_with_retries(
+    attempt: Callable[[int], Awaitable[str]], *, retries: int = INFRA_RETRIES
+) -> tuple[str, int]:
+    """Run `attempt(0)`, then `attempt(1)`, ... until one returns, at most
+    `retries` extra times. Returns the result and how many attempts it took.
+    Each attempt starts from a fresh checkout; the turn cap is not an error
+    here (`run_agent` absorbs it), so only infrastructure failures retry."""
+    for number in range(retries + 1):
+        try:
+            return await attempt(number), number + 1
+        except Exception:
+            if number == retries:
+                raise
+    raise AssertionError("unreachable")
+
+
 def turn_cap_reached(error: BaseException) -> bool:
     """Whether the SDK stopped the agent because it used every turn."""
     return "maximum number of turns" in str(error)
@@ -635,13 +656,18 @@ def run(root: Path, repo: Path, model: str) -> None:
                 continue  # resumable: a finished run is never re-spent
             prompt = (out / f"{condition}.prompt.md").read_text()
             with tempfile.TemporaryDirectory() as scratch:
-                diff = asyncio.run(
-                    run_agent(prompt, repo, entry.base_sha, Path(scratch) / "wt", model)
-                )
-                capped = (Path(scratch) / "hit_turn_cap").exists()
+                base = Path(scratch)
+
+                async def once(
+                    number: int, base: Path = base, prompt: str = prompt, sha: str = entry.base_sha
+                ) -> str:
+                    return await run_agent(prompt, repo, sha, base / f"wt{number}", model)
+
+                diff, attempts = asyncio.run(attempt_with_retries(once))
+                capped = (base / "hit_turn_cap").exists()
             target.write_text(diff)
             (out / f"{condition}.meta.json").write_text(
-                json.dumps({"model": model, "hit_turn_cap": capped}, indent=2)
+                json.dumps({"model": model, "hit_turn_cap": capped, "attempts": attempts}, indent=2)
             )
 
 

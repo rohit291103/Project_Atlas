@@ -1,0 +1,103 @@
+diff --git a/doc/rg.1.md b/doc/rg.1.md
+index c996d83..92dbd39 100644
+--- a/doc/rg.1.md
++++ b/doc/rg.1.md
+@@ -129,6 +129,10 @@ the raw speed of grep.
+ --no-heading
+ : Don't show any file name heading.
+ 
++--maxdepth *NUM*
++: Descend at most NUM directories below the starting-points. A value of
++  zero only searches the starting-points themselves.
++
+ --hidden
+ : Search hidden directories and files. (Hidden directories and files are
+   skipped by default.)
+diff --git a/src/args.rs b/src/args.rs
+index 2a825e2..0657107 100644
+--- a/src/args.rs
++++ b/src/args.rs
+@@ -129,6 +129,10 @@ Less common options:
+     --no-heading
+         Don't show any file name heading.
+ 
++    --maxdepth NUM
++        Descend at most NUM directories below the starting-points. A value
++        of zero only searches the starting-points themselves.
++
+     --hidden
+         Search hidden directories and files. (Hidden directories and files are
+         skipped by default.)
+@@ -222,6 +226,7 @@ pub struct RawArgs {
+     flag_invert_match: bool,
+     flag_line_number: bool,
+     flag_fixed_strings: bool,
++    flag_maxdepth: Option<usize>,
+     flag_mmap: bool,
+     flag_no_heading: bool,
+     flag_no_ignore: bool,
+@@ -273,6 +278,7 @@ pub struct Args {
+     line_number: bool,
+     line_per_match: bool,
+     mmap: bool,
++    max_depth: Option<usize>,
+     no_ignore: bool,
+     no_ignore_parent: bool,
+     no_ignore_vcs: bool,
+@@ -400,6 +406,7 @@ impl RawArgs {
+             line_number: !self.flag_no_line_number && self.flag_line_number,
+             line_per_match: self.flag_vimgrep,
+             mmap: mmap,
++            max_depth: self.flag_maxdepth,
+             no_ignore: no_ignore,
+             no_ignore_parent:
+                 // --no-ignore implies --no-ignore-parent
+@@ -681,7 +688,10 @@ impl Args {
+ 
+     /// Create a new recursive directory iterator at the path given.
+     pub fn walker(&self, path: &Path) -> Result<walk::Iter> {
+-        let wd = WalkDir::new(path).follow_links(self.follow);
++        let mut wd = WalkDir::new(path).follow_links(self.follow);
++        if let Some(max_depth) = self.max_depth {
++            wd = wd.max_depth(max_depth);
++        }
+         let mut ig = Ignore::new();
+         // Only register ignore rules if this is a directory. If it's a file,
+         // then it was explicitly given by the end user, so we always search
+diff --git a/tests/tests.rs b/tests/tests.rs
+index 11513aa..6604abd 100644
+--- a/tests/tests.rs
++++ b/tests/tests.rs
+@@ -900,6 +900,32 @@ fn regression_64() {
+     assert_eq!(lines, path("foo/abc\n"));
+ }
+ 
++// See: https://github.com/BurntSushi/ripgrep/issues/109
++#[test]
++fn max_depth() {
++    let wd = WorkDir::new("max_depth");
++    wd.create("a", "test");
++    wd.create_dir("one");
++    wd.create("one/a", "test");
++    wd.create_dir("one/two");
++    wd.create("one/two/a", "test");
++
++    // A depth of 1 should only search the starting-point itself (and
++    // anything directly inside it), so the file nested inside "one"
++    // should not be found.
++    let mut cmd = wd.command();
++    cmd.arg("test").arg("--maxdepth").arg("1");
++    let lines: String = wd.stdout(&mut cmd);
++    assert_eq!(lines, path("a:test\n"));
++
++    // A depth of 2 should find files nested one directory below a
++    // starting-point, but should still ignore anything deeper than that.
++    let mut cmd = wd.command();
++    cmd.arg("test").arg("--maxdepth").arg("2");
++    let out: String = wd.stdout(&mut cmd);
++    assert_eq!(sort_lines(&out), sort_lines(&path("a:test\none/a:test\n")));
++}
++
+ #[test]
+ fn type_list() {
+     let wd = WorkDir::new("type_list");
