@@ -29,7 +29,7 @@ from rich.table import Table
 from rich.text import Text
 
 from atlas.config import DEFAULT_WORKSPACE_ID, JiraSettings, Settings
-from atlas.models.schema import ActorKind, RunState, RunTargetKind
+from atlas.models.schema import ActorKind, Role, RunState, RunTargetKind
 from atlas.pipeline import (
     GitHubCredential,
     JiraCredential,
@@ -42,7 +42,13 @@ from atlas.storage.connections import SecretError, rotate_connection_secrets
 from atlas.storage.db import get_engine, get_sessionmaker
 from atlas.storage.products import assign_feature_scope, create_product
 from atlas.storage.projections import Projection, load_projection
-from atlas.storage.rbac import owner_session, workspace_session
+from atlas.storage.rbac import (
+    MembershipError,
+    create_workspace,
+    owner_session,
+    seat_member,
+    workspace_session,
+)
 
 app = typer.Typer(help="Project Atlas -- extraction CLI and debug read path.")
 console = Console()
@@ -275,6 +281,53 @@ def rotate_secrets() -> None:
         f"[green]Re-sealed {rotated} credential(s) under the new key.[/green] "
         "Now deploy with only the new key in ATLAS_SECRET_KEY."
     )
+
+
+def _owner_url() -> str:
+    url = os.environ.get("SUPABASE_DB_ADMIN_URL")
+    if not url:
+        console.print("[red]Needs SUPABASE_DB_ADMIN_URL (the owner connection).[/red]")
+        raise typer.Exit(1)
+    return url
+
+
+@app.command("workspace-create")
+def workspace_create(name: str) -> None:
+    """Provision a new, empty workspace and print its id.
+
+    Operator-only, over the owner connection: the app role cannot create a
+    tenant (`c3d8e1f60b21`). Used to give a measured PM a workspace of their own.
+    """
+    load_dotenv()
+    session_factory = get_sessionmaker(get_engine(_owner_url()))
+    with owner_session(session_factory) as session:
+        workspace_id = create_workspace(session, name)
+    console.print(f"[green]Created workspace[/green] [bold]{name}[/bold] {workspace_id}")
+
+
+_ROLE_OPTION = typer.Option(Role.EDITOR, help="admin, editor or viewer")
+
+
+@app.command("member-seat")
+def member_seat(
+    workspace: str,
+    name: str,
+    role: Role = _ROLE_OPTION,
+) -> None:
+    """Seat NAME -- exactly as they will type it at sign-in -- in WORKSPACE."""
+    load_dotenv()
+    try:
+        workspace_id = uuid.UUID(workspace)
+    except ValueError as bad:
+        raise typer.BadParameter("WORKSPACE must be a UUID") from bad
+    session_factory = get_sessionmaker(get_engine(_owner_url()))
+    try:
+        with owner_session(session_factory) as session:
+            seat_member(session, workspace_id, name, role)
+    except MembershipError as refused:
+        console.print(f"[red]{refused}[/red]")
+        raise typer.Exit(1) from None
+    console.print(f"[green]Seated[/green] [bold]{name}[/bold] as {role.value} in {workspace}")
 
 
 @app.command("product-create")

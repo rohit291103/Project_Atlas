@@ -28,9 +28,17 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from atlas.models.schema import Role
 from atlas.storage.db import session_scope
-from atlas.storage.tables import WorkspaceMember
+from atlas.storage.tables import Workspace, WorkspaceMember
 
-__all__ = ["Membership", "find_membership", "scope_to_workspace", "workspace_session"]
+__all__ = [
+    "Membership",
+    "MembershipError",
+    "create_workspace",
+    "find_membership",
+    "scope_to_workspace",
+    "seat_member",
+    "workspace_session",
+]
 
 #: Read by the RLS policies in migration `b7c2f1a45d90`. Namespaced so it cannot
 #: collide with anything Postgres or Supabase sets.
@@ -63,6 +71,43 @@ def find_membership(session: Session, actor: str) -> Membership | None:
     if row is None:
         return None
     return Membership(workspace_id=row.workspace_id, actor=row.actor, role=row.role)
+
+
+class MembershipError(ValueError):
+    """A seat that would not work as intended -- refused rather than written."""
+
+
+def create_workspace(session: Session, name: str) -> uuid.UUID:
+    """Provision a new, empty workspace. Operator-only: `atlas_app` cannot write
+    `workspace` (`c3d8e1f60b21`), so this runs over the owner connection."""
+    workspace = Workspace(id=uuid.uuid4(), name=name)
+    session.add(workspace)
+    session.flush()
+    return workspace.id
+
+
+def seat_member(session: Session, workspace_id: uuid.UUID, actor: str, role: Role) -> None:
+    """Seat `actor` in `workspace_id`, or change their role if already seated there.
+
+    Refuses what would silently not work: a name with surrounding whitespace
+    (membership matches the sign-in name exactly, so it could never be typed),
+    a workspace that does not exist, and a person already seated elsewhere --
+    `find_membership` resolves to the earliest membership, so a second seat
+    would sign them in to the other workspace without a word.
+    """
+    if not actor.strip() or actor != actor.strip():
+        raise MembershipError(f"{actor!r} must be the exact name typed at sign-in")
+    if session.get(Workspace, workspace_id) is None:
+        raise MembershipError(f"no workspace {workspace_id}")
+    existing = find_membership(session, actor)
+    if existing is not None and existing.workspace_id != workspace_id:
+        raise MembershipError(f"{actor} is already a member of workspace {existing.workspace_id}")
+    row = session.get(WorkspaceMember, (workspace_id, actor))
+    if row is None:
+        session.add(WorkspaceMember(workspace_id=workspace_id, actor=actor, role=role))
+    else:
+        row.role = role
+    session.flush()
 
 
 def scope_to_workspace(session: Session, workspace_id: uuid.UUID) -> None:
@@ -113,7 +158,8 @@ def workspace_session(
 def owner_session(session_factory: sessionmaker[Session]) -> Iterator[Session]:
     """A transaction that deliberately crosses workspaces.
 
-    For operator tasks only -- today, `rotate-secrets` -- and only over the
+    For operator tasks only -- `rotate-secrets`, `workspace-create`,
+    `member-seat` -- and only over the
     *owner* connection (`SUPABASE_DB_ADMIN_URL`), which RLS does not narrow. It
     is named, rather than being a bare `session_scope`, so that crossing the
     tenant boundary is always a visible choice: under the app role a bare

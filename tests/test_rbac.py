@@ -22,8 +22,11 @@ from atlas.models.schema import Role
 from atlas.storage.db import Base, get_engine, get_sessionmaker, session_scope
 from atlas.storage.rbac import (
     WORKSPACE_SETTING,
+    MembershipError,
+    create_workspace,
     find_membership,
     scope_to_workspace,
+    seat_member,
     workspace_session,
 )
 from atlas.storage.tables import Workspace, WorkspaceMember
@@ -190,3 +193,68 @@ def test_the_cli_never_opens_an_unscoped_transaction() -> None:
 
     assert "session_scope(" not in source
     assert "workspace_session(" in source
+
+
+# --- provisioning (operator-only, over the owner connection) --------------------
+
+
+def test_a_created_workspace_can_seat_a_member_who_then_resolves_to_it(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_scope(session_factory) as session:
+        workspace_id = create_workspace(session, "PM measurement")
+        seat_member(session, workspace_id, "Priya Shah", Role.ADMIN)
+
+        membership = find_membership(session, "Priya Shah")
+
+    assert membership is not None
+    assert (membership.workspace_id, membership.role) == (workspace_id, Role.ADMIN)
+
+
+def test_seating_someone_already_in_another_workspace_is_refused(
+    session_factory: sessionmaker[Session],
+) -> None:
+    """A person in two workspaces resolves to the earliest, so seating them in a
+    second one would sign them in somewhere else without a word. Refused."""
+    with session_scope(session_factory) as session:
+        _seed(session)
+        fresh = create_workspace(session, "PM measurement")
+
+        with pytest.raises(MembershipError, match="already a member"):
+            seat_member(session, fresh, "Priya", Role.ADMIN)
+
+
+def test_reseating_in_the_same_workspace_changes_the_role(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_scope(session_factory) as session:
+        _seed(session)
+        seat_member(session, WORKSPACE_A, "Priya", Role.ADMIN)
+
+        membership = find_membership(session, "Priya")
+
+    assert membership is not None and membership.role is Role.ADMIN
+
+
+@pytest.mark.parametrize("name", ["", "   ", " Priya", "Priya "])
+def test_a_name_that_could_never_be_typed_at_sign_in_is_refused(
+    session_factory: sessionmaker[Session], name: str
+) -> None:
+    """Membership matches the sign-in name exactly, so a stray space seats a
+    member who can never sign in -- and the measurement session would open on a
+    403 in front of the PM."""
+    with session_scope(session_factory) as session:
+        workspace_id = create_workspace(session, "PM measurement")
+
+        with pytest.raises(MembershipError):
+            seat_member(session, workspace_id, name, Role.ADMIN)
+
+
+def test_seating_into_a_workspace_that_does_not_exist_is_refused(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with (
+        session_scope(session_factory) as session,
+        pytest.raises(MembershipError, match="no workspace"),
+    ):
+        seat_member(session, uuid.uuid4(), "Priya Shah", Role.ADMIN)

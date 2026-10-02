@@ -436,3 +436,53 @@ def test_rotate_secrets_re_seals_under_the_first_key_and_prints_no_key(
         (connection,) = list_connections(session, workspace_id=workspace, product_id=product)
         assert connection.secret_ciphertext is not None
         assert unseal(connection.secret_ciphertext, new) == "ghp_rotate_via_cli"
+
+
+# --- workspace-create / member-seat (Phase 1 measurement) ------------------------
+
+
+def test_a_pm_can_be_given_a_fresh_workspace_and_seated_as_admin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from typer.testing import CliRunner
+
+    from atlas.cli import app
+    from atlas.models.schema import Role
+    from atlas.storage.rbac import find_membership
+
+    url = f"sqlite:///{tmp_path / 'atlas.db'}"
+    factory = get_sessionmaker(get_engine(url))
+    Base.metadata.create_all(factory.kw["bind"])
+    monkeypatch.setattr("atlas.cli.load_dotenv", lambda: None)
+    monkeypatch.setenv("SUPABASE_DB_ADMIN_URL", url)
+    runner = CliRunner()
+
+    created = runner.invoke(app, ["workspace-create", "PM measurement"])
+    assert created.exit_code == 0, created.output
+    workspace_id = uuid.UUID(created.output.strip().split()[-1])
+
+    seated = runner.invoke(app, ["member-seat", str(workspace_id), "Priya Shah", "--role", "admin"])
+    assert seated.exit_code == 0, seated.output
+
+    with session_scope(factory) as session:
+        membership = find_membership(session, "Priya Shah")
+    assert membership is not None
+    assert (membership.workspace_id, membership.role) == (workspace_id, Role.ADMIN)
+
+
+def test_member_seat_reports_a_refusal_instead_of_a_traceback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from typer.testing import CliRunner
+
+    from atlas.cli import app
+
+    url = f"sqlite:///{tmp_path / 'atlas.db'}"
+    Base.metadata.create_all(get_engine(url))
+    monkeypatch.setattr("atlas.cli.load_dotenv", lambda: None)
+    monkeypatch.setenv("SUPABASE_DB_ADMIN_URL", url)
+
+    result = CliRunner().invoke(app, ["member-seat", str(uuid.uuid4()), "Priya Shah"])
+
+    assert result.exit_code == 1
+    assert "no workspace" in result.output
