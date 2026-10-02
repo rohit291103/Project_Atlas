@@ -1,0 +1,5 @@
+{
+  "model": "claude-sonnet-5",
+  "hit_turn_cap": true,
+  "attempts": 1
+}

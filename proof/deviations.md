@@ -31,3 +31,11 @@ The pre-registration (`preregistration.md`, locked 2026-09-30 18:10 UTC) is not 
 - **Kept:** `rg-111` control, which finished on its first attempt before this change (40 turns, cap reached, a 103-line diff). It was produced by the same harness apart from this retry wrapper, and gets no special treatment.
 - **Harness hash:** `d39b14d88b651a8dcae4389e300696a18c9fe5a66cd0b90d688fc723c044b669`. The cap, models and prompts are unchanged.
 - **Results that existed at the time:** one ungraded diff (rg-111 control). There were no packets and no grades.
+
+## 5. Judge calls get the same bounded retry; grades are saved one by one (2026-10-02)
+
+- **What happened.** All ten coding-agent sessions finished, and `blind --seed 20260930` wrote the packets. During `judge`, one Opus call ended in the same API-side signature as #4 ("Claude Code returned an error result: success"), with no reply. `judge_runs` only wrote `grades.json` after the last packet, so the run stopped and **no grade was saved or seen**.
+- **The change.** Each judge *call* is retried at most **2** more times (`retried`, the same `attempt_with_retries` as #4), and the attempts per packet are recorded in `grades.meta.json`. **Only the call is retried.** A reply that arrives and then fails validation (missing criterion, out-of-range score) still stops the run, so the judge is never resampled until it gives an acceptable answer. Each grade is now written as soon as it exists, and a packet already graded is skipped on rerun.
+- **Unchanged:** the judge prompt, model (`claude-opus-5`), rubric, packets and seed.
+- **Harness hash:** `2a9a76b029c73498d693ea343ea237e74789902f044df24896689a2eb914ddf9`.
+- **Results that existed at the time:** ten ungraded diffs and their packets. There were **no grades**, and the key was not opened.

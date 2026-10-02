@@ -1,0 +1,283 @@
+diff --git a/ignore/src/dir.rs b/ignore/src/dir.rs
+index 6de6619..d0f3b83 100644
+--- a/ignore/src/dir.rs
++++ b/ignore/src/dir.rs
+@@ -14,7 +14,7 @@
+ // well.
+ 
+ use std::collections::HashMap;
+-use std::ffi::OsString;
++use std::ffi::{OsStr, OsString};
+ use std::path::{Path, PathBuf};
+ use std::sync::{Arc, RwLock};
+ 
+@@ -111,6 +111,8 @@ struct IgnoreInner {
+     absolute_base: Option<Arc<PathBuf>>,
+     /// Explicit ignore matchers specified by the caller.
+     explicit_ignores: Arc<Vec<Gitignore>>,
++    /// The matcher for custom ignore files.
++    custom_ignore_matcher: Gitignore,
+     /// The matcher for .ignore files.
+     ignore_matcher: Gitignore,
+     /// A global gitignore matcher, usually from $XDG_CONFIG_HOME/git/ignore.
+@@ -123,6 +125,11 @@ struct IgnoreInner {
+     has_git: bool,
+     /// Ignore config.
+     opts: IgnoreOptions,
++    /// The names of ignore files to respect, in addition to `.ignore`. These
++    /// are application specific and have higher precedence than `.ignore`
++    /// but lower precedence than any overrides. Earlier names have lower
++    /// precedence than later names.
++    custom_ignore_filenames: Arc<Vec<OsString>>,
+ }
+ 
+ impl Ignore {
+@@ -210,9 +217,18 @@ impl Ignore {
+ 
+     /// Like add_child, but takes a full path and returns an IgnoreInner.
+     fn add_child_path(&self, dir: &Path) -> (IgnoreInner, Option<Error>) {
+-        static IG_NAMES: &'static [&'static str] = &[".rgignore", ".ignore"];
++        static IG_NAMES: &'static [&'static str] = &[".ignore"];
+ 
+         let mut errs = PartialErrorBuilder::default();
++        let custom_ig_matcher =
++            if !self.0.opts.ignore || self.0.custom_ignore_filenames.is_empty() {
++                Gitignore::empty()
++            } else {
++                let (m, err) = create_gitignore(
++                    &dir, self.0.custom_ignore_filenames.as_slice());
++                errs.maybe_push(err);
++                m
++            };
+         let ig_matcher =
+             if !self.0.opts.ignore {
+                 Gitignore::empty()
+@@ -246,12 +262,14 @@ impl Ignore {
+             is_absolute_parent: false,
+             absolute_base: self.0.absolute_base.clone(),
+             explicit_ignores: self.0.explicit_ignores.clone(),
++            custom_ignore_matcher: custom_ig_matcher,
+             ignore_matcher: ig_matcher,
+             git_global_matcher: self.0.git_global_matcher.clone(),
+             git_ignore_matcher: gi_matcher,
+             git_exclude_matcher: gi_exclude_matcher,
+             has_git: dir.join(".git").is_dir(),
+             opts: self.0.opts,
++            custom_ignore_filenames: self.0.custom_ignore_filenames.clone(),
+         };
+         (ig, errs.into_error_option())
+     }
+@@ -314,10 +332,16 @@ impl Ignore {
+         path: &Path,
+         is_dir: bool,
+     ) -> Match<IgnoreMatch<'a>> {
+-        let (mut m_ignore, mut m_gi, mut m_gi_exclude, mut m_explicit) =
+-            (Match::None, Match::None, Match::None, Match::None);
++        let (mut m_custom_ignore, mut m_ignore, mut m_gi, mut m_gi_exclude,
++             mut m_explicit) =
++            (Match::None, Match::None, Match::None, Match::None, Match::None);
+         let mut saw_git = false;
+         for ig in self.parents().take_while(|ig| !ig.0.is_absolute_parent) {
++            if m_custom_ignore.is_none() {
++                m_custom_ignore =
++                    ig.0.custom_ignore_matcher.matched(path, is_dir)
++                      .map(IgnoreMatch::gitignore);
++            }
+             if m_ignore.is_none() {
+                 m_ignore =
+                     ig.0.ignore_matcher.matched(path, is_dir)
+@@ -338,6 +362,11 @@ impl Ignore {
+         if let Some(abs_parent_path) = self.absolute_base() {
+             let path = abs_parent_path.join(path);
+             for ig in self.parents().skip_while(|ig|!ig.0.is_absolute_parent) {
++                if m_custom_ignore.is_none() {
++                    m_custom_ignore =
++                        ig.0.custom_ignore_matcher.matched(&path, is_dir)
++                          .map(IgnoreMatch::gitignore);
++                }
+                 if m_ignore.is_none() {
+                     m_ignore =
+                         ig.0.ignore_matcher.matched(&path, is_dir)
+@@ -365,7 +394,8 @@ impl Ignore {
+         let m_global = self.0.git_global_matcher.matched(&path, is_dir)
+                            .map(IgnoreMatch::gitignore);
+ 
+-        m_ignore.or(m_gi).or(m_gi_exclude).or(m_global).or(m_explicit)
++        m_custom_ignore.or(m_ignore).or(m_gi).or(m_gi_exclude)
++            .or(m_global).or(m_explicit)
+     }
+ 
+     /// Returns an iterator over parent ignore matchers, including this one.
+@@ -412,6 +442,8 @@ pub struct IgnoreBuilder {
+     explicit_ignores: Vec<Gitignore>,
+     /// Ignore config.
+     opts: IgnoreOptions,
++    /// The names of ignore files to respect, in addition to `.ignore`.
++    custom_ignore_filenames: Vec<OsString>,
+ }
+ 
+ impl IgnoreBuilder {
+@@ -432,6 +464,7 @@ impl IgnoreBuilder {
+                 git_ignore: true,
+                 git_exclude: true,
+             },
++            custom_ignore_filenames: vec![],
+         }
+     }
+ 
+@@ -459,12 +492,14 @@ impl IgnoreBuilder {
+             is_absolute_parent: true,
+             absolute_base: None,
+             explicit_ignores: Arc::new(self.explicit_ignores.clone()),
++            custom_ignore_matcher: Gitignore::empty(),
+             ignore_matcher: Gitignore::empty(),
+             git_global_matcher: Arc::new(git_global_matcher),
+             git_ignore_matcher: Gitignore::empty(),
+             git_exclude_matcher: Gitignore::empty(),
+             has_git: false,
+             opts: self.opts,
++            custom_ignore_filenames: Arc::new(self.custom_ignore_filenames.clone()),
+         }))
+     }
+ 
+@@ -494,6 +529,20 @@ impl IgnoreBuilder {
+         self
+     }
+ 
++    /// Add a custom ignore file name
++    ///
++    /// These ignore files have higher precedence than all other ignore files.
++    ///
++    /// When specifying multiple names, earlier names have lower precedence
++    /// than later names.
++    pub fn add_custom_ignore_filename<S: AsRef<OsStr>>(
++        &mut self,
++        file_name: S,
++    ) -> &mut IgnoreBuilder {
++        self.custom_ignore_filenames.push(file_name.as_ref().to_os_string());
++        self
++    }
++
+     /// Enables ignoring hidden files.
+     ///
+     /// This is enabled by default.
+@@ -555,14 +604,14 @@ impl IgnoreBuilder {
+ /// order given (earlier names have lower precedence than later names).
+ ///
+ /// I/O errors are ignored.
+-pub fn create_gitignore(
++pub fn create_gitignore<T: AsRef<Path>>(
+     dir: &Path,
+-    names: &[&str],
++    names: &[T],
+ ) -> (Gitignore, Option<Error>) {
+     let mut builder = GitignoreBuilder::new(dir);
+     let mut errs = PartialErrorBuilder::default();
+     for name in names {
+-        let gipath = dir.join(name);
++        let gipath = dir.join(name.as_ref());
+         errs.maybe_push_ignore_io(builder.add(gipath));
+     }
+     let gi = match builder.build() {
+@@ -655,6 +704,39 @@ mod tests {
+         assert!(ig.matched("baz", false).is_none());
+     }
+ 
++    // Tests that a custom ignore file will override an .ignore file.
++    #[test]
++    fn custom_ignore_over_ignore() {
++        let td = TempDir::new("ignore-test-").unwrap();
++        let custom_ignore = ".customignore";
++        wfile(td.path().join(".ignore"), "foo");
++        wfile(td.path().join(custom_ignore), "!foo");
++
++        let (ig, err) = IgnoreBuilder::new()
++            .add_custom_ignore_filename(custom_ignore)
++            .build()
++            .add_child(td.path());
++        assert!(err.is_none());
++        assert!(ig.matched("foo", false).is_whitelist());
++    }
++
++    // Tests that earlier custom ignore files have lower precedence than
++    // later ones.
++    #[test]
++    fn custom_ignore_precedence() {
++        let td = TempDir::new("ignore-test-").unwrap();
++        wfile(td.path().join(".a-ignore"), "!foo");
++        wfile(td.path().join(".b-ignore"), "foo");
++
++        let (ig, err) = IgnoreBuilder::new()
++            .add_custom_ignore_filename(".a-ignore")
++            .add_custom_ignore_filename(".b-ignore")
++            .build()
++            .add_child(td.path());
++        assert!(err.is_none());
++        assert!(ig.matched("foo", false).is_ignore());
++    }
++
+     // Tests that an .ignore will override a .gitignore.
+     #[test]
+     fn ignore_over_gitignore() {
+diff --git a/ignore/src/walk.rs b/ignore/src/walk.rs
+index 296bef9..5f19bc2 100644
+--- a/ignore/src/walk.rs
++++ b/ignore/src/walk.rs
+@@ -377,14 +377,15 @@ impl DirEntryRaw {
+ /// starts with a `!`, in which case it is an ignore glob.)
+ /// * Second, ignore files are checked. Ignore files currently only come from
+ /// git ignore files (`.gitignore`, `.git/info/exclude` and the configured
+-/// global gitignore file), plain `.ignore` files, which have the same format
+-/// as gitignore files, or explicitly added ignore files. The precedence order
+-/// is: `.ignore`, `.gitignore`, `.git/info/exclude`, global gitignore and
+-/// finally explicitly added ignore files. Note that precedence between
+-/// different types of ignore files is not impacted by the directory hierarchy;
+-/// any `.ignore` file overrides all `.gitignore` files. Within each precedence
+-/// level, more nested ignore files have a higher precedence than less nested
+-/// ignore files.
++/// global gitignore file), plain `.ignore` files, or any other custom ignore
++/// files given by the caller (which have the same format as `.gitignore`
++/// files), or explicitly added ignore files. The precedence order is:
++/// custom ignore files, `.ignore`, `.gitignore`, `.git/info/exclude`, global
++/// gitignore and finally explicitly added ignore files. Note that precedence
++/// between different types of ignore files is not impacted by the directory
++/// hierarchy; any `.ignore` file overrides all `.gitignore` files. Within
++/// each precedence level, more nested ignore files have a higher precedence
++/// than less nested ignore files.
+ /// * Third, if the previous step yields an ignore match, then all matching
+ /// is stopped and the path is skipped. If it yields a whitelist match, then
+ /// matching continues. A whitelist match can be overridden by a later matcher.
+@@ -557,6 +558,21 @@ impl WalkBuilder {
+         errs.into_error_option()
+     }
+ 
++    /// Add a custom ignore file name
++    ///
++    /// These ignore files have higher precedence than all other ignore
++    /// files.
++    ///
++    /// When specifying multiple names, earlier names have lower precedence
++    /// than later names.
++    pub fn add_custom_ignore_filename<S: AsRef<OsStr>>(
++        &mut self,
++        file_name: S,
++    ) -> &mut WalkBuilder {
++        self.ig_builder.add_custom_ignore_filename(file_name);
++        self
++    }
++
+     /// Add an override matcher.
+     ///
+     /// By default, no override matcher is used.
+diff --git a/src/args.rs b/src/args.rs
+index d2d0232..cd56810 100644
+--- a/src/args.rs
++++ b/src/args.rs
+@@ -278,6 +278,7 @@ impl Args {
+             }
+         }
+ 
++        wd.add_custom_ignore_filename(".rgignore");
+         wd.follow_links(self.follow);
+         wd.hidden(!self.hidden);
+         wd.max_depth(self.maxdepth);

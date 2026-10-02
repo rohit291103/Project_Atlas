@@ -1,0 +1,392 @@
+diff --git a/crates/ignore/src/dir.rs b/crates/ignore/src/dir.rs
+index 2655b23..6b522ca 100644
+--- a/crates/ignore/src/dir.rs
++++ b/crates/ignore/src/dir.rs
+@@ -25,7 +25,7 @@ use std::{
+ use crate::{
+     gitignore::{self, Gitignore, GitignoreBuilder},
+     overrides::{self, Override},
+-    pathutil::{is_hidden_entry, strip_prefix},
++    pathutil::{is_hidden_entry, is_hidden_path, strip_prefix},
+     types::{self, Types},
+     walk::DirEntry,
+     {Error, Match, PartialErrorBuilder},
+@@ -696,6 +696,129 @@ impl Ignore {
+     }
+ }
+ 
++/// Checker provides a way to check individual file paths for whether they
++/// should be ignored or not, without requiring a full traversal of a
++/// directory tree.
++///
++/// This is useful in contexts where paths become known incrementally, such
++/// as a file watcher: when a new path is observed, a `Checker` can be asked
++/// whether that specific path should be included or ignored, according to
++/// the overrides, ignore files (including any found in parent directories)
++/// and file type rules that were used to build it, without re-walking the
++/// directory tree from scratch.
++///
++/// Internally, a `Checker` lazily builds and caches the ignore matchers for
++/// every directory it's asked about (and their ancestors), so that
++/// subsequent checks for paths that share common ancestor directories don't
++/// require re-parsing the same ignore files over and over again.
++///
++/// A `Checker` is created via `WalkBuilder::build_checker`.
++#[derive(Clone, Debug)]
++pub struct Checker {
++    /// The matcher with no parent directories added to it. This is used as
++    /// the starting point for discovering and building matchers for the
++    /// ancestors of any directory this checker is asked about.
++    root: Ignore,
++    /// A cache of matchers for directories this checker has already seen,
++    /// keyed by each directory's canonicalized path. Each matcher here
++    /// corresponds to the state of `root` with that specific directory (and
++    /// all of its ancestors) added via `add_parents` and `add_child`.
++    dirs: HashMap<PathBuf, Ignore>,
++}
++
++impl Checker {
++    /// Create a new checker from the given root matcher.
++    ///
++    /// The root matcher should have no parent directories, i.e., it should
++    /// be fresh from `IgnoreBuilder::build` or `IgnoreBuilder::build_with_cwd`.
++    pub(crate) fn new(root: Ignore) -> Checker {
++        Checker { root, dirs: HashMap::new() }
++    }
++
++    /// Returns true if and only if the given file path should be ignored.
++    ///
++    /// `is_dir` should be true if the path refers to a directory and false
++    /// otherwise.
++    ///
++    /// If the parent directory of `path` doesn't exist (and therefore can't
++    /// be canonicalized), then this returns `false`.
++    pub fn is_ignored<P: AsRef<Path>>(
++        &mut self,
++        path: P,
++        is_dir: bool,
++    ) -> bool {
++        self.matched(path, is_dir).is_ignore()
++    }
++
++    /// Returns a match indicating whether the given path should be ignored
++    /// or whitelisted.
++    ///
++    /// This applies the same precedence rules (overrides, then ignore
++    /// files, then file types, then hidden file handling) that are used
++    /// when walking a directory tree with `Walk` or `WalkParallel`. See the
++    /// documentation on `WalkBuilder` for the details of those rules.
++    ///
++    /// `is_dir` should be true if the path refers to a directory and false
++    /// otherwise.
++    ///
++    /// If the parent directory of `path` doesn't exist (and therefore can't
++    /// be canonicalized), then this returns `Match::None`.
++    pub fn matched<P: AsRef<Path>>(
++        &mut self,
++        path: P,
++        is_dir: bool,
++    ) -> Match<()> {
++        let path = path.as_ref();
++        let Some(file_name) = path.file_name() else { return Match::None };
++        let parent = match path.parent() {
++            Some(parent) if !parent.as_os_str().is_empty() => parent,
++            _ => Path::new("."),
++        };
++        let Some((ig, dir)) = self.ignore_for_dir(parent) else {
++            return Match::None;
++        };
++        // We rebuild the candidate path from the canonicalized directory we
++        // found a matcher for, joined with the requested file name. This
++        // means the matcher (whose own directory and ancestors are all
++        // absolute, canonicalized paths) is able to correctly strip common
++        // prefixes when matching against each ignore file it checks,
++        // regardless of whether the path given to this method was relative
++        // or absolute. Notably, this also means `path` itself need not
++        // exist (only its parent directory needs to), which matters for
++        // callers like file watchers that may want to check a path that
++        // was just removed.
++        let candidate = dir.join(file_name);
++        let m = ig.matched(&candidate, is_dir).map(|_| ());
++        if m.is_none() && ig.inner.opts.hidden && is_hidden_path(&candidate) {
++            return Match::Ignore(());
++        }
++        m
++    }
++
++    /// Returns the ignore matcher for the given directory, along with its
++    /// canonicalized path, building and caching it (and its ancestors) if
++    /// it isn't already cached.
++    fn ignore_for_dir(&mut self, dir: &Path) -> Option<(Ignore, PathBuf)> {
++        let dir = match dir.canonicalize() {
++            Ok(dir) => dir,
++            Err(_) => return None,
++        };
++        if let Some(ig) = self.dirs.get(&dir) {
++            return Some((ig.clone(), dir));
++        }
++        let (ancestors, err) = self.root.add_parents(&dir);
++        if let Some(err) = err {
++            log::debug!("{}", err);
++        }
++        let (ig, err) = ancestors.add_child(&dir);
++        if let Some(err) = err {
++            log::debug!("{}", err);
++        }
++        self.dirs.insert(dir.clone(), ig.clone());
++        Some((ig, dir))
++    }
++}
++
+ /// State for tracking what kinds of files ripgrep is interested in for a
+ /// given directory.
+ ///
+@@ -1113,7 +1236,12 @@ mod tests {
+     use std::{io::Write, path::Path, sync::Arc};
+ 
+     use crate::{
+-        Error, dir::IgnoreBuilder, gitignore::Gitignore, tests::TempDir,
++        Error,
++        dir::{Checker, IgnoreBuilder},
++        gitignore::Gitignore,
++        overrides::OverrideBuilder,
++        tests::TempDir,
++        types::TypesBuilder,
+     };
+ 
+     fn wfile<P: AsRef<Path>>(path: P, contents: &str) {
+@@ -1605,4 +1733,155 @@ mod tests {
+         let (_, err) = ib.add_child(td.path().join("linked-worktree"));
+         assert!(err.is_none());
+     }
++
++    #[test]
++    fn checker_basic_gitignore() {
++        let td = tmpdir();
++        mkdirp(td.path().join(".git"));
++        wfile(td.path().join(".gitignore"), "foo\n!bar");
++
++        let mut checker = Checker::new(IgnoreBuilder::new().build());
++        assert!(checker.matched(td.path().join("foo"), false).is_ignore());
++        assert!(
++            checker.matched(td.path().join("bar"), false).is_whitelist()
++        );
++        assert!(checker.matched(td.path().join("baz"), false).is_none());
++    }
++
++    // Checking a path doesn't require the path itself to exist, only its
++    // parent directory. This matters for callers like file watchers that
++    // may want to check a path that was just removed.
++    #[test]
++    fn checker_path_need_not_exist() {
++        let td = tmpdir();
++        mkdirp(td.path().join(".git"));
++        wfile(td.path().join(".gitignore"), "foo\n");
++
++        let mut checker = Checker::new(IgnoreBuilder::new().build());
++        assert!(checker.matched(td.path().join("foo"), false).is_ignore());
++        assert!(checker.matched(td.path().join("quux"), false).is_none());
++    }
++
++    // A Checker automatically discovers and respects ignore files in parent
++    // directories, even when it wasn't explicitly told about those
++    // directories ahead of time (unlike `Walk`/`WalkParallel`, which rely on
++    // `add_parents` being called with the search root(s)).
++    #[test]
++    fn checker_respects_parent_gitignore() {
++        let td = tmpdir();
++        mkdirp(td.path().join(".git"));
++        mkdirp(td.path().join("src/sub"));
++        wfile(td.path().join(".gitignore"), "*.o\n");
++
++        let mut checker = Checker::new(IgnoreBuilder::new().build());
++        assert!(
++            checker
++                .matched(td.path().join("src/sub/foo.o"), false)
++                .is_ignore()
++        );
++        assert!(
++            checker
++                .matched(td.path().join("src/sub/foo.c"), false)
++                .is_none()
++        );
++    }
++
++    // Whether a directory itself is ignored is determined by its parent's
++    // ignore rules; a directory's own ignore file only applies to its
++    // children, not to the directory itself.
++    #[test]
++    fn checker_directory_ignored_by_parent_not_itself() {
++        let td = tmpdir();
++        mkdirp(td.path().join(".git"));
++        mkdirp(td.path().join("target"));
++        wfile(td.path().join(".gitignore"), "target\n");
++        // Even though `target`'s own ignore file whitelists everything, that
++        // has no bearing on whether `target` itself is ignored, since a
++        // directory's ignore file only applies to paths inside of it.
++        wfile(td.path().join("target/.gitignore"), "!*\n");
++
++        let mut checker = Checker::new(IgnoreBuilder::new().build());
++        assert!(checker.matched(td.path().join("target"), true).is_ignore());
++    }
++
++    // Overrides have the highest precedence, taking priority over gitignore
++    // rules.
++    #[test]
++    fn checker_overrides_take_precedence() {
++        let td = tmpdir();
++        mkdirp(td.path().join(".git"));
++        wfile(td.path().join(".gitignore"), "foo\n");
++
++        let mut without_override = Checker::new(IgnoreBuilder::new().build());
++        assert!(
++            without_override
++                .matched(td.path().join("foo"), false)
++                .is_ignore()
++        );
++
++        let mut builder = OverrideBuilder::new(td.path());
++        // A plain glob (no leading `!`) is a whitelist override, which takes
++        // precedence over the `.gitignore` rule that would otherwise ignore
++        // `foo`.
++        builder.add("foo").unwrap();
++        let overrides = builder.build().unwrap();
++        let mut ib = IgnoreBuilder::new();
++        ib.overrides(overrides);
++        let mut with_override = Checker::new(ib.build());
++        assert!(
++            with_override
++                .matched(td.path().join("foo"), false)
++                .is_whitelist()
++        );
++    }
++
++    // File type selection is respected by a Checker just as it is by `Walk`.
++    #[test]
++    fn checker_respects_file_types() {
++        let td = tmpdir();
++
++        let mut types_builder = TypesBuilder::new();
++        types_builder.add_defaults();
++        types_builder.select("rust");
++        let types = types_builder.build().unwrap();
++
++        let mut ib = IgnoreBuilder::new();
++        ib.types(types);
++        let mut checker = Checker::new(ib.build());
++
++        assert!(
++            checker.matched(td.path().join("foo.rs"), false).is_whitelist()
++        );
++        assert!(
++            checker.matched(td.path().join("foo.txt"), false).is_ignore()
++        );
++    }
++
++    // A Checker caches the ignore matchers it builds for each directory it's
++    // asked about, so later changes to an ignore file aren't reflected until
++    // a new Checker is built.
++    #[test]
++    fn checker_caches_directory_matchers() {
++        let td = tmpdir();
++        mkdirp(td.path().join(".git"));
++        wfile(td.path().join(".gitignore"), "foo\n");
++
++        let mut checker = Checker::new(IgnoreBuilder::new().build());
++        assert!(checker.matched(td.path().join("foo"), false).is_ignore());
++
++        wfile(td.path().join(".gitignore"), "bar\n");
++        assert!(checker.matched(td.path().join("foo"), false).is_ignore());
++        assert!(checker.matched(td.path().join("bar"), false).is_none());
++    }
++
++    #[test]
++    fn checker_unknown_directory_returns_none() {
++        let td = tmpdir();
++        let mut checker = Checker::new(IgnoreBuilder::new().build());
++        assert!(
++            checker
++                .matched(td.path().join("does-not-exist/foo"), false)
++                .is_none()
++        );
++    }
+ }
+diff --git a/crates/ignore/src/lib.rs b/crates/ignore/src/lib.rs
+index 0ed4a49..4bd0cb1 100644
+--- a/crates/ignore/src/lib.rs
++++ b/crates/ignore/src/lib.rs
+@@ -5,7 +5,10 @@ matching rules and precedence is explained in the documentation for
+ `WalkBuilder`.
+ 
+ Secondarily, this crate exposes gitignore and file type matchers for use cases
+-that demand more fine-grained control.
++that demand more fine-grained control. It also provides, via `Checker`, a way
++to incrementally check whether an individual file path is ignored, without
++requiring a full directory traversal. This is useful, for example, when
++implementing a file watcher.
+ 
+ # Example
+ 
+@@ -48,9 +51,12 @@ See the documentation for `WalkBuilder` for many other options.
+ 
+ use std::path::{Path, PathBuf};
+ 
+-pub use crate::walk::{
+-    DirEntry, ParallelVisitor, ParallelVisitorBuilder, Walk, WalkBuilder,
+-    WalkParallel, WalkState,
++pub use crate::{
++    dir::Checker,
++    walk::{
++        DirEntry, ParallelVisitor, ParallelVisitorBuilder, Walk, WalkBuilder,
++        WalkParallel, WalkState,
++    },
+ };
+ 
+ mod default_types;
+diff --git a/crates/ignore/src/walk.rs b/crates/ignore/src/walk.rs
+index f712582..0f99bb7 100644
+--- a/crates/ignore/src/walk.rs
++++ b/crates/ignore/src/walk.rs
+@@ -16,7 +16,7 @@ use {
+ 
+ use crate::{
+     Error, PartialErrorBuilder,
+-    dir::{Ignore, IgnoreBuilder},
++    dir::{Checker, Ignore, IgnoreBuilder},
+     gitignore::GitignoreBuilder,
+     overrides::Override,
+     types::Types,
+@@ -668,6 +668,33 @@ impl WalkBuilder {
+         }
+     }
+ 
++    /// Build a new `Checker` for incrementally testing individual file
++    /// paths.
++    ///
++    /// Unlike `build` and `build_parallel`, the `Checker` returned by this
++    /// method doesn't traverse a directory tree. Instead, given a specific
++    /// file path, it reports whether that one path would be included or
++    /// ignored by this builder's configuration (overrides, ignore files,
++    /// including those in parent directories, and file type rules), without
++    /// visiting any other paths.
++    ///
++    /// This is useful in cases where a full directory traversal isn't
++    /// necessary or desirable. A canonical example is a file watcher: when
++    /// a new path is observed, a `Checker` can be asked whether that path
++    /// should be ignored, without re-walking the directory tree that's
++    /// being watched.
++    ///
++    /// Note that the paths added via `WalkBuilder::add` have no effect on
++    /// the `Checker` returned here; a `Checker` can check any path
++    /// regardless of what (if anything) was added to this builder.
++    pub fn build_checker(&self) -> Checker {
++        let ig_root = self
++            .get_or_set_current_dir()
++            .map(|cwd| self.ig_builder.build_with_cwd(Some(cwd.to_path_buf())))
++            .unwrap_or_else(|| self.ig_builder.build());
++        Checker::new(ig_root)
++    }
++
+     /// Add a file path to the iterator.
+     ///
+     /// Each additional file path added is traversed recursively. This should

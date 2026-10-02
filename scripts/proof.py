@@ -695,9 +695,26 @@ def curate_all(root: Path, model: str) -> None:
         target.write_text(build_spec(entry.name, title, nodes, edges, curation))
 
 
+def retried(call: TextCall, attempts: list[int], *, retries: int = INFRA_RETRIES) -> TextCall:
+    """`call` with infrastructure errors retried, at most `retries` extra times
+    (`proof/deviations.md` #5). Only the call is retried: a reply that arrives
+    and then fails validation in `judge` is never re-asked. Each call's attempt
+    count is appended to `attempts` for the write-up."""
+
+    async def wrapped(prompt: str) -> str:
+        text, used = await attempt_with_retries(lambda _number: call(prompt), retries=retries)
+        attempts.append(used)
+        return text
+
+    return wrapped
+
+
 def judge_runs(root: Path, repo: Path, rubric_path: Path, model: str) -> None:
     """Grade every packet blind against the merged diff. Needs the sealed key
-    only to find the feature's merged diff -- never shown to the judge."""
+    only to find the feature's merged diff -- never shown to the judge.
+
+    Each grade is written as soon as it exists, and a packet already graded is
+    skipped, so one failed call never discards the others."""
     import asyncio
     import subprocess
 
@@ -705,9 +722,18 @@ def judge_runs(root: Path, repo: Path, rubric_path: Path, model: str) -> None:
     rubric = Rubric.model_validate_json(rubric_path.read_text())
     entries = {entry.name: entry for entry in _manifest(root)}
     packets = [Packet.model_validate(p) for p in json.loads((root / "packets.json").read_text())]
+    target, meta = root / "grades.json", root / "grades.meta.json"
+    grades = (
+        [Grade.model_validate(g) for g in json.loads(target.read_text())] if target.exists() else []
+    )
+    attempts_by_packet: dict[str, int] = (
+        json.loads(meta.read_text())["attempts"] if meta.exists() else {}
+    )
+    graded = {grade.packet_id for grade in grades}
     call = text_call(JUDGE_PROMPT, model)
-    grades: list[Grade] = []
     for packet in packets:
+        if packet.id in graded:
+            continue
         entry = entries[packet.feature]
         merged = subprocess.run(
             ["git", "-C", str(repo), "diff", entry.base_sha, entry.merged_sha],
@@ -715,8 +741,11 @@ def judge_runs(root: Path, repo: Path, rubric_path: Path, model: str) -> None:
             capture_output=True,
             text=True,
         ).stdout
-        grades.append(asyncio.run(judge(packet, merged, rubric, call)))
-    (root / "grades.json").write_text(json.dumps([g.model_dump() for g in grades], indent=2))
+        attempts: list[int] = []
+        grades.append(asyncio.run(judge(packet, merged, rubric, retried(call, attempts))))
+        attempts_by_packet[packet.id] = attempts[0]
+        target.write_text(json.dumps([g.model_dump() for g in grades], indent=2))
+        meta.write_text(json.dumps({"model": model, "attempts": attempts_by_packet}, indent=2))
 
 
 def blind_runs(root: Path, seed: int) -> None:

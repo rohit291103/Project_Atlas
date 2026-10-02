@@ -1,0 +1,99 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 9cc576e..86f7cf2 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -2,6 +2,12 @@ TBD
+ ===
+ Unreleased changes. Release notes have not yet been written.
+ 
++Feature enhancements:
++
++* [FEATURE #2956](https://github.com/BurntSushi/ripgrep/issues/2956):
++  Add support for sourcing zsh completions directly, for example, via
++  `source <(rg --generate complete-zsh)`.
++
+ 
+ 14.1.1 (2024-09-08)
+ ===================
+diff --git a/FAQ.md b/FAQ.md
+index 84d01f2..396a029 100644
+--- a/FAQ.md
++++ b/FAQ.md
+@@ -121,6 +121,19 @@ $ mkdir -p "$dir"
+ $ rg --generate complete-zsh > "$dir/_rg"
+ ```
+ 
++Alternatively, for **zsh** only, completions can be sourced directly without
++saving them to a file first:
++
++```
++$ source <(rg --generate complete-zsh)
++```
++
++This is convenient, but note that it is also slower, since it means the
++completion script is regenerated and re-parsed every time you start a new
++shell. If you're sensitive to shell startup time, prefer the approach above
++of generating the completion file once and letting zsh's completion system
++load it (and cache it) on demand instead.
++
+ For **PowerShell**, create the completions:
+ 
+ ```
+diff --git a/ci/test-complete b/ci/test-complete
+index 3793aff..1e1e53c 100755
+--- a/ci/test-complete
++++ b/ci/test-complete
+@@ -13,7 +13,18 @@ get_comp_args() {
+     # Our completion function recognises a special variable which tells it to
+     # dump the _arguments specs and then just return. But do this in a sub-shell
+     # anyway to avoid any weirdness
+-    ( _RG_COMPLETE_LIST_ARGS=1 source $1 )
++    #
++    # Note that, since sourcing this file directly no longer calls `_rg`
++    # automatically (that now only happens when it's autoloaded as part of an
++    # actual completion request, courtesy of the dynamic-sourcing support),
++    # we stub out `compdef` (which may not otherwise be defined here, since
++    # we aren't running under a real completion system) and call `_rg`
++    # ourselves afterward.
++    (
++        compdef() { :; }
++        _RG_COMPLETE_LIST_ARGS=1 source $1
++        _rg
++    )
+ }
+ 
+ main() {
+diff --git a/crates/core/flags/complete/rg.zsh b/crates/core/flags/complete/rg.zsh
+index e9731a1..c73917f 100644
+--- a/crates/core/flags/complete/rg.zsh
++++ b/crates/core/flags/complete/rg.zsh
+@@ -434,7 +434,28 @@ _rg_types() {
+   fi
+ }
+ 
+-_rg "$@"
++#
++# This script is normally used by placing it (or a symlink to it) in a
++# directory in `$fpath` named `_rg`, where it is autoloaded on demand by
++# zsh's completion system. In that case, `$zsh_eval_context` has
++# `loadautofunc` as its last element while this script is being read, since
++# it's the completion system itself that is triggering the autoload (in
++# order to actually service a completion request), so we go ahead and call
++# `_rg` ourselves.
++#
++# Alternatively, this script can be sourced directly, e.g. with
++# `source <(rg --generate complete-zsh)`, typically from `.zshrc`. In that
++# case, `$zsh_eval_context` doesn't end with `loadautofunc`, since we're
++# merely being sourced like a normal script and not being autoloaded to
++# fulfil a completion request. So instead of calling `_rg` immediately
++# (which would fail, since `_arguments` can only be called while zsh is
++# actually completing something), we just register it with `compdef` so
++# that it's used the next time completion for `rg` is requested.
++if [[ $zsh_eval_context[-1] == loadautofunc ]]; then
++  _rg "$@"
++else
++  compdef _rg rg
++fi
+ 
+ ################################################################################
+ # ZSH COMPLETION REFERENCE

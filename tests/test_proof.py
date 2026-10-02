@@ -408,3 +408,45 @@ def test_retries_are_bounded() -> None:
 
     with pytest.raises(Exception, match="error result"):
         asyncio.run(attempt_with_retries(always, retries=2))
+
+
+def test_a_judge_call_retries_infrastructure_errors_and_counts_attempts() -> None:
+    """Found live 2026-10-01: a judge call ended in the same API-side error
+    result as deviation #4. The call is retried; the attempts are recorded."""
+    from scripts.proof import retried
+
+    calls: list[str] = []
+
+    async def flaky(prompt: str) -> str:
+        calls.append(prompt)
+        if len(calls) == 1:
+            raise Exception("Claude Code returned an error result: success")
+        return "reply"
+
+    attempts: list[int] = []
+
+    async def ask() -> str:
+        return await retried(flaky, attempts)("grade this")
+
+    text = asyncio.run(ask())
+
+    assert (text, attempts, calls) == ("reply", [2], ["grade this", "grade this"])
+
+
+def test_a_judge_reply_that_fails_validation_is_not_re_asked() -> None:
+    """Retrying covers the call only: a reply that arrives but is out of range
+    stops the run, so the judge is never resampled until it says something
+    acceptable."""
+    from scripts.proof import Packet, Rubric, judge, retried
+
+    rubric = Rubric.model_validate_json(Path("proof/rubric.json").read_text())
+    calls: list[str] = []
+
+    async def out_of_range(prompt: str) -> str:
+        calls.append(prompt)
+        return '{"scores": {"behaviour": 9, "decisions": 2, "scope": 2, "compiles": 2}}'
+
+    packet = Packet(id="p1", feature="f", output="diff")
+    with pytest.raises(ValueError):
+        asyncio.run(judge(packet, "merged", rubric, retried(out_of_range, [])))
+    assert len(calls) == 1

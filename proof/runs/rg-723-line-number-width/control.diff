@@ -1,0 +1,148 @@
+diff --git a/complete/_rg b/complete/_rg
+index cd5b5ac..ecad864 100644
+--- a/complete/_rg
++++ b/complete/_rg
+@@ -45,6 +45,7 @@ _rg() {
+     '--ignore-file=[specify additional ignore file]:file:_files'
+     '(-v --invert-match)'{-v,--invert-match}'[invert matching]'
+     '(-n -N --line-number --no-line-number)'{-n,--line-number}'[show line numbers]'
++    '--line-number-width=[specify minimum number of columns used for line numbers]:number of columns'
+     '(-w -x --line-regexp --word-regexp)'{-x,--line-regexp}'[only show matches surrounded by line boundaries]'
+     '(-M --max-columns)'{-M+,--max-columns=}'[specify max length of lines to print]:number of bytes'
+     '(-m --max-count)'{-m+,--max-count=}'[specify max number of matches per file]:number of matches'
+diff --git a/doc/rg.1 b/doc/rg.1
+index 2ed14b3..27f7f70 100644
+--- a/doc/rg.1
++++ b/doc/rg.1
+@@ -330,6 +330,13 @@ precedence than later files.
+ .RS
+ .RE
+ .TP
++.B \-\-line\-number\-width \f[I]NUM\f[]
++Left pad line numbers with spaces so that they are at least \f[I]NUM\f[]
++columns wide.
++This has no effect if \-N/\-\-no\-line\-number is used.
++.RS
++.RE
++.TP
+ .B \-L, \-\-follow
+ Follow symlinks.
+ .RS
+diff --git a/doc/rg.1.md b/doc/rg.1.md
+index 36c912c..ef69c66 100644
+--- a/doc/rg.1.md
++++ b/doc/rg.1.md
+@@ -219,6 +219,10 @@ Project home page: https://github.com/BurntSushi/ripgrep
+   specifying multiple ignore files, earlier files have lower
+   precedence than later files.
+ 
++--line-number-width *NUM*
++: Left pad line numbers with spaces so that they are at least *NUM* columns
++  wide. This has no effect if -N/--no-line-number is used.
++
+ -L, --follow
+ : Follow symlinks.
+ 
+diff --git a/src/app.rs b/src/app.rs
+index 7a10b35..25ffd88 100644
+--- a/src/app.rs
++++ b/src/app.rs
+@@ -147,6 +147,9 @@ pub fn app() -> App<'static, 'static> {
+              .set(ArgSettings::AllowLeadingHyphen)
+              .multiple(true).number_of_values(1))
+         .arg(flag("follow").short("L"))
++        .arg(flag("line-number-width")
++             .value_name("NUM").takes_value(true)
++             .validator(validate_number))
+         .arg(flag("max-count")
+              .short("m").value_name("NUM").takes_value(true)
+              .validator(validate_number))
+@@ -433,6 +436,11 @@ lazy_static! {
+               include or exclude files and directories directly used -g instead.");
+         doc!(h, "follow",
+              "Follow symbolic links.");
++        doc!(h, "line-number-width",
++             "Left pad line numbers with spaces.",
++             "Left pad line numbers with spaces until they are at least NUM \
++              characters wide. This has no effect if --no-line-number is \
++              used.");
+         doc!(h, "max-count",
+              "Limit the number of matches.",
+              "Limit the number of matching lines per file searched to NUM.");
+diff --git a/src/args.rs b/src/args.rs
+index 106762c..622f0ec 100644
+--- a/src/args.rs
++++ b/src/args.rs
+@@ -53,6 +53,7 @@ pub struct Args {
+     ignore_files: Vec<PathBuf>,
+     invert_match: bool,
+     line_number: bool,
++    line_number_width: Option<usize>,
+     line_per_match: bool,
+     max_columns: Option<usize>,
+     max_count: Option<u64>,
+@@ -139,6 +140,7 @@ impl Args {
+             .context_separator(self.context_separator.clone())
+             .eol(self.eol)
+             .heading(self.heading)
++            .line_number_width(self.line_number_width)
+             .line_per_match(self.line_per_match)
+             .null(self.null)
+             .only_matching(self.only_matching)
+@@ -336,6 +338,7 @@ impl<'a> ArgMatches<'a> {
+             ignore_files: self.ignore_files(),
+             invert_match: self.is_present("invert-match"),
+             line_number: line_number,
++            line_number_width: try!(self.usize_of("line-number-width")),
+             line_per_match: self.is_present("vimgrep"),
+             max_columns: try!(self.usize_of("max-columns")),
+             max_count: try!(self.usize_of("max-count")).map(|max| max as u64),
+diff --git a/src/printer.rs b/src/printer.rs
+index 37680f9..aacd7f5 100644
+--- a/src/printer.rs
++++ b/src/printer.rs
+@@ -82,6 +82,9 @@ pub struct Printer<W> {
+     ///
+     /// N.B. If with_filename is false, then this setting has no effect.
+     heading: bool,
++    /// The minimum number of columns to use for line numbers, left padded
++    /// with spaces. If not set, line numbers are not padded.
++    line_number_width: Option<usize>,
+     /// Whether to show every match on its own line.
+     line_per_match: bool,
+     /// Whether to print NUL bytes after a file path instead of new lines
+@@ -112,6 +115,7 @@ impl<W: WriteColor> Printer<W> {
+             eol: b'\n',
+             file_separator: None,
+             heading: false,
++            line_number_width: None,
+             line_per_match: false,
+             null: false,
+             only_matching: false,
+@@ -163,6 +167,13 @@ impl<W: WriteColor> Printer<W> {
+         self
+     }
+ 
++    /// When set, line numbers are left padded with spaces so that they are
++    /// at least this many columns wide.
++    pub fn line_number_width(mut self, width: Option<usize>) -> Printer<W> {
++        self.line_number_width = width;
++        self
++    }
++
+     /// Whether to show every match on its own line.
+     pub fn line_per_match(mut self, yes: bool) -> Printer<W> {
+         self.line_per_match = yes;
+@@ -457,7 +468,11 @@ impl<W: WriteColor> Printer<W> {
+     }
+ 
+     fn line_number(&mut self, n: u64, sep: u8) {
+-        self.write_colored(n.to_string().as_bytes(), |colors| colors.line());
++        let text = match self.line_number_width {
++            None => n.to_string(),
++            Some(width) => format!("{:>1$}", n, width),
++        };
++        self.write_colored(text.as_bytes(), |colors| colors.line());
+         self.separator(&[sep]);
+     }
+ 

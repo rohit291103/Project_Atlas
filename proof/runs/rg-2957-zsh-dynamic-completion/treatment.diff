@@ -1,0 +1,73 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 9cc576e..b786c5d 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -2,6 +2,10 @@ TBD
+ ===
+ Unreleased changes. Release notes have not yet been written.
+ 
++* [BUG #2956](https://github.com/BurntSushi/ripgrep/issues/2956):
++  Fix zsh completions so that they can be sourced dynamically, e.g., via
++  `source <(rg --generate complete-zsh)`.
++
+ 
+ 14.1.1 (2024-09-08)
+ ===================
+diff --git a/FAQ.md b/FAQ.md
+index 84d01f2..41b4128 100644
+--- a/FAQ.md
++++ b/FAQ.md
+@@ -121,6 +121,19 @@ $ mkdir -p "$dir"
+ $ rg --generate complete-zsh > "$dir/_rg"
+ ```
+ 
++Alternatively, if you don't want to bother saving the completion script to a
++file, you can dynamically generate and source it in your `.zshrc`:
++
++```
++source <(rg --generate complete-zsh)
++```
++
++Beware that this approach is slower since it regenerates the completion
++script every time a new shell starts. (In the ballpark of ~4 milliseconds as
++of the time of writing this.) That's probably not even enough to notice on
++its own, but it can add up if you do this for multiple tools and find
++yourself opening shells frequently.
++
+ For **PowerShell**, create the completions:
+ 
+ ```
+diff --git a/ci/test-complete b/ci/test-complete
+index 3793aff..1d93f01 100755
+--- a/ci/test-complete
++++ b/ci/test-complete
+@@ -13,7 +13,11 @@ get_comp_args() {
+     # Our completion function recognises a special variable which tells it to
+     # dump the _arguments specs and then just return. But do this in a sub-shell
+     # anyway to avoid any weirdness
+-    ( _RG_COMPLETE_LIST_ARGS=1 source $1 )
++    #
++    # Note that sourcing the file only defines `_rg` (it no longer calls it
++    # automatically unless it detects that it's being autoloaded as part of
++    # a real completion), so we call it explicitly here ourselves.
++    ( _RG_COMPLETE_LIST_ARGS=1 source $1; _rg )
+ }
+ 
+ main() {
+diff --git a/crates/core/flags/complete/rg.zsh b/crates/core/flags/complete/rg.zsh
+index e9731a1..3cae445 100644
+--- a/crates/core/flags/complete/rg.zsh
++++ b/crates/core/flags/complete/rg.zsh
+@@ -434,7 +434,11 @@ _rg_types() {
+   fi
+ }
+ 
+-_rg "$@"
++if [ "$funcstack[1]" = "_rg" ]; then
++  _rg "$@"
++else
++  compdef _rg rg
++fi
+ 
+ ################################################################################
+ # ZSH COMPLETION REFERENCE
