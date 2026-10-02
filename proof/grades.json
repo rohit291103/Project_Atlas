@@ -1,0 +1,92 @@
+[
+  {
+    "packet_id": "b514910ba5f4",
+    "scores": {
+      "behaviour": 4,
+      "decisions": 2,
+      "scope": 2,
+      "compiles": 1
+    }
+  },
+  {
+    "packet_id": "fff3c0091698",
+    "scores": {
+      "behaviour": 3,
+      "decisions": 2,
+      "scope": 1,
+      "compiles": 1
+    }
+  },
+  {
+    "packet_id": "778946dce989",
+    "scores": {
+      "behaviour": 4,
+      "decisions": 2,
+      "scope": 2,
+      "compiles": 1
+    }
+  },
+  {
+    "packet_id": "de33eb95e640",
+    "scores": {
+      "behaviour": 3,
+      "decisions": 1,
+      "scope": 1,
+      "compiles": 1
+    }
+  },
+  {
+    "packet_id": "9592c1cfdd31",
+    "scores": {
+      "behaviour": 3,
+      "decisions": 1,
+      "scope": 2,
+      "compiles": 2
+    }
+  },
+  {
+    "packet_id": "06dc6e06f9ff",
+    "scores": {
+      "behaviour": 4,
+      "decisions": 2,
+      "scope": 2,
+      "compiles": 2
+    }
+  },
+  {
+    "packet_id": "0a35d00a8eba",
+    "scores": {
+      "behaviour": 3,
+      "decisions": 2,
+      "scope": 2,
+      "compiles": 2
+    }
+  },
+  {
+    "packet_id": "ddc07f51c2d5",
+    "scores": {
+      "behaviour": 4,
+      "decisions": 2,
+      "scope": 2,
+      "compiles": 2
+    }
+  },
+  {
+    "packet_id": "2d6715a37b34",
+    "scores": {
+      "behaviour": 2,
+      "decisions": 1,
+      "scope": 2,
+      "compiles": 2
+    }
+  },
+  {
+    "packet_id": "886f9d01999b",
+    "scores": {
+      "behaviour": 2,
+      "decisions": 1,
+      "scope": 2,
+      "compiles": 2
+    }
+  }
+]
